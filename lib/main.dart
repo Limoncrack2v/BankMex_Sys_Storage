@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'dart:io';
 
@@ -18,6 +19,7 @@ void main() async {
   if (kDebugMode) {
     final host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
     FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+    FirebaseAuth.instance.useAuthEmulator(host, 9099);
   }
 
   runApp(const MyApp());
@@ -62,13 +64,15 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       final familyRepo = FamilyRepository();
       final pantryRepo = PantryRepository();
+      final userCred = await FirebaseAuth.instance.signInAnonymously();
+      final uid = userCred.user!.uid;
 
       final familyId = await familyRepo.createFamily(
         Family(
           familyId: '',
           address: 'Calle XYZ 123',
           registrationDate: DateTime.now(),
-          authUid: 'test-uid',
+          authUid: uid,
           appliances: ['refrigerador'],
         ),
       );
@@ -157,6 +161,29 @@ class _MyHomePageState extends State<MyHomePage> {
     } catch (e) {
       setState(() => _crudStatus = 'Error: $e');
     }
+
+  }
+
+  Future<void> _testUnauthorizedCreate() async {
+    setState(() => _crudStatus = 'Probando creación sin sesión');
+
+    await FirebaseAuth.instance.signOut();
+
+    try {
+      final familyRepo = FamilyRepository();
+      await familyRepo.createFamily(
+        Family(
+          familyId: '',
+          address: 'Calle 123',
+          registrationDate: DateTime.now(),
+          authUid: 'uid',
+          appliances: [],
+        ),
+      );
+      setState(() => _crudStatus = 'Falló la creación de la familia');
+    } catch (e) {
+      setState(() => _crudStatus = 'Se bloqueó correctamente');
+    }
   }
 
   @override
@@ -189,6 +216,11 @@ class _MyHomePageState extends State<MyHomePage> {
             ElevatedButton(
               onPressed: _pantryItemId != null ? _testDelete : null,
               child: const Text('Probar Delete'),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _testUnauthorizedCreate,
+              child: const Text('Probar Create sin sesión'),
             ),
             const SizedBox(height: 16),
             Padding(
