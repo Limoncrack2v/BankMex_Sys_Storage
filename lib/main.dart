@@ -13,6 +13,8 @@ import 'data/repositories/family_repository.dart';
 import 'data/repositories/pantry_repository.dart';
 import 'data/models/app_user.dart';
 import 'data/repositories/user_repository.dart';
+import 'ui/screens/sign_in/sign_in_screen.dart';
+import 'ui/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,10 +34,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Para volver a la página de pruebas de CRUD/auth:
+    // home: const MyHomePage(title: 'Flutter Demo Home Page'),
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'BAMX Guadalajara',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      scrollBehavior: const AppScrollBehavior(),
+      home: const SignInScreen(),
     );
   }
 }
