@@ -86,7 +86,9 @@ class _MyHomePageState extends State<MyHomePage> {
           pantryItemId: '',
           productId: 'arroz-1kg',
           deliveryId: 'entrega-001',
+          type: FoodType.grain,
           quantity: 3,
+          unit: FoodUnit.kg,
           daysUntilExpiration: 30,
           synchronized: true,
           deviceId: 'device-test',
@@ -101,6 +103,56 @@ class _MyHomePageState extends State<MyHomePage> {
             'OK -> familyId: $familyId, itemId: $itemId, producto leído: ${fetched?.productId} (x${fetched?.quantity})';
         _familyId = familyId;
         _pantryItemId = itemId;
+      });
+    } catch (e) {
+      setState(() => _crudStatus = 'Error: $e');
+    }
+  }
+
+  Future<void> _testRegisterDelivery() async {
+    setState(() => _crudStatus = 'Registrando entrega...');
+
+    try {
+      final familyRepo = FamilyRepository();
+      final pantryRepo = PantryRepository();
+      final userCred = await FirebaseAuth.instance.signInAnonymously();
+
+      final familyId = await familyRepo.createFamily(
+        Family(
+          familyId: '',
+          address: 'Calle XYZ 123',
+          registrationDate: DateTime.now(),
+          authUid: userCred.user!.uid,
+          appliances: ['refrigerador'],
+        ),
+      );
+
+      PantryItem item(String productId, FoodType type, double qty, FoodUnit unit) =>
+          PantryItem(
+            pantryItemId: '',
+            productId: productId,
+            deliveryId: '',
+            type: type,
+            quantity: qty,
+            unit: unit,
+            daysUntilExpiration: 30,
+            synchronized: true,
+            deviceId: 'device-test',
+            localTimestamp: DateTime.now(),
+          );
+
+      final deliveryId = await pantryRepo.registerDelivery(familyId, [
+        item('arroz', FoodType.grain, 2.5, FoodUnit.kg),
+        item('leche', FoodType.dairy, 6, FoodUnit.l),
+        item('atun', FoodType.canned, 12, FoodUnit.can),
+      ]);
+
+      final items = await pantryRepo.watchAllPantryItems(familyId).first;
+
+      setState(() {
+        _crudStatus =
+            'OK -> entrega: $deliveryId, ${items.length} productos registrados';
+        _familyId = familyId;
       });
     } catch (e) {
       setState(() => _crudStatus = 'Error: $e');
@@ -290,6 +342,11 @@ class _MyHomePageState extends State<MyHomePage> {
             ElevatedButton(
               onPressed: _testCreate,
               child: const Text('Probar Create'),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _testRegisterDelivery,
+              child: const Text('Probar registro de entrega'),
             ),
             const SizedBox(height: 16),
             ElevatedButton(

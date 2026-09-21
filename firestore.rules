@@ -2,13 +2,61 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isStaff() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "staff";
+    }
+
+    function isFamilyOwner(familyId) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/families/$(familyId)).data.authUid == request.auth.uid;
+    }
+
+    function canAccessFamily(familyId) {
+      return isFamilyOwner(familyId)
+        || (isStaff() && exists(/databases/$(database)/documents/families/$(familyId)));
+    }
+
+    function validMember(data) {
+      return data.keys().hasOnly(['name', 'memberType', 'createdAt'])
+        && data.keys().hasAll(['name', 'memberType', 'createdAt'])
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 100
+        && data.memberType in ['adult', 'child']
+        && data.createdAt is timestamp;
+    }
+
+    function validPantryItem(data) {
+      return data.keys().hasOnly(['productId', 'deliveryId', 'type', 'quantity', 'unit', 'daysUntilExpiration', 'synchronized', 'deviceId', 'localTimestamp'])
+        && data.keys().hasAll(['productId', 'deliveryId', 'type', 'quantity', 'unit', 'daysUntilExpiration', 'synchronized', 'deviceId', 'localTimestamp'])
+        && data.productId is string && data.productId.size() > 0
+        && data.deliveryId is string && data.deliveryId.size() > 0
+        && data.type in ['grain', 'legume', 'canned', 'dairy', 'produce', 'protein', 'beverage', 'other']
+        && data.quantity is number && data.quantity > 0 && data.quantity <= 1000000
+        && data.unit in ['kg', 'g', 'l', 'ml', 'piece', 'can', 'pack']
+        && data.daysUntilExpiration is int && data.daysUntilExpiration >= 0
+        && data.synchronized is bool
+        && data.deviceId is string && data.deviceId.size() > 0
+        && data.localTimestamp is timestamp;
+    }
+
     match /families/{familyId} {
       allow create: if request.auth != null && request.resource.data.authUid == request.auth.uid;
-      allow read: if request.auth != null && resource.data.authUid == request.auth.uid;
+      allow read: if request.auth != null && (resource.data.authUid == request.auth.uid || isStaff());
       allow update: if request.auth != null && request.auth.uid == resource.data.authUid && request.resource.data.authUid == resource.data.authUid;
 
       match /pantryItems/{pantryItemId} {
-        allow read, write: if request.auth != null && get(/databases/$(database)/documents/families/$(familyId)).data.authUid == request.auth.uid;
+        allow read, delete: if canAccessFamily(familyId);
+        allow create, update: if canAccessFamily(familyId) && validPantryItem(request.resource.data);
+      }
+
+      match /members/{memberId} {
+        allow read, delete: if canAccessFamily(familyId);
+        allow create: if canAccessFamily(familyId) && validMember(request.resource.data);
+        allow update: if canAccessFamily(familyId)
+          && validMember(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
       }
     }
     match /users/{userId} {
