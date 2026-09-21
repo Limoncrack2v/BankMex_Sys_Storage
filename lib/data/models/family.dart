@@ -19,6 +19,7 @@ class Family {
 
   factory Family.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
+    
     return Family(
       familyId: doc.id,
       address: data['address'] as String,
