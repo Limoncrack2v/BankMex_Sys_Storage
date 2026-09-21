@@ -1,30 +1,32 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:bank_storage_app/main.dart';
+import 'package:bank_storage_app/ui/screens/sign_in/sign_in_screen.dart';
+import 'package:bank_storage_app/ui/theme/app_theme.dart';
+import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Sign In habilita el botón solo con correo y contraseña', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(theme: AppTheme.light, home: const SignInScreen()),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Inicia sesión en tu cuenta BAMX'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    PrimaryButton submitButton() => tester.widget<PrimaryButton>(
+      find.widgetWithText(PrimaryButton, 'Iniciar sesión'),
+    );
+
+    expect(submitButton().onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField).at(0), 'maria@correo.com');
     await tester.pump();
+    expect(submitButton().onPressed, isNull);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).at(1), '123456');
+    await tester.pump();
+    expect(submitButton().onPressed, isNotNull);
   });
 }
