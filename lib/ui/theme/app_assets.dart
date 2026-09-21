@@ -17,6 +17,14 @@ abstract final class AppIcons {
   static const urgencyClock = '$_base/urgency_clock.svg';
   static const users = '$_base/users.svg';
   static const wifi = '$_base/wifi.svg';
+  static const person = '$_base/person.svg';
+  static const truck = '$_base/truck.svg';
+  static const stepperMinus = '$_base/stepper_minus.svg';
+  static const stepperPlus = '$_base/stepper_plus.svg';
+
+  static const navEntregasActive = '$_base/nav_entregas_active.svg';
+  static const navEstadisticas = '$_base/nav_estadisticas.svg';
+  static const navCatalogo = '$_base/nav_catalogo.svg';
 
   static const navDespensa = '$_base/nav_despensa.svg';
   static const navDespensaActive = '$_base/nav_despensa_active.svg';

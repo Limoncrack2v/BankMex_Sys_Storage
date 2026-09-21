@@ -5,6 +5,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
 const _fieldRadius = BorderRadius.all(Radius.circular(12));
+const _disabledText = Color(0x805B6152);
 
 OutlineInputBorder _border(Color color) => OutlineInputBorder(
   borderRadius: _fieldRadius,
@@ -23,8 +24,16 @@ class AppTextField extends StatelessWidget {
     this.autofillHints,
     this.obscureText = false,
     this.suffix,
+    this.prefixText,
     this.onChanged,
     this.onSubmitted,
+    this.onTap,
+    this.focusNode,
+    this.enabled = true,
+    this.readOnly = false,
+    this.minLines,
+    this.maxLines = 1,
+    this.maxLength,
   });
 
   final TextEditingController controller;
@@ -36,33 +45,79 @@ class AppTextField extends StatelessWidget {
   final Iterable<String>? autofillHints;
   final bool obscureText;
   final Widget? suffix;
+
+  /// Texto fijo antes del valor, p. ej. "$" en la cuota de recuperación.
+  final String? prefixText;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onTap;
+  final FocusNode? focusNode;
+
+  /// Deshabilitado: fondo gris y texto atenuado (p. ej. cuota "Exenta").
+  final bool enabled;
+
+  /// Solo lectura: útil para campos que abren un selector al tocarlos.
+  final bool readOnly;
+  final int? minLines;
+
+  /// Más de 1 para áreas de texto (Notas, Justificación).
+  final int? maxLines;
+  final int? maxLength;
 
   @override
   Widget build(BuildContext context) {
+    final multiline = maxLines == null || maxLines! > 1;
+    final textColor = enabled ? AppColors.text : _disabledText;
+
     return TextField(
       controller: controller,
-      keyboardType: keyboardType,
+      focusNode: focusNode,
+      keyboardType: multiline ? TextInputType.multiline : keyboardType,
       textInputAction: textInputAction,
       textCapitalization: textCapitalization,
-      inputFormatters: inputFormatters,
+      inputFormatters: [
+        if (maxLength != null) LengthLimitingTextInputFormatter(maxLength),
+        ...?inputFormatters,
+      ],
       autofillHints: autofillHints,
       obscureText: obscureText,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
-      style: AppText.nunito(16, 24),
+      onTap: onTap,
+      enabled: enabled,
+      readOnly: readOnly,
+      minLines: minLines,
+      maxLines: obscureText ? 1 : maxLines,
+      style: AppText.nunito(16, 24, color: textColor),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: AppText.nunito(16, 24, color: AppColors.hint),
+        hintMaxLines: multiline ? 3 : 1,
+        // prefixIcon (y no prefixText) para que el prefijo se vea siempre,
+        // aunque el campo esté vacío o sin foco.
+        prefixIcon: prefixText == null
+            ? null
+            : Padding(
+                padding: const EdgeInsets.only(left: 12, right: 4),
+                child: Text(
+                  prefixText!,
+                  style: AppText.nunito(
+                    16,
+                    24,
+                    color: enabled ? AppColors.textMuted : _disabledText,
+                  ),
+                ),
+              ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         filled: true,
-        fillColor: AppColors.surface,
+        fillColor: enabled ? AppColors.surface : AppColors.background,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         suffixIcon: suffix,
         suffixIconConstraints: const BoxConstraints(minWidth: 48, minHeight: 40),
         border: _border(AppColors.border),
         enabledBorder: _border(AppColors.border),
+        disabledBorder: _border(AppColors.border),
         focusedBorder: _border(AppColors.primary),
       ),
     );

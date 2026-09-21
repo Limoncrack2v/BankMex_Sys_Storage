@@ -16,6 +16,9 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 }
 
 abstract final class AppTheme {
+  /// Español de México (selector de fechas, menús de texto, etc.).
+  static const locale = Locale('es', 'MX');
+
   static ThemeData get light => ThemeData(
     fontFamily: 'Nunito',
     scaffoldBackgroundColor: AppColors.background,

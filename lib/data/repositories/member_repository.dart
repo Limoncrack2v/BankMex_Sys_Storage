@@ -50,6 +50,23 @@ class MemberRepository {
     await _members(familyId).doc(memberId).update(changes);
   }
 
+  /// Guarda todos los campos editables del integrante (edición completa desde
+  /// el formulario). Los opcionales vacíos se borran del documento y
+  /// createdAt no se toca, como piden las reglas.
+  Future<void> replaceMember(String familyId, Member member) async {
+    final error = member.validate();
+    if (error != null) throw ArgumentError(error);
+    if (member.memberId.isEmpty) {
+      throw ArgumentError('El integrante no tiene id');
+    }
+
+    final changes = member.toFirestore()..remove('createdAt');
+    for (final field in const ['age', 'weightKg', 'sex', 'allergies']) {
+      changes.putIfAbsent(field, () => FieldValue.delete());
+    }
+    await _members(familyId).doc(member.memberId).update(changes);
+  }
+
   Future<void> deleteMember(String familyId, String memberId) =>
       _members(familyId).doc(memberId).delete();
 

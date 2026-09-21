@@ -8,14 +8,18 @@ import '../theme/app_text.dart';
 import 'app_buttons.dart';
 import 'app_icon.dart';
 
+/// [enableDrag] en false para los sheets con formulario: arrastrar para
+/// cerrar ignora [AppSheet.busy] (usa Navigator.pop directo).
 Future<T?> showAppBottomSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,
+  bool enableDrag = true,
 }) {
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    enableDrag: enableDrag,
     backgroundColor: AppColors.surface,
     barrierColor: AppColors.scrim,
     clipBehavior: Clip.antiAlias,
@@ -55,17 +59,32 @@ class AppSheet extends StatelessWidget {
     required this.title,
     required this.body,
     this.footer,
+    this.busy = false,
   });
 
   final String title;
   final Widget body;
   final Widget? footer;
 
+  /// Mientras se guarda no se puede cerrar (ni con la X, ni con atrás, ni
+  /// tocando fuera), para no perder el resultado.
+  final bool busy;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: LayoutBuilder(
+    return PopScope(
+      canPop: !busy,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: _buildContent(),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    return LayoutBuilder(
         builder: (context, constraints) => ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: math.max(0.0, constraints.maxHeight - 56),
@@ -74,7 +93,7 @@ class AppSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SheetHeader(title: title),
+              _SheetHeader(title: title, closeEnabled: !busy),
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
@@ -92,15 +111,15 @@ class AppSheet extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
 
 class _SheetHeader extends StatelessWidget {
-  const _SheetHeader({required this.title});
+  const _SheetHeader({required this.title, required this.closeEnabled});
 
   final String title;
+  final bool closeEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -114,12 +133,15 @@ class _SheetHeader extends StatelessWidget {
           Expanded(child: Text(title, style: AppText.baloo(20, 30))),
           Tooltip(
             message: 'Cerrar',
-            child: InkWell(
-              onTap: () => Navigator.of(context).pop(),
-              customBorder: const CircleBorder(),
-              child: const SizedBox.square(
-                dimension: 40,
-                child: Center(child: AppIcon(AppIcons.close, size: 24)),
+            child: Opacity(
+              opacity: closeEnabled ? 1 : 0.4,
+              child: InkWell(
+                onTap: closeEnabled ? () => Navigator.of(context).pop() : null,
+                customBorder: const CircleBorder(),
+                child: const SizedBox.square(
+                  dimension: 40,
+                  child: Center(child: AppIcon(AppIcons.close, size: 24)),
+                ),
               ),
             ),
           ),

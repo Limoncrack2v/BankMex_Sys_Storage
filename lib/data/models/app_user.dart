@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AppUser {
+  static const roleStaff = 'staff';
+  static const roleFamily = 'family';
+
   final String userId;
   final String name;
   final String email;

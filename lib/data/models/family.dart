@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Family {
   final String familyId;
+
+  /// Nombre del hogar, p. ej. "Familia Ramírez".
+  final String? name;
   final String address;
   final DateTime registrationDate;
   final double? recoveryQuotaDefault;
@@ -10,6 +13,7 @@ class Family {
 
   Family({
     required this.familyId,
+    this.name,
     required this.address,
     required this.registrationDate,
     this.recoveryQuotaDefault,
@@ -22,6 +26,7 @@ class Family {
     
     return Family(
       familyId: doc.id,
+      name: data['name'] as String?,
       address: data['address'] as String,
       registrationDate: (data['registrationDate'] as Timestamp).toDate(),
       recoveryQuotaDefault: (data['recoveryQuotaDefault'] as num?)?.toDouble(),
@@ -30,7 +35,15 @@ class Family {
     );
   }
 
+  /// Nombre para mostrar; las familias creadas antes de tener nombre usan la
+  /// dirección.
+  String get displayName {
+    final trimmed = name?.trim() ?? '';
+    return trimmed.isNotEmpty ? trimmed : address;
+  }
+
   Map<String, dynamic> toFirestore() => {
+    if (name != null) 'name': name!.trim(),
     'address': address,
     'registrationDate': Timestamp.fromDate(registrationDate),
     'recoveryQuotaDefault': recoveryQuotaDefault,

@@ -5,21 +5,71 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'app_icon.dart';
 
+class AppNavItem {
+  const AppNavItem({
+    required this.label,
+    required this.icon,
+    required this.activeIcon,
+  });
+
+  final String label;
+  final String icon;
+  final String activeIcon;
+}
+
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({
     super.key,
+    this.items = familyItems,
     required this.currentIndex,
     required this.onTap,
   });
 
+  final List<AppNavItem> items;
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  static const _items = [
-    (label: 'Despensa', icon: AppIcons.navDespensa, active: AppIcons.navDespensaActive),
-    (label: 'Recetas', icon: AppIcons.navRecetas, active: AppIcons.navRecetasActive),
-    (label: 'Plan de comidas', icon: AppIcons.navPlan, active: AppIcons.navPlanActive),
-    (label: 'Perfil', icon: AppIcons.navPerfil, active: AppIcons.navPerfilActive),
+  /// App del beneficiario.
+  static const familyItems = [
+    AppNavItem(
+      label: 'Despensa',
+      icon: AppIcons.navDespensa,
+      activeIcon: AppIcons.navDespensaActive,
+    ),
+    AppNavItem(
+      label: 'Recetas',
+      icon: AppIcons.navRecetas,
+      activeIcon: AppIcons.navRecetasActive,
+    ),
+    AppNavItem(
+      label: 'Plan de comidas',
+      icon: AppIcons.navPlan,
+      activeIcon: AppIcons.navPlanActive,
+    ),
+    AppNavItem(
+      label: 'Perfil',
+      icon: AppIcons.navPerfil,
+      activeIcon: AppIcons.navPerfilActive,
+    ),
+  ];
+
+  /// Panel del staff.
+  static const staffItems = [
+    AppNavItem(
+      label: 'Entregas',
+      icon: AppIcons.navEntregasActive,
+      activeIcon: AppIcons.navEntregasActive,
+    ),
+    AppNavItem(
+      label: 'Estadísticas',
+      icon: AppIcons.navEstadisticas,
+      activeIcon: AppIcons.navEstadisticas,
+    ),
+    AppNavItem(
+      label: 'Catálogo de recetas',
+      icon: AppIcons.navCatalogo,
+      activeIcon: AppIcons.navCatalogo,
+    ),
   ];
 
   @override
@@ -39,13 +89,13 @@ class AppBottomNav extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 368),
               child: Row(
                 children: [
-                  for (var i = 0; i < _items.length; i++)
+                  for (var i = 0; i < items.length; i++)
                     Expanded(
                       child: _NavItem(
-                        label: _items[i].label,
+                        label: items[i].label,
                         icon: i == currentIndex
-                            ? _items[i].active
-                            : _items[i].icon,
+                            ? items[i].activeIcon
+                            : items[i].icon,
                         selected: i == currentIndex,
                         onTap: () => onTap(i),
                       ),
@@ -81,11 +131,14 @@ class _NavItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          height: 72,
+        // Alto mínimo (no fijo) para que con letra grande el texto no se
+        // desborde.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 72),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(

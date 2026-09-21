@@ -17,38 +17,94 @@ service cloud.firestore {
         || (isStaff() && exists(/databases/$(database)/documents/families/$(familyId)));
     }
 
+    function validFamily(data) {
+      return data.keys().hasOnly(['name', 'address', 'registrationDate', 'recoveryQuotaDefault', 'authUid', 'appliances'])
+        && data.keys().hasAll(['address', 'registrationDate', 'authUid', 'appliances'])
+        && (!('name' in data) || (data.name is string && data.name.size() >= 1 && data.name.size() <= 100))
+        && data.address is string && data.address.size() <= 200
+        && data.registrationDate is timestamp
+        && (!('recoveryQuotaDefault' in data) || data.recoveryQuotaDefault == null
+          || (data.recoveryQuotaDefault is number && data.recoveryQuotaDefault >= 0))
+        && data.authUid is string && data.authUid.size() > 0
+        && data.appliances is list && data.appliances.size() <= 20;
+    }
+
+    function validUserProfile(data) {
+      return data.keys().hasOnly(['name', 'email', 'role', 'createdAt'])
+        && data.keys().hasAll(['name', 'email', 'role', 'createdAt'])
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 100
+        && data.email is string
+        && data.email.size() <= 254
+        && data.role in ['staff', 'family']
+        && data.createdAt is timestamp;
+    }
+
     function validMember(data) {
-      return data.keys().hasOnly(['name', 'memberType', 'createdAt'])
+      return data.keys().hasOnly(['name', 'memberType', 'createdAt', 'age', 'weightKg', 'sex', 'allergies'])
         && data.keys().hasAll(['name', 'memberType', 'createdAt'])
         && data.name is string
         && data.name.size() >= 1
         && data.name.size() <= 100
         && data.memberType in ['adult', 'child']
+        && data.createdAt is timestamp
+        && (!('age' in data) || (data.age is int && data.age >= 0 && data.age <= 120))
+        && (!('weightKg' in data) || (data.weightKg is number && data.weightKg > 0 && data.weightKg <= 500))
+        && (!('sex' in data) || data.sex in ['male', 'female'])
+        && (!('allergies' in data) || (data.allergies is list
+          && data.allergies.size() <= 6
+          && data.allergies.hasOnly(['dairy', 'gluten', 'peanut', 'shellfish', 'egg', 'soy'])));
+    }
+
+    function validDelivery(data) {
+      return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt'])
+        && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt'])
+        && data.familyId is string
+        && exists(/databases/$(database)/documents/families/$(data.familyId))
+        && data.familyName is string && data.familyName.size() <= 100
+        && data.deliveryDate is timestamp
+        && data.packages is int && data.packages >= 1 && data.packages <= 100
+        && (!('recoveryFee' in data) || (data.recoveryFee is number && data.recoveryFee >= 0 && data.recoveryFee <= 100000))
+        && (!('justification' in data) || (data.justification is string && data.justification.size() <= 500))
+        && data.status in ['scheduled', 'delivered', 'cancelled']
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
         && data.createdAt is timestamp;
     }
 
-    function validPantryItem(data) {
-      return data.keys().hasOnly(['productId', 'deliveryId', 'type', 'quantity', 'unit', 'daysUntilExpiration', 'synchronized', 'deviceId', 'localTimestamp'])
-        && data.keys().hasAll(['productId', 'deliveryId', 'type', 'quantity', 'unit', 'daysUntilExpiration', 'synchronized', 'deviceId', 'localTimestamp'])
-        && data.productId is string && data.productId.size() > 0
-        && data.deliveryId is string && data.deliveryId.size() > 0
-        && data.type in ['grain', 'legume', 'canned', 'dairy', 'produce', 'protein', 'beverage', 'other']
-        && data.quantity is number && data.quantity > 0 && data.quantity <= 1000000
-        && data.unit in ['kg', 'g', 'l', 'ml', 'piece', 'can', 'pack']
-        && data.daysUntilExpiration is int && data.daysUntilExpiration >= 0
-        && data.synchronized is bool
-        && data.deviceId is string && data.deviceId.size() > 0
-        && data.localTimestamp is timestamp;
-    }
-
     match /families/{familyId} {
-      allow create: if request.auth != null && request.resource.data.authUid == request.auth.uid;
+      // Solo el staff registra familias, junto con su perfil users/{authUid}
+      // (mismo batch). El id del hogar es el uid de su cuenta: un hogar por
+      // cuenta.
+      allow create: if isStaff()
+        && validFamily(request.resource.data)
+        && familyId == request.resource.data.authUid
+        && getAfter(/databases/$(database)/documents/users/$(familyId)).data.role == 'family';
       allow read: if request.auth != null && (resource.data.authUid == request.auth.uid || isStaff());
-      allow update: if request.auth != null && request.auth.uid == resource.data.authUid && request.resource.data.authUid == resource.data.authUid;
+      // La familia solo puede cambiar sus electrodomésticos; el staff corrige
+      // los demás datos sin cambiar la cuenta dueña.
+      allow update: if request.auth != null
+        && request.resource.data.authUid == resource.data.authUid
+        && validFamily(request.resource.data)
+        && (isStaff()
+          || (request.auth.uid == resource.data.authUid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appliances'])));
+      allow delete: if isStaff();
 
+      // Ningún cliente, incluido el staff, crea productos en la despensa: solo
+      // la Cloud Function onDeliveryWritten (functions/index.js), con el Admin
+      // SDK, los crea cuando una entrega queda confirmada.
       match /pantryItems/{pantryItemId} {
+        allow create: if false;
         allow read, delete: if canAccessFamily(familyId);
-        allow create, update: if canAccessFamily(familyId) && validPantryItem(request.resource.data);
+        // Registrar consumo: solo baja la cantidad (sin llegar a 0; en ese
+        // caso se borra) y ningún otro campo cambia.
+        allow update: if canAccessFamily(familyId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantity'])
+          && request.resource.data.quantity is number
+          && request.resource.data.quantity > 0
+          && request.resource.data.quantity < resource.data.quantity;
       }
 
       match /members/{memberId} {
@@ -59,11 +115,28 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt;
       }
     }
+
+    // Entregas registradas por el staff. Cuando una queda como entregada, la
+    // Cloud Function onDeliveryWritten agrega sus productos a
+    // families/{familyId}/pantryItems y la marca con pantryStockedAt.
+    match /deliveries/{deliveryId} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && validDelivery(request.resource.data)
+        && request.resource.data.status in ['scheduled', 'delivered'];
+      // Una entrega programada solo cambia de estado una vez (a entregada o
+      // cancelada). Así no se puede marcar como entregada dos veces desde dos
+      // dispositivos y duplicar los productos en la despensa.
+      allow update: if isStaff()
+        && resource.data.status == 'scheduled'
+        && request.resource.data.status in ['delivered', 'cancelled']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+
     match /users/{userId} {
-      allow create: if request.auth != null && (
-        userId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "staff"
-      );
-      allow read: if request.auth != null && userId == request.auth.uid
+      // Solo el staff crea perfiles (así nadie puede asignarse el rol staff).
+      allow create: if isStaff() && validUserProfile(request.resource.data);
+      allow read: if request.auth != null && userId == request.auth.uid;
     }
   }
 }

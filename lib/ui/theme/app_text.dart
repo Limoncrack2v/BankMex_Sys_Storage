@@ -16,6 +16,9 @@ abstract final class AppText {
     height: lineHeight / size,
     fontWeight: weight,
     color: color,
+    // Sin esto se hereda el espaciado de Material 3 y el texto sale más
+    // ancho que en el Figma.
+    letterSpacing: 0,
   );
 
   static TextStyle nunito(
@@ -29,5 +32,6 @@ abstract final class AppText {
     height: lineHeight / size,
     fontWeight: weight,
     color: color,
+    letterSpacing: 0,
   );
 }

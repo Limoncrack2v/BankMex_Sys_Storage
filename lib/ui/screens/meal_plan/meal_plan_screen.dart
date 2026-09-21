@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/models/member.dart';
+import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/member_repository.dart';
+import '../../../data/repositories/pantry_repository.dart';
+import '../../formatting.dart';
 import '../../models/recipe.dart';
 import '../../sample_data.dart';
 import '../../theme/app_colors.dart';
@@ -8,11 +13,42 @@ import '../../widgets/app_header.dart';
 import '../../widgets/pill.dart';
 import '../recipes/recipe_detail_screen.dart';
 
-/// Plan de comidas semanal: una receta por día, priorizando lo que caduca antes.
-class MealPlanScreen extends StatelessWidget {
-  const MealPlanScreen({super.key, this.entries = SampleData.mealPlan});
+/// Plan de comidas semanal: una receta por día, armado con la despensa real
+/// de la familia y priorizando lo que caduca antes (ver [buildWeeklyPlan]).
+class MealPlanScreen extends StatefulWidget {
+  const MealPlanScreen({
+    super.key,
+    required this.familyId,
+    this.recipes = SampleData.recipes,
+  });
 
-  final List<MealPlanEntry> entries;
+  final String familyId;
+  final List<Recipe> recipes;
+
+  @override
+  State<MealPlanScreen> createState() => _MealPlanScreenState();
+}
+
+class _MealPlanScreenState extends State<MealPlanScreen> {
+  late Stream<List<PantryItem>> _pantry;
+  late Stream<List<Member>> _members;
+
+  @override
+  void initState() {
+    super.initState();
+    _watch();
+  }
+
+  @override
+  void didUpdateWidget(MealPlanScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.familyId != widget.familyId) _watch();
+  }
+
+  void _watch() {
+    _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
+    _members = MemberRepository().watchAllMembers(widget.familyId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,37 +56,94 @@ class MealPlanScreen extends StatelessWidget {
       children: [
         const AppHeader(title: 'Plan de comidas'),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              const InfoBanner(
-                message: 'Tu plan usa primero lo que caduca antes',
-                background: AppColors.primarySoft,
-                foreground: AppColors.primaryDark,
+          // Mientras cargan los integrantes (o si fallan) se usan las
+          // porciones originales de las recetas.
+          child: StreamBuilder<List<Member>>(
+            stream: _members,
+            builder: (context, members) => StreamBuilder<List<PantryItem>>(
+              stream: _pantry,
+              builder: (context, pantry) => _buildPlan(
+                context,
+                pantry,
+                members.hasError ? const [] : members.data ?? const [],
               ),
-              for (final entry in entries) ...[
-                const SizedBox(height: 12),
-                _DayCard(
-                  entry: entry,
-                  onTap: () => openRecipe(
-                    context,
-                    entry.recipe,
-                    backLabel: 'Volver al plan de comidas',
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildPlan(
+    BuildContext context,
+    AsyncSnapshot<List<PantryItem>> snapshot,
+    List<Member> members,
+  ) {
+    if (snapshot.hasError) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [PantryErrorBanner()],
+      );
+    }
+    final pantry = snapshot.data;
+    if (pantry == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+
+    final today = DateTime.now();
+    // El plan se calcula con las porciones del hogar, pero el detalle recibe
+    // la receta original (la ajusta él mismo).
+    final originals = Map<Recipe, Recipe>.identity();
+    for (final recipe in widget.recipes) {
+      originals[scaledRecipe(recipe, members.length)] = recipe;
+    }
+    final plan = buildWeeklyPlan(originals.keys.toList(), pantry, today: today);
+    final hasProducts = pantry.any(
+      (item) => item.quantity > 0 && daysLeft(item, today: today) >= 0,
+    );
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        InfoBanner(
+          message: hasProducts
+              ? 'Tu plan usa primero lo que caduca antes'
+              : 'Cuando tengas productos en tu despensa, tu plan se armará '
+                    'con lo que caduca primero.',
+          background: AppColors.primarySoft,
+          foreground: AppColors.primaryDark,
+        ),
+        for (final entry in plan) ...[
+          const SizedBox(height: 12),
+          _DayCard(
+            entry: entry,
+            hasAllergens: allergyConflicts(entry.recipe, members).isNotEmpty,
+            onTap: () => openRecipe(
+              context,
+              originals[entry.recipe] ?? entry.recipe,
+              familyId: widget.familyId,
+              backLabel: 'Volver al plan de comidas',
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
 class _DayCard extends StatelessWidget {
-  const _DayCard({required this.entry, required this.onTap});
+  const _DayCard({
+    required this.entry,
+    required this.hasAllergens,
+    required this.onTap,
+  });
 
   final MealPlanEntry entry;
+
+  /// Si la receta lleva algo a lo que un integrante es alérgico.
+  final bool hasAllergens;
   final VoidCallback onTap;
 
   static const _shape = RoundedRectangleBorder(
@@ -101,12 +194,20 @@ class _DayCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       entry.reason,
-                      style: AppText.nunito(
-                        14,
-                        21,
-                        color: AppColors.textMuted,
-                      ),
+                      style: AppText.nunito(14, 21, color: AppColors.textMuted),
                     ),
+                    if (hasAllergens) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Contiene alérgenos de tu familia',
+                        style: AppText.nunito(
+                          14,
+                          21,
+                          weight: FontWeight.w700,
+                          color: AppColors.dangerText,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -115,7 +216,10 @@ class _DayCard extends StatelessWidget {
                 label: entry.urgency.label,
                 background: entry.urgency.background,
                 foreground: entry.urgency.foreground,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 fontSize: 13,
                 lineHeight: 19.5,
               ),

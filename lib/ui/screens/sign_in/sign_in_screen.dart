@@ -1,16 +1,15 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../data/repositories/user_repository.dart';
+import '../../../data/repositories/auth_repository.dart';
+import '../../session_navigation.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
-import '../../widgets/coming_soon.dart';
-import '../home/home_screen.dart';
+import 'password_reset_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -37,41 +36,6 @@ class _SignInScreenState extends State<SignInScreen> {
     super.dispose();
   }
 
-  /// Único punto de contacto con el backend de autenticación.
-  /// Regresa null si el login fue exitoso, o el mensaje de error a mostrar.
-  /// Basado en _loginStaff de main.dart; reemplazar aquí el submit final.
-  Future<String?> _signIn(String email, String password) async {
-    try {
-      final userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      final user = await UserRepository().getUserProfile(userCred.user!.uid);
-
-      if (user == null) {
-        await FirebaseAuth.instance.signOut();
-        return 'No se pudo iniciar sesión. Contacta a tu centro de BAMX para más información';
-      }
-      return null;
-    } on FirebaseAuthException catch (e) {
-      switch (e.code) {
-        case 'invalid-credential':
-        case 'invalid-email':
-        case 'user-not-found':
-        case 'wrong-password':
-          return 'Correo o contraseña inválidos. Intenta de nuevo';
-        case 'too-many-requests':
-          return 'Demasiados intentos. Espera un momento e intenta de nuevo';
-        case 'network-request-failed':
-          return 'Sin conexión. Revisa tu internet e intenta de nuevo';
-        default:
-          return 'No se pudo iniciar sesión. Intenta de nuevo';
-      }
-    } catch (_) {
-      return 'No se pudo iniciar sesión. Intenta de nuevo';
-    }
-  }
-
   Future<void> _submit() async {
     if (!_canSubmit || _submitting) return;
     FocusScope.of(context).unfocus();
@@ -80,22 +44,30 @@ class _SignInScreenState extends State<SignInScreen> {
       _error = null;
     });
 
-    final error = await _signIn(
-      _emailController.text.trim(),
-      _passwordController.text,
-    );
-    if (!mounted) return;
-
-    if (error != null) {
+    final AuthSession session;
+    try {
+      session = await AuthRepository().signIn(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = error;
+        _error = e is AuthException
+            ? e.message
+            : 'No se pudo iniciar sesión. Intenta de nuevo.';
       });
       return;
     }
+    if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
+    openSessionHome(context, session);
+  }
+
+  void _openPasswordReset() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PasswordResetScreen()),
     );
   }
 
@@ -121,7 +93,12 @@ class _SignInScreenState extends State<SignInScreen> {
                 ),
               ),
             ),
-            if (!keyboardOpen) const _Footer(),
+            if (!keyboardOpen)
+              const AuthFooter(
+                'Tu cuenta fue creada por BAMX Guadalajara. Si aún no tienes '
+                'los datos de inicio de sesión, acude a tu centro de '
+                'distribución BAMX.',
+              ),
           ],
         ),
       ),
@@ -148,10 +125,10 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
         const SizedBox(height: 24),
         LabeledField(
-          label: 'Usuario o correo',
+          label: 'Correo electrónico',
           child: AppTextField(
             controller: _emailController,
-            hint: 'Tu usuario o correo',
+            hint: 'Tu correo electrónico',
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.email],
@@ -178,7 +155,7 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
         const SizedBox(height: 16),
         if (_error != null) ...[
-          _ErrorMessage(_error!),
+          AuthErrorMessage(_error!),
           const SizedBox(height: 16),
         ],
         PrimaryButton(
@@ -190,7 +167,7 @@ class _SignInScreenState extends State<SignInScreen> {
         Center(
           child: TextLinkButton(
             label: '¿Olvidaste tu contraseña?',
-            onPressed: () => showComingSoon(context),
+            onPressed: _openPasswordReset,
           ),
         ),
       ],
@@ -226,8 +203,9 @@ class _PasswordToggle extends StatelessWidget {
   }
 }
 
-class _ErrorMessage extends StatelessWidget {
-  const _ErrorMessage(this.message);
+/// Recuadro rojo con el error de inicio de sesión o de recuperación.
+class AuthErrorMessage extends StatelessWidget {
+  const AuthErrorMessage(this.message, {super.key});
 
   final String message;
 
@@ -255,8 +233,11 @@ class _ErrorMessage extends StatelessWidget {
   }
 }
 
-class _Footer extends StatelessWidget {
-  const _Footer();
+/// Pie con borde superior de las pantallas de inicio de sesión.
+class AuthFooter extends StatelessWidget {
+  const AuthFooter(this.text, {super.key});
+
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -270,8 +251,7 @@ class _Footer extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
           child: Text(
-            'Tu cuenta fue creada por BAMX Guadalajara. Si aún no tienes los '
-            'datos de Inicio de Sesión, acude a tu centro de distribución BAMX.',
+            text,
             textAlign: TextAlign.center,
             style: AppText.nunito(14, 19.25, color: AppColors.textMuted),
           ),

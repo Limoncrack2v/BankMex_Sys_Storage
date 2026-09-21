@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../connection_status.dart';
 import '../theme/app_assets.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'app_icon.dart';
 
 class AppHeader extends StatelessWidget {
-  const AppHeader({super.key, required this.title});
+  const AppHeader({
+    super.key,
+    required this.title,
+    this.trailing = const ConnectionChip(),
+    this.horizontalPadding = 16,
+  });
 
   final String title;
+  final Widget trailing;
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +28,12 @@ class AppHeader extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 32, 16, 16),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            32,
+            horizontalPadding,
+            16,
+          ),
           child: Row(
             children: [
               Expanded(
@@ -32,7 +45,7 @@ class AppHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const ConnectionChip(),
+              trailing,
             ],
           ),
         ),
@@ -41,36 +54,47 @@ class AppHeader extends StatelessWidget {
   }
 }
 
-/// Chip de estado de conexión del header.
-/// TODO: conectar al estado real de red/sincronización.
+/// Chip de estado de conexión del header ("En línea" / "Sin conexión").
 class ConnectionChip extends StatelessWidget {
   const ConnectionChip({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 33,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: const ShapeDecoration(
-        color: AppColors.primarySoft,
-        shape: StadiumBorder(),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const AppIcon(AppIcons.wifi, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            'En línea',
-            style: AppText.nunito(
-              14,
-              21,
-              weight: FontWeight.w700,
-              color: AppColors.primaryDark,
+    return ValueListenableBuilder<bool>(
+      valueListenable: ConnectionStatus.instance.online,
+      builder: (context, online, _) {
+        final foreground = online
+            ? AppColors.primaryDark
+            : AppColors.warningText;
+
+        return Semantics(
+          liveRegion: true,
+          child: Container(
+            height: 33,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: ShapeDecoration(
+              color: online ? AppColors.primarySoft : AppColors.warningSoft,
+              shape: const StadiumBorder(),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppIcon(AppIcons.wifi, size: 16, color: foreground),
+                const SizedBox(width: 6),
+                Text(
+                  online ? 'En línea' : 'Sin conexión',
+                  style: AppText.nunito(
+                    14,
+                    21,
+                    weight: FontWeight.w700,
+                    color: foreground,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

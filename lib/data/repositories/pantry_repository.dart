@@ -2,9 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/pantry_item.dart';
 
+/// Despensa de una familia. La app no crea productos: los crea la Cloud
+/// Function onDeliveryWritten (functions/index.js) cuando una entrega queda
+/// confirmada, y firestore.rules rechaza cualquier create desde un cliente.
+/// Aquí solo se leen y se registra el consumo.
 class PantryRepository {
-  static const int maxItemsPerDelivery = 100;
-
   final _db = FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> _pantryItems(String familyId) =>
@@ -20,41 +22,50 @@ class PantryRepository {
     }
   }
 
-  Future<String> createPantryItem(String familyId, PantryItem item) async {
-    final error = item.validate();
-    if (error != null) throw ArgumentError(error);
-
-    final ref = await _pantryItems(familyId).add(item.toFirestore());
-    return ref.id;
-  }
-
-  /// Registers all [items] in a single batch under a new shared deliveryId.
-  /// The deliveryId of each incoming item is ignored. Returns the deliveryId.
-  Future<String> registerDelivery(
+  /// Descuenta de la despensa lo que la familia consumió, en un solo batch.
+  /// Si un producto llega a 0 se elimina. Cada cantidad debe ser mayor a 0 y
+  /// no mayor a lo que queda. Regresa cuántos productos se actualizaron.
+  ///
+  /// El descuento parcial usa FieldValue.increment para que dos dispositivos
+  /// de la misma familia no se pisen el consumo (cada uno resta lo suyo).
+  Future<int> registerConsumption(
     String familyId,
-    List<PantryItem> items,
+    List<({PantryItem item, double amount})> consumed,
   ) async {
-    if (items.isEmpty || items.length > maxItemsPerDelivery) {
-      throw ArgumentError(
-        'Una entrega debe tener entre 1 y $maxItemsPerDelivery productos',
-      );
+    final entries = consumed.where((c) => c.amount > 0).toList();
+    if (entries.isEmpty) {
+      throw ArgumentError('Indica cuánto consumiste de al menos un producto');
     }
 
     final collection = _pantryItems(familyId);
-    final deliveryId = collection.doc().id;
     final batch = _db.batch();
 
-    for (final item in items) {
-      final delivered = item.withDeliveryId(deliveryId);
-      final error = delivered.validate();
-      if (error != null) {
-        throw ArgumentError('Producto inválido (${item.productId}): $error');
+    for (final (:item, :amount) in entries) {
+      if (!amount.isFinite || amount > item.quantity + _epsilon) {
+        throw ArgumentError(
+          'No puedes consumir más de lo que queda de ${item.productId}',
+        );
       }
-      batch.set(collection.doc(), delivered.toFirestore());
+      final ref = collection.doc(item.pantryItemId);
+      final remaining = remainingAfter(item.quantity, amount);
+      if (remaining <= 0) {
+        batch.delete(ref);
+      } else {
+        batch.update(ref, {'quantity': FieldValue.increment(-amount)});
+      }
     }
 
     await batch.commit();
-    return deliveryId;
+    return entries.length;
+  }
+
+  static const _epsilon = 1e-9;
+
+  /// Cantidad que queda después de consumir [amount], redondeada a 3
+  /// decimales para evitar residuos de punto flotante (2 - 0.1 * 3...).
+  static double remainingAfter(double quantity, double amount) {
+    final remaining = ((quantity - amount) * 1000).round() / 1000;
+    return remaining < 0 ? 0 : remaining;
   }
 
   Future<PantryItem?> getPantryItem(
@@ -84,4 +95,21 @@ class PantryRepository {
       _pantryItems(familyId)
           .snapshots()
           .map((snapshot) => snapshot.docs.map(_parseOrThrow).toList());
+
+  /// Igual que [watchAllPantryItems], pero indica por producto si tiene
+  /// cambios que siguen en el dispositivo (sin conexión) y aún no llegan al
+  /// servidor.
+  Stream<List<({PantryItem item, bool pendingSync})>> watchPantryWithSyncStatus(
+    String familyId,
+  ) => _pantryItems(familyId)
+      .snapshots(includeMetadataChanges: true)
+      .map(
+        (snapshot) => [
+          for (final doc in snapshot.docs)
+            (
+              item: _parseOrThrow(doc),
+              pendingSync: doc.metadata.hasPendingWrites,
+            ),
+        ],
+      );
 }
