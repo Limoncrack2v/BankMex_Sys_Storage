@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/catalog_source.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../data/repositories/member_repository.dart';
@@ -32,6 +33,7 @@ class MealPlanScreen extends StatefulWidget {
 class _MealPlanScreenState extends State<MealPlanScreen> {
   late Stream<List<PantryItem>> _pantry;
   late Stream<List<Member>> _members;
+  late Stream<List<Recipe>> _catalog;
 
   @override
   void initState() {
@@ -48,6 +50,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   void _watch() {
     _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
     _members = MemberRepository().watchAllMembers(widget.familyId);
+    _catalog = watchApprovedCatalogRecipes();
   }
 
   @override
@@ -58,16 +61,26 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         Expanded(
           // Mientras cargan los integrantes (o si fallan) se usan las
           // porciones originales de las recetas.
-          child: StreamBuilder<List<Member>>(
-            stream: _members,
-            builder: (context, members) => StreamBuilder<List<PantryItem>>(
-              stream: _pantry,
-              builder: (context, pantry) => _buildPlan(
-                context,
-                pantry,
-                members.hasError ? const [] : members.data ?? const [],
-              ),
-            ),
+          child: StreamBuilder<List<Recipe>>(
+            stream: _catalog,
+            builder: (context, catalog) {
+              final recipes =
+                  catalog.hasData && catalog.data!.isNotEmpty
+                      ? catalog.data!
+                      : widget.recipes;
+              return StreamBuilder<List<Member>>(
+                stream: _members,
+                builder: (context, members) => StreamBuilder<List<PantryItem>>(
+                  stream: _pantry,
+                  builder: (context, pantry) => _buildPlan(
+                    context,
+                    pantry,
+                    members.hasError ? const [] : members.data ?? const [],
+                    recipes,
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],
@@ -78,6 +91,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     BuildContext context,
     AsyncSnapshot<List<PantryItem>> snapshot,
     List<Member> members,
+    List<Recipe> recipes,
   ) {
     if (snapshot.hasError) {
       return ListView(
@@ -96,7 +110,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     // El plan se calcula con las porciones del hogar, pero el detalle recibe
     // la receta original (la ajusta él mismo).
     final originals = Map<Recipe, Recipe>.identity();
-    for (final recipe in widget.recipes) {
+    for (final recipe in recipes) {
       originals[scaledRecipe(recipe, members.length)] = recipe;
     }
     final plan = buildWeeklyPlan(originals.keys.toList(), pantry, today: today);
