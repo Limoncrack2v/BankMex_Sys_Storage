@@ -81,15 +81,23 @@ void main() {
     });
   });
 
-  testWidgets('el aviso del pie absorbe el espacio del sistema, no lo suma', (
+  testWidgets('el aviso del pie queda a 20 del borde sobre el indicador', (
     tester,
   ) async {
     final sinEspacio = await _footerHeight(tester, 0);
     final conIndicador = await _footerHeight(tester, 34);
 
-    // Con 20 de padding propio, un indicador de 34 solo agrega los 14 que
-    // faltan; antes sumaba los 34 completos.
-    expect(conIndicador - sinEspacio, closeTo(14, 0.5));
+    // Como en Figma: 20 abajo aunque haya indicador; antes subía a 34.
+    expect(conIndicador, closeTo(sinEspacio, 0.5));
+  });
+
+  testWidgets('el aviso del pie no queda debajo de una barra de botones', (
+    tester,
+  ) async {
+    final sinEspacio = await _footerHeight(tester, 0);
+    final conBotones = await _footerHeight(tester, 48);
+
+    expect(conBotones - sinEspacio, closeTo(28, 0.5));
   });
 
   testWidgets('el error no se desborda aunque el ancho sea muy chico', (

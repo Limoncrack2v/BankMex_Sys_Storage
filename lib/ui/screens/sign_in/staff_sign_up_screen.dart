@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -25,6 +27,9 @@ class StaffSignUpScreen extends StatefulWidget {
 
 class _StaffSignUpScreenState extends State<StaffSignUpScreen> {
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+  static const double _backLinkTop = 56;
+  static const double _logoSize = 160;
+  static const double _logoTopCrop = 30;
 
   final _name = TextEditingController();
   final _email = TextEditingController();
@@ -96,6 +101,13 @@ class _StaffSignUpScreenState extends State<StaffSignUpScreen> {
     if (_sent) return const _SentScreen();
 
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    // El diseño deja 56 arriba del enlace de regreso contando la barra de
+    // estado. Donde el sistema ya reserva eso o más (la Dynamic Island), no
+    // se agrega nada encima.
+    final topPadding = math.max(
+      0.0,
+      _backLinkTop - MediaQuery.paddingOf(context).top,
+    );
 
     // Mientras se crea la cuenta no se puede salir: la cuenta de Auth ya
     // existe y el registro termina cerrando su sesión.
@@ -103,23 +115,34 @@ class _StaffSignUpScreenState extends State<StaffSignUpScreen> {
       canPop: !_submitting,
       child: Scaffold(
         backgroundColor: AppColors.surface,
+        // El pie se encarga del espacio de abajo (ver AuthFooter).
         body: SafeArea(
+          bottom: false,
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 32, 16, 16),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: AuthBackLink(enabled: !_submitting),
-                ),
-              ),
               Expanded(
                 child: Center(
+                  // El enlace de regreso va con el formulario (48 arriba del
+                  // logo, como en el diseño) para que no quede suelto arriba
+                  // cuando el formulario se centra.
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 56),
+                    padding: EdgeInsets.fromLTRB(16, topPadding, 16, 56),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 360),
-                      child: AutofillGroup(child: _buildForm()),
+                      constraints: const BoxConstraints(maxWidth: 376),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: AuthBackLink(enabled: !_submitting),
+                          ),
+                          const SizedBox(height: 48),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: AutofillGroup(child: _buildForm()),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -140,12 +163,21 @@ class _StaffSignUpScreenState extends State<StaffSignUpScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // El SVG trae ~36 en blanco arriba del dibujo; se recortan 30 para
+        // que no se sumen al espacio bajo el enlace de regreso. Abajo se deja
+        // igual: ese blanco es el aire entre el logo y el título del diseño.
         Center(
-          child: SvgPicture.asset(
-            AppImages.bamxLogo,
-            width: 160,
-            height: 160,
-            semanticsLabel: 'Banco de Alimentos BAMX Guadalajara',
+          child: ClipRect(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              heightFactor: (_logoSize - _logoTopCrop) / _logoSize,
+              child: SvgPicture.asset(
+                AppImages.bamxLogo,
+                width: _logoSize,
+                height: _logoSize,
+                semanticsLabel: 'Banco de Alimentos BAMX Guadalajara',
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 16),
