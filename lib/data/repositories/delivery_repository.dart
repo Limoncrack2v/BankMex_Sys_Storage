@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/delivery.dart';
+import '../models/family.dart';
 
 typedef DeliveryWithSync = ({Delivery delivery, bool pendingSync});
 
@@ -31,8 +32,11 @@ class DeliveryRepository {
   Future<String> registerDelivery(Delivery delivery) async {
     final error = delivery.validate();
     if (error != null) throw ArgumentError(error);
-    if (delivery.status == DeliveryStatus.cancelled) {
-      throw ArgumentError('Una entrega nueva no puede registrarse cancelada');
+    if (delivery.status != DeliveryStatus.scheduled &&
+        delivery.status != DeliveryStatus.delivered) {
+      throw ArgumentError(
+        'Una entrega nueva solo puede registrarse programada o entregada',
+      );
     }
 
     final ref = _deliveries.doc();
@@ -56,6 +60,44 @@ class DeliveryRepository {
       'status': DeliveryStatus.delivered.name,
     });
     return delivery.items.where((item) => item.isExpiredOn(now)).length;
+  }
+
+  /// Reasigna una entrega programada a [receiver] y regresa el id de la
+  /// entrega nueva. En un solo batch: la nueva queda programada para
+  /// [receiver] con la misma fecha, despensas, cuota y productos (sin las
+  /// notas) y la original queda como reasignada, apuntando a la nueva. Las
+  /// reglas (validReassignment) exigen que ambas escrituras vayan juntas.
+  Future<String> reassignDelivery(Delivery delivery, Family receiver) async {
+    if (delivery.status != DeliveryStatus.scheduled) {
+      throw StateError('La entrega ya no está programada');
+    }
+    if (receiver.familyId == delivery.familyId) {
+      throw ArgumentError('Elige una familia distinta a la de la entrega');
+    }
+
+    final newRef = _deliveries.doc();
+    final reassigned = Delivery(
+      deliveryId: newRef.id,
+      familyId: receiver.familyId,
+      familyName: receiver.displayName,
+      deliveryDate: delivery.deliveryDate,
+      packages: delivery.packages,
+      recoveryFee: delivery.recoveryFee,
+      justification: delivery.justification,
+      status: DeliveryStatus.scheduled,
+      items: delivery.items,
+      createdAt: DateTime.now(),
+      reassignedFrom: delivery.deliveryId,
+    );
+
+    final batch = _db.batch();
+    batch.set(newRef, reassigned.toFirestore());
+    batch.update(_deliveries.doc(delivery.deliveryId), {
+      'status': DeliveryStatus.reassigned.name,
+      'reassignedTo': newRef.id,
+    });
+    await batch.commit();
+    return newRef.id;
   }
 
   /// Cancela una entrega programada; sus productos no entran a la despensa.

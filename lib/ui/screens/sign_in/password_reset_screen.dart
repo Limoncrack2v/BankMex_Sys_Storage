@@ -7,7 +7,6 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
-import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import 'sign_in_screen.dart';
 
@@ -80,7 +79,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
               padding: EdgeInsets.fromLTRB(16, 32, 16, 16),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: _BackLink(),
+                child: AuthBackLink(),
               ),
             ),
             Expanded(
@@ -155,42 +154,6 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
           onPressed: _canSubmit ? _submit : null,
         ),
       ],
-    );
-  }
-}
-
-class _BackLink extends StatelessWidget {
-  const _BackLink();
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => Navigator.of(context).pop(),
-      customBorder: const StadiumBorder(),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const AppIcon(AppIcons.arrowLeft, size: 20),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  'Volver a inicio de sesión',
-                  style: AppText.nunito(
-                    16,
-                    24,
-                    weight: FontWeight.w700,
-                    color: AppColors.primaryDark,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

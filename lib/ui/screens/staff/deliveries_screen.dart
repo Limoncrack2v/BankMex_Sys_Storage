@@ -314,14 +314,10 @@ class _DeliveryFormState extends State<_DeliveryForm> {
 
     final family = _family!;
     final packages = _packageCount!;
-    final familyName = family.displayName.trim();
     final delivery = Delivery(
       deliveryId: '',
       familyId: family.familyId,
-      // Las reglas limitan familyName a 100 caracteres.
-      familyName: familyName.length > 100
-          ? familyName.substring(0, 100)
-          : familyName,
+      familyName: family.displayName,
       deliveryDate: _date!,
       packages: packages,
       recoveryFee: _exempt ? null : _feeAmount,
@@ -939,12 +935,17 @@ class _FamilyCombobox extends StatefulWidget {
     required this.controller,
     required this.selected,
     required this.onSelected,
+    this.excludeFamilyId,
   });
 
   final Stream<List<Family>> families;
   final TextEditingController controller;
   final Family? selected;
   final ValueChanged<Family?> onSelected;
+
+  /// Familia que nunca aparece en la lista (al reasignar, la dueña actual de
+  /// la entrega).
+  final String? excludeFamilyId;
 
   @override
   State<_FamilyCombobox> createState() => _FamilyComboboxState();
@@ -1016,7 +1017,13 @@ class _FamilyComboboxState extends State<_FamilyCombobox> {
     return StreamBuilder<List<Family>>(
       stream: widget.families,
       builder: (context, snapshot) {
-        final families = snapshot.data;
+        final excluded = widget.excludeFamilyId;
+        final families = snapshot.data == null
+            ? null
+            : [
+                for (final family in snapshot.data!)
+                  if (family.familyId != excluded) family,
+              ];
         final matches = families == null
             ? const <Family>[]
             : _matches(families);
@@ -1032,8 +1039,15 @@ class _FamilyComboboxState extends State<_FamilyCombobox> {
               context,
               info,
               _FamilyList(
-                snapshot: snapshot,
+                hasError: snapshot.hasError,
+                families: families,
+                // Los nombres repetidos se cuentan con todas las familias:
+                // si la excluida es la tocaya, la otra igual lleva dirección.
+                allFamilies: snapshot.data,
                 matches: matches,
+                emptyMessage: excluded == null
+                    ? 'No hay familias registradas'
+                    : 'No hay otras familias registradas',
                 onSelected: _select,
               ),
             ),
@@ -1122,20 +1136,30 @@ class _FamilyComboboxState extends State<_FamilyCombobox> {
 
 class _FamilyList extends StatelessWidget {
   const _FamilyList({
-    required this.snapshot,
+    required this.hasError,
+    required this.families,
+    required this.allFamilies,
     required this.matches,
+    required this.emptyMessage,
     required this.onSelected,
   });
 
-  final AsyncSnapshot<List<Family>> snapshot;
+  final bool hasError;
+
+  /// Las familias que se pueden elegir; null mientras cargan.
+  final List<Family>? families;
+
+  /// Todas las registradas, incluida la excluida, para contar tocayas.
+  final List<Family>? allFamilies;
   final List<Family> matches;
+  final String emptyMessage;
   final ValueChanged<Family> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final families = snapshot.data;
+    final families = this.families;
     final Widget content;
-    if (snapshot.hasError) {
+    if (hasError) {
       content = const _ListMessage(
         'No se pudieron cargar las familias. Revisa tu conexión.',
         color: AppColors.dangerText,
@@ -1154,13 +1178,13 @@ class _FamilyList extends StatelessWidget {
         ),
       );
     } else if (families.isEmpty) {
-      content = const _ListMessage('No hay familias registradas');
+      content = _ListMessage(emptyMessage);
     } else if (matches.isEmpty) {
       content = const _ListMessage('Sin resultados');
     } else {
       // Si hay nombres repetidos se muestra la dirección para distinguirlos.
       final counts = <String, int>{};
-      for (final family in families) {
+      for (final family in allFamilies ?? families) {
         final key = _fold(family.displayName);
         counts[key] = (counts[key] ?? 0) + 1;
       }
@@ -1379,6 +1403,13 @@ class _DeliveriesTable extends StatelessWidget {
       action: action,
     );
 
+    void reassign() => showAppBottomSheet<void>(
+      context,
+      // Arrastrar para cerrar ignoraría AppSheet.busy mientras se guarda.
+      enableDrag: false,
+      builder: (_) => _ReassignSheet(delivery: delivery),
+    );
+
     return TableRow(
       children: [
         _TableCell(
@@ -1422,13 +1453,17 @@ class _DeliveriesTable extends StatelessWidget {
                   onPressed: () => open(_DeliveryAction.deliver),
                 ),
                 const SizedBox(height: 4),
-                _DangerLinkButton(
+                _LinkButton(label: 'Reasignar', onPressed: reassign),
+                _LinkButton(
                   label: 'Cancelar',
+                  color: AppColors.dangerText,
                   onPressed: () => open(_DeliveryAction.cancel),
                 ),
               ],
             ),
-            DeliveryStatus.delivered || DeliveryStatus.cancelled => Text(
+            DeliveryStatus.delivered ||
+            DeliveryStatus.cancelled ||
+            DeliveryStatus.reassigned => Text(
               '—',
               style: AppText.nunito(14, 21, color: AppColors.textMuted),
             ),
@@ -1463,6 +1498,11 @@ class _StatusBadge extends StatelessWidget {
         AppColors.background,
         AppColors.textMuted,
       ),
+      DeliveryStatus.reassigned => (
+        'Reasignada',
+        AppColors.slateSoft,
+        AppColors.slate,
+      ),
     };
     final pill = Pill(
       label: label,
@@ -1485,13 +1525,18 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-/// Enlace rojo subrayado para acciones que no se pueden deshacer
-/// ("Cancelar" una entrega programada).
-class _DangerLinkButton extends StatelessWidget {
-  const _DangerLinkButton({required this.label, required this.onPressed});
+/// Enlace subrayado de la columna Acción: verde para "Reasignar" y rojo para
+/// "Cancelar", que no se puede deshacer.
+class _LinkButton extends StatelessWidget {
+  const _LinkButton({
+    required this.label,
+    required this.onPressed,
+    this.color = AppColors.primaryDark,
+  });
 
   final String label;
   final VoidCallback onPressed;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -1503,16 +1548,12 @@ class _DangerLinkButton extends StatelessWidget {
         child: Text(
           label,
           textAlign: TextAlign.center,
-          style:
-              AppText.nunito(
-                15,
-                22.5,
-                weight: FontWeight.w700,
-                color: AppColors.dangerText,
-              ).copyWith(
-                decoration: TextDecoration.underline,
-                decorationColor: AppColors.dangerText,
-              ),
+          style: AppText.nunito(
+            15,
+            22.5,
+            weight: FontWeight.w700,
+            color: color,
+          ).copyWith(decoration: TextDecoration.underline, decorationColor: color),
         ),
       ),
     );
@@ -1750,6 +1791,196 @@ class _DeliveryActionSheetState extends State<_DeliveryActionSheet> {
       ],
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reasignar una entrega programada
+// ---------------------------------------------------------------------------
+
+/// Pasa una entrega programada a otra familia: la original queda como
+/// "Reasignada" y se registra una entrega nueva, programada, para la familia
+/// que la recibe. La familia actual no aparece en la búsqueda.
+class _ReassignSheet extends StatefulWidget {
+  const _ReassignSheet({required this.delivery});
+
+  final Delivery delivery;
+
+  @override
+  State<_ReassignSheet> createState() => _ReassignSheetState();
+}
+
+class _ReassignSheetState extends State<_ReassignSheet> {
+  // Stream propio: el del formulario ya tiene quien lo escuche.
+  late final Stream<List<Family>> _families;
+  final _familyText = TextEditingController();
+  Family? _receiver;
+  bool _attempted = false;
+  bool _saving = false;
+  String? _error;
+
+  /// Otro dispositivo ya la entregó, canceló o reasignó.
+  bool _alreadyChanged = false;
+  String? _successMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _families = FamilyRepository().watchAllFamilies();
+  }
+
+  @override
+  void dispose() {
+    _familyText.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirm() async {
+    if (_saving || _alreadyChanged) return;
+    final receiver = _receiver;
+    if (receiver == null) {
+      setState(() => _attempted = true);
+      return;
+    }
+    final delivery = widget.delivery;
+    final messenger = ScaffoldMessenger.of(context);
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    String message;
+    try {
+      final saved = await _awaitSave(
+        DeliveryRepository().reassignDelivery(delivery, receiver),
+        onLateError: (error) =>
+            _showSnack(messenger, _lateReassignMessage(error, delivery)),
+      );
+      message =
+          'La entrega del ${formatDateLong(delivery.deliveryDate)} ahora es '
+          'para ${receiver.displayName} y quedó programada. La de '
+          '${delivery.familyName} quedó como «Reasignada».';
+      if (!saved.synced) message = '$message $_pendingSyncNote';
+    } catch (e) {
+      if (!mounted) return;
+      final alreadyChanged = _isAlreadyChanged(e);
+      setState(() {
+        _saving = false;
+        _alreadyChanged = alreadyChanged;
+        _error = alreadyChanged
+            ? 'Esta entrega ya se había marcado desde otro dispositivo.'
+            : 'No se pudo reasignar la entrega. Revisa tu conexión e intenta '
+                  'de nuevo.';
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _successMessage = message;
+    });
+  }
+
+  void _close() {
+    if (!_saving) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final successMessage = _successMessage;
+    if (successMessage != null) {
+      return AppSheet(
+        title: 'Reasignar entrega',
+        body: SuccessContent(
+          heading: 'Entrega reasignada',
+          message: successMessage,
+          onDone: () => Navigator.of(context).pop(),
+        ),
+      );
+    }
+
+    final missingReceiver = _attempted && _receiver == null;
+    return AppSheet(
+      title: 'Reasignar entrega',
+      busy: _saving,
+      body: AbsorbPointer(
+        absorbing: _saving,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'La entrega programada de ${widget.delivery.familyName} se '
+              'marcará como «Reasignada» y se registrará una nueva entrega '
+              'para la familia que la reciba.',
+              style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 16),
+            LabeledField(
+              label: 'Familia',
+              required: true,
+              child: _FamilyCombobox(
+                families: _families,
+                controller: _familyText,
+                selected: _receiver,
+                excludeFamilyId: widget.delivery.familyId,
+                onSelected: (family) => setState(() => _receiver = family),
+              ),
+            ),
+            if (missingReceiver) ...[
+              const SizedBox(height: 6),
+              const _HelperText(
+                'Selecciona la familia receptora',
+                color: AppColors.dangerText,
+              ),
+            ],
+          ],
+        ),
+      ),
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null) ...[
+            Semantics(
+              liveRegion: true,
+              child: InfoBanner(
+                message: _error!,
+                background: AppColors.dangerSoft,
+                foreground: AppColors.dangerText,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          PrimaryButton(
+            label: 'Confirmar reasignación',
+            icon: AppIcons.check,
+            loading: _saving,
+            onPressed: _alreadyChanged ? null : _confirm,
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Opacity(
+              opacity: _saving ? 0.4 : 1,
+              child: TextLinkButton(
+                label: _alreadyChanged ? 'Cerrar' : 'Volver',
+                onPressed: _close,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aviso cuando la reasignación guardada sin conexión falla al sincronizar.
+String _lateReassignMessage(Object error, Delivery delivery) {
+  final family = delivery.familyName;
+  return _isAlreadyChanged(error)
+      ? 'La entrega de $family ya se había marcado desde otro dispositivo, '
+            'así que no se reasignó.'
+      : 'No se pudo sincronizar la reasignación de la entrega de $family. '
+            'Revisa la tabla e intenta de nuevo.';
 }
 
 /// Otro dispositivo ya la entregó o la canceló: las reglas solo dejan

@@ -22,4 +22,9 @@ abstract final class AppColors {
   static const warning = Color(0xFFF57C00);
   static const warningSoft = Color(0xFFFDEDDB);
   static const warningText = Color(0xFFB45C00);
+
+  // Pizarra de la paleta de gráficas del Make (badge "Reasignada"), distinta
+  // de los verdes y naranjas de estado.
+  static const slate = Color(0xFF6B7F99);
+  static const slateSoft = Color(0x296B7F99);
 }

@@ -4,11 +4,9 @@
   "private": true,
   "main": "index.js",
   "engines": {
-    "node": "22"
+    "node": "24"
   },
   "scripts": {
-    "test": "node --test test/pantry.test.js",
-    "test:emulators": "node --test test/emulator.test.js",
     "deploy": "firebase deploy --only functions"
   },
   "dependencies": {

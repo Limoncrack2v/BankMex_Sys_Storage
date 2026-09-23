@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'pantry_item.dart';
 
-enum DeliveryStatus { scheduled, delivered, cancelled }
+/// reassigned: la entrega programada pasó a otra familia (se registró una
+/// entrega nueva para ella); se conserva para trazabilidad.
+enum DeliveryStatus { scheduled, delivered, cancelled, reassigned }
 
 /// Producto de una entrega, con su fecha de caducidad. Cuando la entrega queda
 /// como entregada, la Cloud Function onDeliveryWritten (functions/pantry.js)
@@ -64,6 +66,7 @@ class DeliveryItem {
 class Delivery {
   static const int maxPackages = 100;
   static const int maxItems = 100;
+  static const int maxFamilyNameLength = 100;
 
   final String deliveryId;
   final String familyId;
@@ -81,6 +84,13 @@ class Delivery {
   final List<DeliveryItem> items;
   final DateTime createdAt;
 
+  /// Entrega original de la que viene esta, si se registró al reasignarla.
+  final String? reassignedFrom;
+
+  /// Entrega nueva que se registró al reasignar esta a otra familia. Solo la
+  /// escribe DeliveryRepository.reassignDelivery (nunca toFirestore).
+  final String? reassignedTo;
+
   Delivery({
     required this.deliveryId,
     required this.familyId,
@@ -93,6 +103,8 @@ class Delivery {
     this.notes,
     required this.items,
     required this.createdAt,
+    this.reassignedFrom,
+    this.reassignedTo,
   });
 
   bool get isExempt => recoveryFee == null;
@@ -114,7 +126,18 @@ class Delivery {
           .map((item) => DeliveryItem.fromMap(Map<String, dynamic>.from(item)))
           .toList(),
       createdAt: (data['createdAt'] as Timestamp).toDate(),
+      reassignedFrom: data['reassignedFrom'] as String?,
+      reassignedTo: data['reassignedTo'] as String?,
     );
+  }
+
+  /// El nombre del hogar puede ser su dirección (hasta 200 caracteres) cuando
+  /// no tiene nombre; las reglas solo aceptan 100 en la entrega.
+  String get _shortFamilyName {
+    final name = familyName.trim();
+    return name.length > maxFamilyNameLength
+        ? name.substring(0, maxFamilyNameLength)
+        : name;
   }
 
   /// Los campos opcionales solo se escriben si tienen valor (validDelivery).
@@ -123,7 +146,7 @@ class Delivery {
     final notes = this.notes?.trim() ?? '';
     return {
       'familyId': familyId,
-      'familyName': familyName.trim(),
+      'familyName': _shortFamilyName,
       'deliveryDate': Timestamp.fromDate(deliveryDate),
       'packages': packages,
       if (recoveryFee != null) 'recoveryFee': recoveryFee,
@@ -132,6 +155,7 @@ class Delivery {
       if (notes.isNotEmpty) 'notes': notes,
       'items': items.map((item) => item.toMap()).toList(),
       'createdAt': Timestamp.fromDate(createdAt),
+      if (reassignedFrom != null) 'reassignedFrom': reassignedFrom,
     };
   }
 

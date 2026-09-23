@@ -2,9 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
-/// En debug, por defecto la app usa la Firestore real (bank-storage-bamx).
-/// Para usar emuladores locales:
-/// `flutter run --dart-define=USE_FIRESTORE_EMULATOR=true`
+/// En debug la app usa los emuladores de Firebase (Firestore 8080, Auth 9099),
+/// para no escribir en los datos reales desde una máquina de desarrollo. Se
+/// llama para la app principal y para la instancia secundaria que se usa al
+/// registrar cuentas.
+///
+/// Para trabajar en debug contra el proyecto real (p. ej. para ver el catálogo
+/// ya sembrado): `flutter run --dart-define=USE_FIRESTORE_EMULATOR=false`.
 Future<void> connectToEmulatorsIfDebug({
   required FirebaseAuth auth,
   FirebaseFirestore? firestore,
@@ -12,7 +16,7 @@ Future<void> connectToEmulatorsIfDebug({
   if (!kDebugMode) return;
   const useEmulator = bool.fromEnvironment(
     'USE_FIRESTORE_EMULATOR',
-    defaultValue: false,
+    defaultValue: true,
   );
   if (!useEmulator) return;
 
