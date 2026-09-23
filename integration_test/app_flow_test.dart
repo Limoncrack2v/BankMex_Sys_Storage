@@ -34,6 +34,8 @@ const _takeScreenshots = bool.fromEnvironment('E2E_SCREENSHOTS');
 // Cuenta de staff creada por tool/seed_emulators.mjs.
 const _staffEmail = 'staff@bamx.test';
 const _password = 'bamx1234';
+// Registro de Staff pide al menos 8 caracteres.
+const _newPassword = 'bamx12345';
 const _signInTitle = 'Inicia sesión en tu cuenta BAMX';
 
 void main() {
@@ -55,6 +57,8 @@ void main() {
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final familyName = 'Familia E2E $stamp';
       final familyEmail = 'e2e.$stamp@bamx.test';
+      final newStaffName = 'Staff E2E $stamp';
+      final newStaffEmail = 'e2e.staff.$stamp@bamx.test';
 
       var surfaceConverted = false;
       Future<void> shot(String name) async {
@@ -70,6 +74,38 @@ void main() {
       await tester.pumpWidget(const MyApp());
       await _waitFor(tester, find.text(_signInTitle));
 
+      // 0. Registro de Staff: la solicitud queda pendiente y todavía no
+      // puede iniciar sesión.
+      await _tap(tester, find.text('¿Eres personal de BAMX? Regístrate'));
+      await _waitFor(tester, find.text('Registro de Staff'));
+      await _tap(tester, _primaryButton('Crear cuenta'));
+      await _waitFor(tester, find.text('Escribe tu nombre completo'));
+      expect(find.text('Las contraseñas no coinciden'), findsOneWidget);
+      await shot('00a_registro_staff_errores');
+      await _enter(tester, _fieldWithHint('Ej. María González'), newStaffName);
+      await _enter(
+        tester,
+        _fieldWithHint('tucorreo@bamx.org.mx'),
+        newStaffEmail,
+      );
+      await _enter(tester, _fieldWithHint('Mínimo 8 caracteres'), _newPassword);
+      await _enter(tester, _fieldWithHint('Repite tu contraseña'), _newPassword);
+      await _tap(tester, _primaryButton('Crear cuenta'));
+      await _waitFor(
+        tester,
+        find.text('Solicitud enviada'),
+        timeout: const Duration(seconds: 40),
+      );
+      await shot('00b_solicitud_enviada');
+      await _tap(tester, _primaryButton('Ir a inicio de sesión'));
+      await _waitFor(tester, find.text(_signInTitle));
+      await _signIn(tester, newStaffEmail, _newPassword);
+      await _waitFor(
+        tester,
+        find.textContaining('Tu solicitud de cuenta de staff está pendiente'),
+      );
+      await shot('00c_solicitud_pendiente');
+
       // 1. Inicio de sesión con credenciales incorrectas y correctas.
       await _signIn(tester, _staffEmail, 'incorrecta');
       await _waitFor(
@@ -81,7 +117,37 @@ void main() {
       await _signIn(tester, _staffEmail, _password);
       await _waitFor(tester, find.text('BAMX Guadalajara'));
       await _waitFor(tester, find.text('Familia Ramírez'));
+      await _waitFor(
+        tester,
+        find.textContaining('de cuenta de staff por revisar'),
+      );
       await shot('02_staff_entregas');
+
+      // El staff aprueba la solicitud del paso 0 (la del seed sigue
+      // pendiente).
+      await _tap(tester, find.text('Revisar'));
+      await _waitFor(tester, find.text('Solicitudes de staff'));
+      await _waitFor(tester, find.text(newStaffEmail));
+      await shot('02b_solicitudes_staff');
+      final requestCard = find.ancestor(
+        of: find.text(newStaffEmail),
+        matching: find.byWidgetPredicate(
+          (widget) => widget.runtimeType.toString() == '_RequestCard',
+        ),
+      );
+      await _tap(
+        tester,
+        find.descendant(of: requestCard, matching: find.text('Aprobar')),
+      );
+      await _waitFor(tester, _primaryButton('Aprobar solicitud'));
+      expect(find.textContaining('¿Aprobar a $newStaffName'), findsOneWidget);
+      await _tap(tester, _primaryButton('Aprobar solicitud'));
+      await _waitFor(tester, find.text('Solicitud aprobada'));
+      await shot('02c_solicitud_aprobada');
+      await _tap(tester, find.text('Listo'));
+      await _waitFor(tester, find.text('Solicitudes de staff'));
+      expect(find.text(newStaffEmail), findsNothing);
+      await _tap(tester, find.byTooltip('Cerrar'));
 
       // 2. El staff registra la cuenta de una familia nueva.
       await _tap(tester, find.text('Registrar cuenta'));
@@ -123,8 +189,8 @@ void main() {
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.text(familyName));
 
-      // Una entrega programada que después se cancela: sus productos no
-      // llegan a la despensa.
+      // Una entrega programada que se reasigna a la Familia Ramírez (la
+      // familia nueva ya no la recibe) y después se cancela.
       await _selectFamily(tester, stamp, familyName);
       await _tap(tester, _pickerIn('Fecha de entrega'));
       await _confirmDatePicker(tester);
@@ -136,13 +202,61 @@ void main() {
       await _waitFor(tester, find.text('Entrega registrada'));
       await _tap(tester, find.text('Listo'));
 
+      // Las corridas anteriores dejan sus entregas en la tabla, así que los
+      // estados se cuentan contra lo que ya había.
+      final reassignedBefore = find.text('Reasignada').evaluate().length;
+      final cancelledBefore = find.text('Cancelada').evaluate().length;
+
+      // La más reciente de la tabla es la de Frijol.
+      await _tap(tester, find.text('Reasignar').first);
+      await _waitFor(tester, find.text('Reasignar entrega'));
+      expect(
+        find.textContaining('La entrega programada de $familyName'),
+        findsOneWidget,
+      );
+      await _tap(tester, _primaryButton('Confirmar reasignación'));
+      await _waitFor(tester, find.text('Selecciona la familia receptora'));
+      // La familia que ya tiene la entrega no aparece en la búsqueda.
+      // El campo de la hoja (el del formulario de atrás tiene el mismo hint,
+      // que además desaparece al escribir).
+      final receiverSearch = find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(TextField),
+      );
+      await _tap(tester, receiverSearch);
+      await _enter(tester, receiverSearch, 'E2E $stamp');
+      await _waitFor(tester, find.text('Sin resultados'));
+      await _enter(tester, receiverSearch, 'Ramírez');
+      final ramirezOption = find.ancestor(
+        of: find.text('Familia Ramírez'),
+        matching: find.byType(InkWell),
+      );
+      await _waitFor(tester, ramirezOption);
+      await shot('07a_reasignar_entrega');
+      await _tap(tester, ramirezOption);
+      await _tap(tester, _primaryButton('Confirmar reasignación'));
+      await _waitFor(tester, find.text('Entrega reasignada'));
+      await shot('07b_entrega_reasignada');
+      await _tap(tester, find.text('Listo'));
+      await _waitForCount(tester, find.text('Reasignada'), reassignedBefore + 1);
+
+      // La nueva (programada para la Familia Ramírez) es ahora la más
+      // reciente; se cancela.
       await _tap(tester, find.text('Cancelar').first);
       await _waitFor(tester, _primaryButton('Cancelar entrega'));
-      expect(find.textContaining(familyName), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.textContaining('La entrega programada de Familia '
+              'Ramírez'),
+        ),
+        findsOneWidget,
+      );
       await _tap(tester, _primaryButton('Cancelar entrega'));
       await _waitFor(tester, find.text('Entrega cancelada'));
       await _tap(tester, find.text('Listo'));
-      await _waitFor(tester, find.text('Cancelada'));
+      await _waitForCount(tester, find.text('Cancelada'), cancelledBefore + 1);
+      expect(find.text('Reasignada'), findsNWidgets(reassignedBefore + 1));
 
       // La entrega programada del seed se entrega, con confirmación.
       await _tap(tester, find.text('Entregar').first);
@@ -258,6 +372,15 @@ void main() {
       await _tap(tester, find.text('Cerrar sesión'));
       await _waitFor(tester, find.text(_signInTitle));
 
+      // 10. La cuenta de staff aprobada en el paso 1 ya puede entrar.
+      await _signIn(tester, newStaffEmail, _newPassword);
+      await _waitFor(tester, _primaryButton('Registrar entrega'));
+      await _tap(tester, find.byTooltip('Cuenta'));
+      await _waitFor(tester, find.text(newStaffName));
+      await shot('18_staff_aprobado');
+      await _tap(tester, find.text('Cerrar sesión'));
+      await _waitFor(tester, find.text(_signInTitle));
+
       semantics.dispose();
     },
     timeout: const Timeout(Duration(minutes: 6)),
@@ -277,9 +400,28 @@ Future<void> _waitFor(
   throw TestFailure('No apareció en pantalla: $finder');
 }
 
+/// Espera a que [finder] encuentre [count] widgets (los estados de entregas
+/// se acumulan entre corridas contra los mismos emuladores).
+Future<void> _waitForCount(
+  WidgetTester tester,
+  Finder finder,
+  int count, {
+  Duration timeout = const Duration(seconds: 25),
+}) async {
+  final end = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(end)) {
+    await tester.pump(const Duration(milliseconds: 200));
+    if (finder.evaluate().length >= count) return;
+  }
+  throw TestFailure('No aparecieron $count: $finder');
+}
+
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await _waitFor(tester, finder);
   await tester.ensureVisible(finder.first);
+  // Dos pumps: con el teclado abriéndose, el widget sigue moviéndose y el
+  // toque caería donde ya no está.
+  await tester.pump(const Duration(milliseconds: 300));
   await tester.pump(const Duration(milliseconds: 300));
   await tester.tap(finder.first);
   await tester.pump(const Duration(milliseconds: 500));
@@ -290,6 +432,7 @@ Future<void> _enter(WidgetTester tester, Finder finder, String text) async {
   await tester.ensureVisible(finder.first);
   await tester.pump(const Duration(milliseconds: 200));
   await tester.enterText(finder.first, text);
+  await tester.pump(const Duration(milliseconds: 300));
   await tester.pump(const Duration(milliseconds: 300));
 }
 

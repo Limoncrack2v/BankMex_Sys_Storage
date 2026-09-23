@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/models/app_user.dart';
+import '../../../data/models/staff_request.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../../data/repositories/staff_request_repository.dart';
 import '../../session_navigation.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
@@ -15,21 +17,45 @@ import '../../widgets/coming_soon.dart';
 import '../../widgets/pill.dart';
 import 'deliveries_screen.dart';
 import 'register_account_sheet.dart';
+import 'staff_requests_sheet.dart';
 
-/// Panel del staff: Entregas, con acceso a la cuenta (alta de cuentas y
-/// cerrar sesión) desde el header.
-class StaffHomeScreen extends StatelessWidget {
+/// Panel del staff: Entregas, con acceso a la cuenta (alta de cuentas,
+/// solicitudes de staff y cerrar sesión) desde el header. Si hay solicitudes
+/// de staff por revisar, un aviso arriba lleva a ellas.
+class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key, required this.session});
 
   final AuthSession session;
 
-  void _openAccountSheet(BuildContext context) {
+  @override
+  State<StaffHomeScreen> createState() => _StaffHomeScreenState();
+}
+
+class _StaffHomeScreenState extends State<StaffHomeScreen> {
+  late final Stream<List<StaffRequest>> _pendingRequests;
+
+  AuthSession get _session => widget.session;
+
+  @override
+  void initState() {
+    super.initState();
+    _pendingRequests = StaffRequestRepository().watchPending();
+  }
+
+  void _openStaffRequests() =>
+      showStaffRequestsSheet(context, session: _session);
+
+  void _openAccountSheet() {
     showAppBottomSheet<void>(
       context,
       builder: (sheetContext) => AppSheet(
         title: 'Mi cuenta',
         body: _AccountDetails(
-          user: session.user,
+          user: _session.user,
+          onStaffRequests: () {
+            Navigator.of(sheetContext).pop();
+            _openStaffRequests();
+          },
           onRegisterAccount: () {
             Navigator.of(sheetContext).pop();
             showRegisterAccountSheet(context);
@@ -54,13 +80,24 @@ class StaffHomeScreen extends StatelessWidget {
           AppHeader(
             title: 'BAMX Guadalajara',
             horizontalPadding: 24,
-            trailing: _AccountButton(
-              onPressed: () => _openAccountSheet(context),
-            ),
+            trailing: _AccountButton(onPressed: _openAccountSheet),
+          ),
+          StreamBuilder<List<StaffRequest>>(
+            stream: _pendingRequests,
+            builder: (context, snapshot) {
+              final count = snapshot.data?.length ?? 0;
+              if (snapshot.hasError || count == 0) {
+                return const SizedBox.shrink();
+              }
+              return _StaffRequestsBanner(
+                count: count,
+                onPressed: _openStaffRequests,
+              );
+            },
           ),
           Expanded(
             child: DeliveriesScreen(
-              session: session,
+              session: _session,
               onRegisterAccount: () => showRegisterAccountSheet(context),
             ),
           ),
@@ -72,6 +109,57 @@ class StaffHomeScreen extends StatelessWidget {
         onTap: (index) {
           if (index != 0) showComingSoon(context);
         },
+      ),
+    );
+  }
+}
+
+/// Aviso de solicitudes de cuenta de staff por revisar.
+class _StaffRequestsBanner extends StatelessWidget {
+  const _StaffRequestsBanner({required this.count, required this.onPressed});
+
+  final int count;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppText.nunito(
+      15,
+      22.5,
+      weight: FontWeight.w700,
+      color: AppColors.primaryDark,
+    );
+    return Material(
+      color: AppColors.primarySoft,
+      child: InkWell(
+        onTap: onPressed,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.border)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  count == 1
+                      ? '1 solicitud de cuenta de staff por revisar'
+                      : '$count solicitudes de cuenta de staff por revisar',
+                  style: style,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Revisar',
+                style: style.copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppColors.primaryDark,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -116,11 +204,13 @@ class _AccountButton extends StatelessWidget {
 class _AccountDetails extends StatelessWidget {
   const _AccountDetails({
     required this.user,
+    required this.onStaffRequests,
     required this.onRegisterAccount,
     required this.onSignOut,
   });
 
   final AppUser user;
+  final VoidCallback onStaffRequests;
   final VoidCallback onRegisterAccount;
   final VoidCallback onSignOut;
 
@@ -166,6 +256,12 @@ class _AccountDetails extends StatelessWidget {
           child: Pill.success(label: 'Staff', withIcon: false),
         ),
         const SizedBox(height: 24),
+        SecondaryButton(
+          label: 'Solicitudes de staff',
+          icon: AppIcons.person,
+          onPressed: onStaffRequests,
+        ),
+        const SizedBox(height: 12),
         SecondaryButton(
           label: 'Registrar cuenta',
           icon: AppIcons.plus,

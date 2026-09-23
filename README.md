@@ -22,7 +22,7 @@ App de Flutter para BAMX Guadalajara. Las familias ven su despensa, recetas, pla
      {
        "source": "functions",
        "codebase": "default",
-       "ignore": ["node_modules", ".git", "test", "firebase-debug.log", "firebase-debug.*.log", "*.local"]
+       "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "*.local"]
      }
    ],
    "emulators": {
@@ -56,6 +56,7 @@ Cuentas de prueba del seed (contraseña `bamx1234`):
 
 - Staff: `staff@bamx.test`
 - Familia: `familia.ramirez@bamx.test`
+- Solicitud de staff pendiente de aprobar: `solicitud.staff@bamx.test`
 
 En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `northamerica-south1`:
 
@@ -74,17 +75,27 @@ Ningún cliente, incluido el staff, crea productos en `families/{familyId}/pantr
 2. La Cloud Function `onDeliveryWritten` (`functions/index.js`) detecta que la entrega quedó como entregada. En una transacción crea un `PantryItem` por producto, menos los que ya caducaron, y marca la entrega con `pantryStockedAt`. La marca evita que un reintento duplique productos.
 3. La familia ve los productos en su despensa. Al registrar consumo solo puede bajar la cantidad de un producto, o borrarlo cuando se acaba.
 
+Una entrega **programada** también se puede **reasignar** a otra familia. En un solo batch, la original queda como `reassigned` (con `reassignedTo`) y se crea una entrega nueva programada para la otra familia (con `reassignedFrom`), con la misma fecha, despensas y productos.
+
 Los integrantes de la familia se guardan en la subcolección `families/{familyId}/members`, con `MemberRepository` y sus propias reglas (`validMember`).
+
+## Cuentas
+
+- **Familias:** las crea el staff desde "Registrar cuenta", en el panel de staff.
+- **Staff:** las crea otro staff desde "Registrar cuenta", o la persona las solicita desde "¿Eres personal de BAMX? Regístrate" en el inicio de sesión. La solicitud se guarda en `staffRequests/{uid}` y la persona no puede entrar hasta que un staff la aprueba desde "Solicitudes de staff". Al aprobarla se crea su perfil `users/{uid}` con rol staff.
 
 ## Pruebas
 
+Todas las pruebas se corren con Flutter:
+
 ```sh
 flutter analyze
-flutter test                                    # pruebas unitarias y de widgets
+flutter test                                    # unitarias y de widgets (no necesitan emuladores)
+flutter test test_emulator                      # reglas de seguridad y Cloud Function; requiere los emuladores corriendo
 flutter test integration_test -d <emulador>     # de punta a punta; requiere emuladores (con functions) y correr el seed antes
-npm --prefix functions test                     # lógica de la Cloud Function
-npm --prefix functions run test:emulators       # la Cloud Function en los emuladores (deben estar corriendo)
 ```
+
+`test_emulator/` habla con el emulador de Firestore por su API REST (`test_emulator/support/emulator.dart`): las pruebas de reglas usan proyectos de prueba aparte, y la de la Cloud Function usa el proyecto real del emulador, con ids propios que limpia al terminar.
 
 Para guardar capturas de la prueba de punta a punta en `build/e2e_screenshots`:
 
@@ -97,8 +108,9 @@ flutter drive --driver=test_driver/integration_test.dart --target=integration_te
 - `lib/data`: modelos y repositorios de Firestore (familias, integrantes, despensa, entregas, usuarios y autenticación).
 - `lib/ui`: tema, widgets compartidos y pantallas (`screens/`) de la familia y del staff.
 - `functions`: Cloud Function que agrega a la despensa los productos de una entrega confirmada.
+- `test_emulator`: pruebas de las reglas y de la Cloud Function contra los emuladores.
 - `firestore.rules`: reglas de seguridad.
-  - Solo el staff crea perfiles, familias y entregas.
+  - Solo el staff crea perfiles, familias y entregas. Una solicitud de staff solo se convierte en cuenta cuando otro staff la aprueba.
   - Solo la Cloud Function crea productos en la despensa.
   - Cada familia solo accede a lo suyo.
-  - Una entrega programada cambia de estado una sola vez.
+  - Una entrega programada cambia de estado una sola vez: a entregada, cancelada o reasignada.

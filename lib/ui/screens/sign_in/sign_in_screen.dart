@@ -10,6 +10,7 @@ import '../../widgets/app_buttons.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import 'password_reset_screen.dart';
+import 'staff_sign_up_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -68,6 +69,12 @@ class _SignInScreenState extends State<SignInScreen> {
   void _openPasswordReset() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const PasswordResetScreen()),
+    );
+  }
+
+  void _openStaffSignUp() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const StaffSignUpScreen()),
     );
   }
 
@@ -146,7 +153,7 @@ class _SignInScreenState extends State<SignInScreen> {
             autofillHints: const [AutofillHints.password],
             onChanged: _onFieldChanged,
             onSubmitted: (_) => _submit(),
-            suffix: _PasswordToggle(
+            suffix: PasswordToggle(
               visible: !_obscurePassword,
               onPressed: () =>
                   setState(() => _obscurePassword = !_obscurePassword),
@@ -170,13 +177,25 @@ class _SignInScreenState extends State<SignInScreen> {
             onPressed: _openPasswordReset,
           ),
         ),
+        const SizedBox(height: 16),
+        Center(
+          child: TextLinkButton(
+            label: '¿Eres personal de BAMX? Regístrate',
+            onPressed: _openStaffSignUp,
+          ),
+        ),
       ],
     );
   }
 }
 
-class _PasswordToggle extends StatelessWidget {
-  const _PasswordToggle({required this.visible, required this.onPressed});
+/// Botón del ojo para mostrar u ocultar la contraseña.
+class PasswordToggle extends StatelessWidget {
+  const PasswordToggle({
+    super.key,
+    required this.visible,
+    required this.onPressed,
+  });
 
   final bool visible;
   final VoidCallback onPressed;
@@ -226,6 +245,50 @@ class AuthErrorMessage extends StatelessWidget {
             22.5,
             weight: FontWeight.w700,
             color: AppColors.dangerText,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "← Volver a inicio de sesión" arriba de las pantallas que se abren desde
+/// el inicio de sesión (recuperar contraseña, registro de staff).
+class AuthBackLink extends StatelessWidget {
+  const AuthBackLink({super.key, this.enabled = true});
+
+  /// En false no responde (p. ej. mientras se crea la cuenta).
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.4,
+      child: InkWell(
+        onTap: enabled ? () => Navigator.of(context).pop() : null,
+        customBorder: const StadiumBorder(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const AppIcon(AppIcons.arrowLeft, size: 20),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'Volver a inicio de sesión',
+                    style: AppText.nunito(
+                      16,
+                      24,
+                      weight: FontWeight.w700,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

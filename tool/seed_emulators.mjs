@@ -15,6 +15,7 @@
 // Cuentas que deja listas:
 //   Staff:   staff@bamx.test / bamx1234
 //   Familia: familia.ramirez@bamx.test / bamx1234
+//   Solicitud de staff pendiente de aprobar: solicitud.staff@bamx.test / bamx1234
 
 const PROJECT_ID = 'bank-storage-bamx';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099';
@@ -31,6 +32,7 @@ const DEVICE_ID = 'seed';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const STAFF = { email: 'staff@bamx.test', name: 'Staff BAMX' };
+const STAFF_REQUEST = { email: 'solicitud.staff@bamx.test', name: 'Laura Méndez' };
 const FAMILY = {
   email: 'familia.ramirez@bamx.test',
   name: FAMILY_NAME,
@@ -382,6 +384,17 @@ async function seed() {
     createdAt: ts(now),
   });
 
+  // Solicitud de "Registro de Staff" pendiente. Si una corrida anterior la
+  // aprobó, se borra el perfil para que vuelva a quedar pendiente.
+  const requester = await ensureAuthUser(STAFF_REQUEST);
+  await deleteDocument(`users/${requester.uid}`);
+  await setDocument(`staffRequests/${requester.uid}`, {
+    name: str(STAFF_REQUEST.name),
+    email: str(STAFF_REQUEST.email),
+    status: str('pending'),
+    createdAt: ts(addDays(now, -1)),
+  });
+
   const duplicates = await otherFamiliesOf(family.uid);
   const functionsRunning = await isFunctionsEmulatorRunning();
 
@@ -390,6 +403,7 @@ async function seed() {
   console.log('');
   console.log(`  Staff:   ${STAFF.email} / ${PASSWORD}  (cuenta ${accountState(staff)})`);
   console.log(`  Familia: ${FAMILY.email} / ${PASSWORD}  (cuenta ${accountState(family)})`);
+  console.log(`  Solicitud de staff pendiente: ${STAFF_REQUEST.email} / ${PASSWORD}`);
   console.log('');
   console.log(`  families/${FAMILY_ID}: ${FAMILY.name}, ${FAMILY.address}`);
   console.log(`  ${MEMBERS.length} integrantes, ${PANTRY.length} productos en la despensa, 2 entregas`);

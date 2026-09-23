@@ -57,8 +57,32 @@ service cloud.firestore {
           && data.allergies.hasOnly(['dairy', 'gluten', 'peanut', 'shellfish', 'egg', 'soy'])));
     }
 
+    function validStaffRequest(data) {
+      return data.keys().hasOnly(['name', 'email', 'status', 'createdAt'])
+        && data.keys().hasAll(['name', 'email', 'status', 'createdAt'])
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 100
+        && data.email is string
+        && data.email.size() <= 254
+        && data.status == 'pending'
+        && data.createdAt is timestamp;
+    }
+
+    // La entrega nueva de una reasignación: misma fecha, despensas y productos
+    // que la original, para otra familia, programada y ligada a la original.
+    function validReassignment(originalId, newId, original) {
+      let next = getAfter(/databases/$(database)/documents/deliveries/$(newId)).data;
+      return next.reassignedFrom == originalId
+        && next.status == 'scheduled'
+        && next.familyId != original.familyId
+        && next.deliveryDate == original.deliveryDate
+        && next.packages == original.packages
+        && next.items == original.items;
+    }
+
     function validDelivery(data) {
-      return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt'])
+      return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom'])
         && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt'])
         && data.familyId is string
         && exists(/databases/$(database)/documents/families/$(data.familyId))
@@ -70,7 +94,9 @@ service cloud.firestore {
         && data.status in ['scheduled', 'delivered', 'cancelled']
         && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
         && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
-        && data.createdAt is timestamp;
+        && data.createdAt is timestamp
+        && (!('reassignedFrom' in data) || (data.reassignedFrom is string
+          && data.reassignedFrom.size() > 0 && data.reassignedFrom.size() <= 128));
     }
 
     match /families/{familyId} {
@@ -121,16 +147,50 @@ service cloud.firestore {
     // families/{familyId}/pantryItems y la marca con pantryStockedAt.
     match /deliveries/{deliveryId} {
       allow read: if isStaff();
+      // Una entrega que viene de una reasignación (reassignedFrom) solo se
+      // crea en el mismo batch que marca la original como reasignada.
       allow create: if isStaff()
         && validDelivery(request.resource.data)
-        && request.resource.data.status in ['scheduled', 'delivered'];
-      // Una entrega programada solo cambia de estado una vez (a entregada o
-      // cancelada). Así no se puede marcar como entregada dos veces desde dos
-      // dispositivos y duplicar los productos en la despensa.
+        && request.resource.data.status in ['scheduled', 'delivered']
+        && (!('reassignedFrom' in request.resource.data)
+          || (request.resource.data.status == 'scheduled'
+            && getAfter(/databases/$(database)/documents/deliveries/$(request.resource.data.reassignedFrom)).data.status == 'reassigned'
+            && getAfter(/databases/$(database)/documents/deliveries/$(request.resource.data.reassignedFrom)).data.reassignedTo == deliveryId));
+      // Una entrega programada solo cambia de estado una vez: a entregada, a
+      // cancelada o a reasignada (con la entrega nueva para otra familia en el
+      // mismo batch). Así no se puede marcar como entregada dos veces desde
+      // dos dispositivos y duplicar los productos en la despensa.
       allow update: if isStaff()
         && resource.data.status == 'scheduled'
-        && request.resource.data.status in ['delivered', 'cancelled']
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        && ((request.resource.data.status in ['delivered', 'cancelled']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+          || (request.resource.data.status == 'reassigned'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reassignedTo'])
+            && request.resource.data.reassignedTo is string
+            && validReassignment(deliveryId, request.resource.data.reassignedTo, resource.data)));
+    }
+
+    // Solicitudes de cuenta de staff (pantalla "Registro de Staff"). La
+    // persona crea su cuenta de Auth y su solicitud, pero no entra a la app
+    // hasta que un staff la aprueba: aprobar crea su perfil users/{uid} con
+    // rol staff en el mismo batch.
+    match /staffRequests/{uid} {
+      // Una cuenta que ya tiene perfil (familia o staff) no solicita nada: su
+      // solicitud nunca se podría aprobar, porque users/{uid} no se actualiza.
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && validStaffRequest(request.resource.data)
+        && request.resource.data.email == request.auth.token.email
+        && !exists(/databases/$(database)/documents/users/$(uid));
+      allow read: if request.auth != null && (request.auth.uid == uid || isStaff());
+      allow update: if isStaff()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt'])
+        && request.resource.data.reviewedBy == request.auth.uid
+        && request.resource.data.reviewedAt == request.time
+        && (request.resource.data.status == 'rejected'
+          || (request.resource.data.status == 'approved'
+            && getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'staff'));
     }
 
     match /users/{userId} {

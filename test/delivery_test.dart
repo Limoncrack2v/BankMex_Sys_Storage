@@ -153,7 +153,47 @@ void main() {
         'scheduled',
         'delivered',
         'cancelled',
+        'reassigned',
       ]);
+    });
+
+    test('cuts the family name to the 100 characters the rules allow', () {
+      // Un hogar sin nombre usa su dirección, que puede llegar a 200.
+      final address = 'Av. Siempre Viva ${'muy larga ' * 30}';
+      final data = Delivery(
+        deliveryId: '',
+        familyId: 'familia-1',
+        familyName: address,
+        deliveryDate: DateTime(2026, 9, 25),
+        packages: 1,
+        status: DeliveryStatus.scheduled,
+        items: [buildItem()],
+        createdAt: DateTime(2026, 9, 21),
+      ).toFirestore();
+
+      expect((data['familyName'] as String).length, 100);
+      expect(data['familyName'], address.substring(0, 100));
+    });
+
+    test('writes reassignedFrom only when set and never reassignedTo', () {
+      final plain = buildDelivery().toFirestore();
+      expect(plain.containsKey('reassignedFrom'), isFalse);
+      expect(plain.containsKey('reassignedTo'), isFalse);
+
+      final reassigned = Delivery(
+        deliveryId: 'nueva',
+        familyId: 'familia-2',
+        familyName: 'Familia López',
+        deliveryDate: DateTime(2026, 9, 25),
+        packages: 1,
+        status: DeliveryStatus.scheduled,
+        items: [buildItem()],
+        createdAt: DateTime(2026, 9, 21),
+        reassignedFrom: 'original',
+        reassignedTo: 'no-se-escribe',
+      ).toFirestore();
+      expect(reassigned['reassignedFrom'], 'original');
+      expect(reassigned.containsKey('reassignedTo'), isFalse);
     });
   });
 
