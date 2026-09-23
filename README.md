@@ -4,39 +4,56 @@ App de Flutter para BAMX Guadalajara. Las familias ven su despensa, recetas, pla
 
 ## Configuración inicial
 
-1. Instala Flutter, Node.js (22 o más reciente), Java 21 o más reciente (lo piden los emuladores; `java -version` debe funcionar en la terminal) y Firebase CLI (`npm install -g firebase-tools`), y corre `firebase login`.
+1. Instala Flutter, Node.js 24 (el runtime de la Cloud Function, `functions/package.json`), Java 21 o más reciente (lo piden los emuladores; `java -version` debe funcionar en la terminal) y Firebase CLI (`npm install -g firebase-tools`), y corre `firebase login`.
 2. Genera la configuración de Firebase del proyecto `bank-storage-bamx`. Los archivos que crea están en `.gitignore`:
 
    ```sh
    dart pub global activate flutterfire_cli
-   dart pub global run flutterfire_cli:flutterfire configure --project=bank-storage-bamx --platforms=android,web
+   dart pub global run flutterfire_cli:flutterfire configure --project=bank-storage-bamx --platforms=android,ios,web
    ```
 
-   Esto crea `lib/firebase_options.dart`, `android/app/google-services.json` y `firebase.json`.
+   Esto crea `lib/firebase_options.dart`, `android/app/google-services.json` y, para iOS, `ios/Runner/GoogleService-Info.plist`, además de `firebase.json`.
 
-3. Agrega a `firebase.json` las reglas, la Cloud Function y los emuladores:
+3. Agrega a `firebase.json` la Cloud Function y los emuladores:
 
    ```json
-   "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
    "functions": [
      {
        "source": "functions",
        "codebase": "default",
-       "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "*.local"]
+       "ignore": [
+         "node_modules",
+         ".git",
+         "test",
+         "firebase-debug.log",
+         "firebase-debug.*.log",
+         "*.local"
+       ]
      }
    ],
    "emulators": {
-     "auth": { "port": 9099 },
-     "firestore": { "port": 8080 },
-     "functions": { "port": 5001 },
-     "ui": { "enabled": true, "port": 4000 },
+     "ui": {
+       "enabled": true,
+       "port": 4000
+     },
+     "functions": {
+       "port": 5001
+     },
+     "firestore": {
+       "port": 8080
+     },
+     "auth": {
+       "port": 9099
+     },
      "singleProjectMode": true
    }
    ```
 
+   Si tu `firebase.json` todavía no tiene la sección `firestore`, agrégala también (`"firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" }`): de ahí salen las reglas que carga el emulador y las que se despliegan.
+
    Crea también `.firebaserc` con `{ "projects": { "default": "bank-storage-bamx" } }`.
 
-4. Instala las dependencias de la Cloud Function (desde la raíz del proyecto):
+4. Instala las dependencias de la Cloud Function (lo único de npm que usa el proyecto; desde la raíz):
 
    ```sh
    npm --prefix functions install
