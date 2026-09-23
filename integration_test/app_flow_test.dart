@@ -82,7 +82,7 @@ void main() {
       // puede iniciar sesión.
       await _tap(tester, find.text('¿Eres personal de BAMX? Regístrate'));
       await _waitFor(tester, find.text('Registro de Staff'));
-      await _tap(tester, _primaryButton('Crear cuenta'));
+      await _tapButton(tester, _primaryButton('Crear cuenta'));
       await _waitFor(tester, find.text('Escribe tu nombre completo'));
       expect(find.text('Las contraseñas no coinciden'), findsOneWidget);
       await shot('00a_registro_staff_errores');
@@ -94,14 +94,14 @@ void main() {
       );
       await _enter(tester, _fieldWithHint('Mínimo 8 caracteres'), _newPassword);
       await _enter(tester, _fieldWithHint('Repite tu contraseña'), _newPassword);
-      await _tap(tester, _primaryButton('Crear cuenta'));
+      await _tapButton(tester, _primaryButton('Crear cuenta'));
       await _waitFor(
         tester,
         find.text('Solicitud enviada'),
         timeout: const Duration(seconds: 40),
       );
       await shot('00b_solicitud_enviada');
-      await _tap(tester, _primaryButton('Ir a inicio de sesión'));
+      await _tapButton(tester, _primaryButton('Ir a inicio de sesión'));
       await _waitFor(tester, find.text(_signInTitle));
       await _signIn(tester, newStaffEmail, _newPassword);
       await _waitFor(
@@ -145,7 +145,7 @@ void main() {
       );
       await _waitFor(tester, _primaryButton('Aprobar solicitud'));
       expect(find.textContaining('¿Aprobar a $newStaffName'), findsOneWidget);
-      await _tap(tester, _primaryButton('Aprobar solicitud'));
+      await _tapButton(tester, _primaryButton('Aprobar solicitud'));
       await _waitFor(tester, find.text('Solicitud aprobada'));
       await shot('02c_solicitud_aprobada');
       await _tap(tester, find.text('Listo'));
@@ -165,7 +165,7 @@ void main() {
       await _enter(tester, _fieldWithHint('correo@ejemplo.com'), familyEmail);
       await _enter(tester, _passwordField(), _password);
       await shot('03_registrar_cuenta');
-      await _tap(tester, _primaryButton('Crear cuenta'));
+      await _tapButton(tester, _primaryButton('Crear cuenta'));
       await _waitFor(
         tester,
         find.text('Cuenta creada'),
@@ -187,7 +187,7 @@ void main() {
       await _confirmDatePicker(tester, daysAhead: 5);
       await shot('05_entrega_formulario');
 
-      await _tap(tester, _primaryButton('Registrar entrega'));
+      await _tapButton(tester, _primaryButton('Registrar entrega'));
       await _waitFor(tester, find.text('Entrega registrada'));
       await shot('06_entrega_registrada');
       await _tap(tester, find.text('Listo'));
@@ -202,7 +202,7 @@ void main() {
       await _enter(tester, _fieldWithHint('0').last, '1');
       await _tap(tester, find.text('Elige la fecha'));
       await _confirmDatePicker(tester, daysAhead: 5);
-      await _tap(tester, _primaryButton('Registrar entrega'));
+      await _tapButton(tester, _primaryButton('Registrar entrega'));
       await _waitFor(tester, find.text('Entrega registrada'));
       await _tap(tester, find.text('Listo'));
 
@@ -218,7 +218,7 @@ void main() {
         find.textContaining('La entrega programada de $familyName'),
         findsOneWidget,
       );
-      await _tap(tester, _primaryButton('Confirmar reasignación'));
+      await _tapButton(tester, _primaryButton('Confirmar reasignación'));
       await _waitFor(tester, find.text('Selecciona la familia receptora'));
       // La familia que ya tiene la entrega no aparece en la búsqueda.
       // El campo de la hoja (el del formulario de atrás tiene el mismo hint,
@@ -238,7 +238,7 @@ void main() {
       await _waitFor(tester, ramirezOption);
       await shot('07a_reasignar_entrega');
       await _tap(tester, ramirezOption);
-      await _tap(tester, _primaryButton('Confirmar reasignación'));
+      await _tapButton(tester, _primaryButton('Confirmar reasignación'));
       await _waitFor(tester, find.text('Entrega reasignada'));
       await shot('07b_entrega_reasignada');
       await _tap(tester, find.text('Listo'));
@@ -256,7 +256,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      await _tap(tester, _primaryButton('Cancelar entrega'));
+      await _tapButton(tester, _primaryButton('Cancelar entrega'));
       await _waitFor(tester, find.text('Entrega cancelada'));
       await _tap(tester, find.text('Listo'));
       await _waitForCount(tester, find.text('Cancelada'), cancelledBefore + 1);
@@ -266,7 +266,7 @@ void main() {
       await _tap(tester, find.text('Entregar').first);
       await _waitFor(tester, find.text('Entregar despensa'));
       await shot('07_confirmar_entrega');
-      await _tap(tester, _primaryButton('Confirmar entrega'));
+      await _tapButton(tester, _primaryButton('Confirmar entrega'));
       await _waitFor(tester, find.text('Entrega completada'));
       await _tap(tester, find.text('Listo'));
       await shot('08_tabla_entregas');
@@ -282,7 +282,7 @@ void main() {
       await _tap(tester, find.text('¿Olvidaste tu contraseña?'));
       await _waitFor(tester, find.text('Recuperar contraseña'));
       await _enter(tester, find.byType(TextField), familyEmail);
-      await _tap(tester, _primaryButton('Enviar instrucciones'));
+      await _tapButton(tester, _primaryButton('Enviar instrucciones'));
       await _waitFor(tester, find.text('Instrucciones enviadas'));
       await shot('10_instrucciones_enviadas');
       await _tap(tester, find.text('Listo'));
@@ -297,12 +297,12 @@ void main() {
       expect(find.text('Frijol'), findsNothing);
       await shot('11_despensa_familia');
 
-      await _tap(tester, _primaryButton('Registrar consumo'));
+      await _tapButton(tester, _primaryButton('Registrar consumo'));
       await _waitFor(tester, find.text('Buscar producto…'));
       await _tap(tester, find.bySemanticsLabel('Agregar consumo de Arroz'));
       expect(find.text('0.5 kg'), findsOneWidget);
       await shot('12_registrar_consumo');
-      await _tap(tester, _primaryButton('Guardar consumo'));
+      await _tapButton(tester, _primaryButton('Guardar consumo'));
       await _waitFor(tester, find.text('Consumo registrado'));
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.text('Quedan 1.5 kg'));
@@ -319,7 +319,7 @@ void main() {
       await _tap(tester, find.text('Adulto'));
       await _tap(tester, find.text('Gluten'));
       await shot('13_agregar_integrante');
-      await _tap(tester, _primaryButton('Guardar integrante'));
+      await _tapButton(tester, _primaryButton('Guardar integrante'));
       await _waitFor(tester, find.text('Integrante añadido'));
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.text('Alergias: Gluten'));
@@ -331,7 +331,7 @@ void main() {
       await _waitFor(tester, find.text('Editar integrante'));
       await _enter(tester, find.widgetWithText(TextField, '30'), '31');
       await _tap(tester, find.text('Ninguna'));
-      await _tap(tester, _primaryButton('Guardar cambios'));
+      await _tapButton(tester, _primaryButton('Guardar cambios'));
       await _waitFor(tester, find.text('Cambios guardados'));
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.text('31 años'));
@@ -344,7 +344,7 @@ void main() {
       await _enter(tester, _fieldWithHint('0').first, '5');
       await _tap(tester, find.text('Niño'));
       await _tap(tester, find.text('Ninguna'));
-      await _tap(tester, _primaryButton('Guardar integrante'));
+      await _tapButton(tester, _primaryButton('Guardar integrante'));
       await _waitFor(tester, find.text('Integrante añadido'));
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.text('Beto'));
@@ -379,6 +379,51 @@ void main() {
       // 10. La cuenta de staff aprobada en el paso 1 ya puede entrar.
       await _signIn(tester, newStaffEmail, _newPassword);
       await _waitFor(tester, _primaryButton('Registrar entrega'));
+
+      // 11. Catálogo de recetas: alta, edición y borrado. Se borra al final
+      // para que el catálogo quede como estaba.
+      final recipeName = 'Ensalada E2E $stamp';
+      await _tap(tester, find.text('Catálogo de recetas'));
+      await _waitFor(tester, _primaryButton('Nueva receta'));
+      await _tapButton(tester, _primaryButton('Nueva receta'));
+      await _waitFor(tester, find.text('Nueva receta'));
+      await _enter(tester, _fieldWithHint('Ej. Sopa de lentejas'), recipeName);
+      await _enter(tester, _fieldIn('Minutos'), '15');
+      await _enter(tester, _fieldIn('Porciones'), '2');
+      await _enter(tester, _fieldIn('Calorías por porción'), '120');
+      await _enter(tester, _fieldWithHint('Ej. Lenteja'), 'Arroz');
+      await _enter(tester, _fieldWithHint('0'), '0.5');
+      await _enter(
+        tester,
+        _fieldWithHint('Ej. Enjuaga las lentejas y ponlas a cocer.'),
+        'Mezcla todo y sirve.',
+      );
+      await shot('19_nueva_receta');
+      await _tapButton(tester, _primaryButton('Guardar receta'));
+      await _waitFor(tester, find.text('Receta publicada'));
+      await shot('20_receta_publicada');
+      await _tap(tester, find.text('Listo'));
+      await _waitFor(tester, find.text(recipeName));
+      expect(find.text('Publicada'), findsWidgets);
+      await shot('21_catalogo');
+
+      await _tap(tester, find.text('Editar').first);
+      await _waitFor(tester, find.text('Editar receta'));
+      await _enter(tester, _fieldIn('Minutos'), '25');
+      await _tapButton(tester, _primaryButton('Guardar cambios'));
+      await _waitFor(tester, find.text('Cambios guardados'));
+      await _tap(tester, find.text('Listo'));
+      await _waitFor(tester, find.textContaining('25 min'));
+
+      await _tap(tester, find.text('Editar').first);
+      await _waitFor(tester, find.text('Editar receta'));
+      await _tap(tester, find.text('Eliminar receta'));
+      await _waitFor(tester, find.textContaining('¿Eliminar «$recipeName»'));
+      await _tap(tester, find.text('Eliminar'));
+      await _waitFor(tester, find.text('Receta eliminada'));
+      await _tap(tester, find.text('Listo'));
+      await _waitFor(tester, find.text('Aún no hay recetas en el catálogo.'));
+
       await _tap(tester, find.byTooltip('Cuenta'));
       await _waitFor(tester, find.text(newStaffName));
       await shot('18_staff_aprobado');
@@ -420,6 +465,20 @@ Future<void> _waitForCount(
   throw TestFailure('No aparecieron $count: $finder');
 }
 
+/// Toca un botón: primero cierra el teclado, porque con él abierto la
+/// pantalla sigue moviéndose y el toque cae donde el botón ya no está. No se
+/// usa para las opciones del buscador de familias: esa lista se cierra al
+/// perder el foco.
+Future<void> _tapButton(WidgetTester tester, Finder finder) async {
+  final focus = FocusManager.instance.primaryFocus;
+  if (focus != null && focus.hasFocus) {
+    focus.unfocus();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+  await _tap(tester, finder);
+}
+
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await _waitFor(tester, finder);
   await tester.ensureVisible(finder.first);
@@ -441,7 +500,7 @@ Future<void> _enter(WidgetTester tester, Finder finder, String text) async {
 Future<void> _signIn(WidgetTester tester, String email, String password) async {
   await _enter(tester, find.byType(TextField).at(0), email);
   await _enter(tester, find.byType(TextField).at(1), password);
-  await _tap(tester, _primaryButton('Iniciar sesión'));
+  await _tapButton(tester, _primaryButton('Iniciar sesión'));
 }
 
 Future<void> _selectFamily(
@@ -470,6 +529,17 @@ Finder _passwordField() => find.byWidgetPredicate(
 
 Finder _primaryButton(String label) =>
     find.widgetWithText(PrimaryButton, label);
+
+/// El campo de texto dentro del LabeledField con ese título (sirve cuando el
+/// campo ya tiene texto y no se puede buscar por su hint).
+Finder _fieldIn(String label) => find
+    .descendant(
+      of: find.byWidgetPredicate(
+        (widget) => widget is LabeledField && widget.label == label,
+      ),
+      matching: find.byType(TextField),
+    )
+    .first;
 
 /// El campo tocable (fecha) dentro del LabeledField con ese título.
 Finder _pickerIn(String label) => find

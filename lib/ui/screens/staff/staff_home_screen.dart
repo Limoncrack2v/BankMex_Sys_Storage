@@ -16,6 +16,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/coming_soon.dart';
 import '../../widgets/pill.dart';
 import 'deliveries_screen.dart';
+import 'recipe_catalog_screen.dart';
 import 'register_account_sheet.dart';
 import 'staff_requests_sheet.dart';
 
@@ -33,6 +34,9 @@ class StaffHomeScreen extends StatefulWidget {
 
 class _StaffHomeScreenState extends State<StaffHomeScreen> {
   late final Stream<List<StaffRequest>> _pendingRequests;
+
+  /// Pestaña abierta: 0 Entregas, 2 Catálogo de recetas (Estadísticas aún no).
+  int _tab = 0;
 
   AuthSession get _session => widget.session;
 
@@ -96,18 +100,26 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             },
           ),
           Expanded(
-            child: DeliveriesScreen(
-              session: _session,
-              onRegisterAccount: () => showRegisterAccountSheet(context),
-            ),
+            child: switch (_tab) {
+              2 => const RecipeCatalogScreen(),
+              _ => DeliveriesScreen(
+                session: _session,
+                onRegisterAccount: () => showRegisterAccountSheet(context),
+              ),
+            },
           ),
         ],
       ),
       bottomNavigationBar: AppBottomNav(
         items: AppBottomNav.staffItems,
-        currentIndex: 0,
+        currentIndex: _tab,
         onTap: (index) {
-          if (index != 0) showComingSoon(context);
+          // Estadísticas todavía no está.
+          if (index == 1) {
+            showComingSoon(context);
+            return;
+          }
+          if (index != _tab) setState(() => _tab = index);
         },
       ),
     );
