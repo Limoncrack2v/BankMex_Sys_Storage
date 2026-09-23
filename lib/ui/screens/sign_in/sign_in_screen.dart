@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -86,7 +88,9 @@ class _SignInScreenState extends State<SignInScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surface,
+      // El pie se encarga del espacio de abajo (ver AuthFooter).
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             Expanded(
@@ -161,10 +165,19 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        if (_error != null) ...[
-          AuthErrorMessage(_error!),
-          const SizedBox(height: 16),
-        ],
+        // El error aparece y desaparece empujando lo de abajo con una
+        // transición corta, en vez de un salto.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: _error == null
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: AuthErrorMessage(_error!),
+                ),
+        ),
         PrimaryButton(
           label: 'Iniciar sesión',
           loading: _submitting,
@@ -222,9 +235,14 @@ class PasswordToggle extends StatelessWidget {
   }
 }
 
-/// Recuadro rojo con el error de inicio de sesión o de recuperación.
+/// Recuadro rojo con el error de inicio de sesión o de recuperación. El
+/// mensaje va en un solo renglón: si no cabe a 15, baja de tamaño hasta 13
+/// (los mensajes largos, que no caben ni así, sí se acomodan en varios).
 class AuthErrorMessage extends StatelessWidget {
   const AuthErrorMessage(this.message, {super.key});
+
+  /// Tamaños de letra, del preferido al más chico.
+  static const sizes = [15.0, 14.0, 13.0];
 
   final String message;
 
@@ -238,18 +256,59 @@ class AuthErrorMessage extends StatelessWidget {
           color: AppColors.dangerSoft,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Text(
-          message,
-          style: AppText.nunito(
-            15,
-            22.5,
-            weight: FontWeight.w700,
-            color: AppColors.dangerText,
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final scaler = MediaQuery.textScalerOf(context);
+            final size = fittingFontSize(
+              sizes: sizes,
+              available: constraints.maxWidth,
+              measure: (size) => _width(_style(size), scaler),
+            );
+            final oneLine = size != null;
+            return Text(
+              message,
+              maxLines: oneLine ? 1 : null,
+              softWrap: !oneLine,
+              style: _style(size ?? sizes.last),
+            );
+          },
         ),
       ),
     );
   }
+
+  TextStyle _style(double size) => AppText.nunito(
+    size,
+    size * 1.5,
+    weight: FontWeight.w700,
+    color: AppColors.dangerText,
+  );
+
+  double _width(TextStyle style, TextScaler scaler) {
+    final painter = TextPainter(
+      text: TextSpan(text: message, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
+  }
+}
+
+/// El primer tamaño de [sizes] cuyo texto cabe en [available]; null si
+/// ninguno cabe. [measure] regresa el ancho del texto en un renglón.
+double? fittingFontSize({
+  required List<double> sizes,
+  required double available,
+  required double Function(double size) measure,
+}) {
+  if (!available.isFinite) return sizes.first;
+  for (final size in sizes) {
+    if (measure(size) <= available) return size;
+  }
+  return null;
 }
 
 /// "← Volver a inicio de sesión" arriba de las pantallas que se abren desde
@@ -296,7 +355,10 @@ class AuthBackLink extends StatelessWidget {
   }
 }
 
-/// Pie con borde superior de las pantallas de inicio de sesión.
+/// Pie con borde superior de las pantallas de inicio de sesión. Mide lo mismo
+/// que en el diseño (16 arriba, 20 abajo): donde el sistema reserva espacio
+/// abajo (el indicador del iPhone), ese espacio hace de margen en lugar de
+/// sumarse.
 class AuthFooter extends StatelessWidget {
   const AuthFooter(this.text, {super.key});
 
@@ -304,9 +366,11 @@ class AuthFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final systemBottom = MediaQuery.paddingOf(context).bottom;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, math.max(20, systemBottom)),
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.border)),
       ),

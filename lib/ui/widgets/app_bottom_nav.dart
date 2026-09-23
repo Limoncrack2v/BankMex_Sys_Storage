@@ -82,11 +82,15 @@ class AppBottomNav extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+          padding: const EdgeInsets.only(top: 8, bottom: 12),
           child: Center(
             heightFactor: 1,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 368),
+              // Cada opción ocupa la misma fracción del ancho, así que los
+              // íconos quedan repartidos parejo y a la misma distancia de
+              // las orillas. El tope solo evita que se estiren en una
+              // pantalla ancha (web o tableta).
+              constraints: const BoxConstraints(maxWidth: 640),
               child: Row(
                 children: [
                   for (var i = 0; i < items.length; i++)

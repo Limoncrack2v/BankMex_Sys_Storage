@@ -67,7 +67,11 @@ void main() {
           await binding.convertFlutterSurfaceToImage();
           surfaceConverted = true;
         }
-        await tester.pump(const Duration(milliseconds: 500));
+        // Varios frames: la captura toma lo último dibujado, y una animación
+        // recién empezada (o un SVG que apenas cargó) saldría a medias.
+        for (var i = 0; i < 4; i++) {
+          await tester.pump(const Duration(milliseconds: 300));
+        }
         await binding.takeScreenshot(name);
       }
 
@@ -419,8 +423,6 @@ Future<void> _waitForCount(
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await _waitFor(tester, finder);
   await tester.ensureVisible(finder.first);
-  // Dos pumps: con el teclado abriéndose, el widget sigue moviéndose y el
-  // toque caería donde ya no está.
   await tester.pump(const Duration(milliseconds: 300));
   await tester.pump(const Duration(milliseconds: 300));
   await tester.tap(finder.first);
