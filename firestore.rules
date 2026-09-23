@@ -140,6 +140,10 @@ service cloud.firestore {
           && validMember(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
       }
+
+      match /consumptionLogs/{logId} {
+        allow read, write: if canAccessFamily(familyId);
+      }
     }
 
     // Entregas registradas por el staff. Cuando una queda como entregada, la
@@ -197,6 +201,17 @@ service cloud.firestore {
       // Solo el staff crea perfiles (así nadie puede asignarse el rol staff).
       allow create: if isStaff() && validUserProfile(request.resource.data);
       allow read: if request.auth != null && userId == request.auth.uid;
+    }
+
+    // Catálogo global. El staff publica y edita; la familia solo lee approved.
+    match /recipes/{recipeId} {
+      allow read: if isStaff()
+        || (request.auth != null && resource.data.status == 'approved');
+      allow create, update, delete: if isStaff();
+    }
+    match /mealPlans/{planId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
   }
 }

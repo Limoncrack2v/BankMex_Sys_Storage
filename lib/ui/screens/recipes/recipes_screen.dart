@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/catalog_source.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../data/repositories/member_repository.dart';
@@ -51,6 +52,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
   RecipeFilter _filter = RecipeFilter.conLoQueTengo;
   late Stream<List<PantryItem>> _pantry;
   late Stream<List<Member>> _members;
+  late Stream<List<Recipe>> _catalog;
 
   @override
   void initState() {
@@ -67,6 +69,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
   void _watch() {
     _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
     _members = MemberRepository().watchAllMembers(widget.familyId);
+    _catalog = watchApprovedCatalogRecipes();
   }
 
   @override
@@ -77,16 +80,26 @@ class _RecipesScreenState extends State<RecipesScreen> {
         Expanded(
           // Mientras cargan los integrantes (o si fallan) las recetas se
           // muestran con sus porciones originales y sin revisar alergias.
-          child: StreamBuilder<List<Member>>(
-            stream: _members,
-            builder: (context, members) => StreamBuilder<List<PantryItem>>(
-              stream: _pantry,
-              builder: (context, pantry) => _buildList(
-                context,
-                pantry,
-                members.hasError ? const [] : members.data ?? const [],
-              ),
-            ),
+          child: StreamBuilder<List<Recipe>>(
+            stream: _catalog,
+            builder: (context, catalog) {
+              final recipes =
+                  catalog.hasData && catalog.data!.isNotEmpty
+                      ? catalog.data!
+                      : widget.recipes;
+              return StreamBuilder<List<Member>>(
+                stream: _members,
+                builder: (context, members) => StreamBuilder<List<PantryItem>>(
+                  stream: _pantry,
+                  builder: (context, pantry) => _buildList(
+                    context,
+                    pantry,
+                    members.hasError ? const [] : members.data ?? const [],
+                    recipes,
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],
@@ -97,6 +110,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
     BuildContext context,
     AsyncSnapshot<List<PantryItem>> snapshot,
     List<Member> members,
+    List<Recipe> recipes,
   ) {
     final pantry = snapshot.hasError ? null : snapshot.data;
     final loading = pantry == null && !snapshot.hasError;
@@ -105,7 +119,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
 
     final visible = <_VisibleRecipe>[];
     if (!needsPantry) {
-      for (final recipe in widget.recipes) {
+      for (final recipe in recipes) {
         // Porciones para el número de integrantes del hogar.
         final scaled = scaledRecipe(recipe, members.length);
         final missing = pantry == null
