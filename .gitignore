@@ -57,6 +57,7 @@ firebase.json
 # Emulador
 firestore-debug.log
 ui-debug.log
+/exported-dev-data
 
 # Android signing
 **/android/key.properties
