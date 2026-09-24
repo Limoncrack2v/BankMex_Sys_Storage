@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -356,21 +354,26 @@ class AuthBackLink extends StatelessWidget {
 }
 
 /// Pie con borde superior de las pantallas de inicio de sesión. Mide lo mismo
-/// que en el diseño (16 arriba, 20 abajo): donde el sistema reserva espacio
-/// abajo (el indicador del iPhone), ese espacio hace de margen en lugar de
-/// sumarse.
+/// que en el diseño (16 arriba, 20 abajo, pegado al borde de la pantalla).
+/// Una barra de gestos (el indicador del iPhone, 34) solo ocupa sus ~13 de
+/// abajo, así que los 20 del diseño ya la libran y el texto no se sube. Una
+/// barra de botones (Android, 48) sí tapa, y ahí se respeta completa.
 class AuthFooter extends StatelessWidget {
   const AuthFooter(this.text, {super.key});
 
   final String text;
 
+  /// Espacio de abajo más alto que todavía es una barra de gestos.
+  static const double _gestureBarInset = 34;
+
   @override
   Widget build(BuildContext context) {
     final systemBottom = MediaQuery.paddingOf(context).bottom;
+    final bottom = systemBottom <= _gestureBarInset ? 20.0 : systemBottom;
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(24, 16, 24, math.max(20, systemBottom)),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, bottom),
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.border)),
       ),

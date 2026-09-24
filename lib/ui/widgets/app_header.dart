@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../connection_status.dart';
@@ -18,8 +20,19 @@ class AppHeader extends StatelessWidget {
   final Widget trailing;
   final double horizontalPadding;
 
+  /// Distancia del borde de la pantalla al contenido en el diseño (24 de
+  /// barra de estado + 32).
+  static const double contentTop = 56;
+
   @override
   Widget build(BuildContext context) {
+    // Donde el sistema ya reserva eso o más arriba (la Dynamic Island), no
+    // se agrega nada encima; el SafeArea se queda para no tapar la barra.
+    final topPadding = math.max(
+      0.0,
+      contentTop - MediaQuery.paddingOf(context).top,
+    );
+
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
@@ -30,7 +43,7 @@ class AppHeader extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             horizontalPadding,
-            32,
+            topPadding,
             horizontalPadding,
             16,
           ),

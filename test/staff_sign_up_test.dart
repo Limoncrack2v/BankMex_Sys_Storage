@@ -166,4 +166,65 @@ void main() {
       'rejected',
     ]);
   });
+
+  testWidgets('el regreso va pegado al logo y el pie a 20 del borde', (
+    WidgetTester tester,
+  ) async {
+    // Pantalla alta: el formulario cabe y se centra.
+    const size = Size(402, 1400);
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(bottom: 34);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(theme: AppTheme.light, home: const StaffSignUpScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    final backLink = tester.getRect(find.byType(AuthBackLink));
+    // El recorte del logo, no el SVG completo (que empieza 30 más arriba).
+    final logo = tester.getRect(
+      find
+          .ancestor(
+            of: find.bySemanticsLabel('Banco de Alimentos BAMX Guadalajara'),
+            matching: find.byType(ClipRect),
+          )
+          .first,
+    );
+    expect(logo.top - backLink.bottom, closeTo(48, 0.5));
+    expect(logo.height, closeTo(130, 0.5));
+
+    final notice = tester.getRect(
+      find.textContaining('Usa tu correo institucional'),
+    );
+    expect(size.height - notice.bottom, closeTo(20, 0.5));
+  });
+
+  group('el enlace de regreso queda a 56 del borde o bajo la barra', () {
+    Future<double> backLinkTop(WidgetTester tester, double systemTop) async {
+      tester.view.physicalSize = const Size(402, 874);
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = FakeViewPadding(top: systemTop);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(theme: AppTheme.light, home: const StaffSignUpScreen()),
+      );
+      await tester.pumpAndSettle();
+      return tester.getRect(find.byType(AuthBackLink)).top;
+    }
+
+    testWidgets('sin barra de estado (web): 56 como en el diseño', (
+      tester,
+    ) async {
+      expect(await backLinkTop(tester, 0), closeTo(56, 0.5));
+    });
+
+    testWidgets('con Dynamic Island (62): justo debajo, sin padding extra', (
+      tester,
+    ) async {
+      expect(await backLinkTop(tester, 62), closeTo(62, 0.5));
+    });
+  });
 }
