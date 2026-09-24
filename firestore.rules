@@ -81,16 +81,16 @@ service cloud.firestore {
         && next.items == original.items;
     }
 
-    // Trazabilidad offline: si vienen, deben tener el tipo correcto. Son
-    // opcionales para no romper versiones viejas de la app.
+    // Trazabilidad offline: requerida en cada escritura. Los documentos viejos
+    // sin estampa se validan hasta que se vuelven a escribir.
     function validTrace(data) {
-      return (!('deviceId' in data) || (data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 64))
-        && (!('localTimestamp' in data) || (data.localTimestamp is timestamp && data.localTimestamp <= request.time + duration.value(5, 'm')));
+      return (data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 64)
+        && (data.localTimestamp is timestamp && data.localTimestamp <= request.time + duration.value(5, 'm'));
     }
 
     function validDelivery(data) {
       return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom', 'deviceId', 'localTimestamp'])
-        && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt'])
+        && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt', 'deviceId', 'localTimestamp'])
         && data.familyId is string
         && exists(/databases/$(database)/documents/families/$(data.familyId))
         && data.familyName is string && data.familyName.size() <= 100
@@ -175,6 +175,7 @@ service cloud.firestore {
       allow update: if isStaff()
         && resource.data.status == 'scheduled'
         && validTrace(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny(['localTimestamp'])
         && ((request.resource.data.status in ['delivered', 'cancelled']
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deviceId', 'localTimestamp']))
           || (request.resource.data.status == 'reassigned'
