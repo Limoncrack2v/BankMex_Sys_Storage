@@ -7,7 +7,7 @@ void main() {
 
   test('generates a 32-character hexadecimal ID', () async {
     final id = await DeviceIdentity().id;
-    expect(id, matches(RegExp(r'^[0-9a-f]{32}')));
+    expect(id, matches(RegExp(r'^[0-9a-f]{32}$')));
   });
 
   test('returns the same ID on every call', () async {

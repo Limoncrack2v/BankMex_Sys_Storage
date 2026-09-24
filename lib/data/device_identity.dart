@@ -4,7 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Id aleatorio de esta instalación de la app (no del hardware, por
 /// privacidad). Se guarda en el dispositivo; reinstalar la app genera uno
-/// nuevo (esto hace que se pierda la cola offline de Firestore).
+/// nuevo, igual que se pierde la cola offline de Firestore.
+
 class DeviceIdentity {
   static final instance = DeviceIdentity();
 
