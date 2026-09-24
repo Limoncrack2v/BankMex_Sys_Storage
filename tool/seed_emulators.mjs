@@ -2,7 +2,7 @@
 // (proyecto bank-storage-bamx). No toca el proyecto real.
 //
 // Uso (Node 18 o más reciente, sin dependencias):
-//   1. firebase emulators:start --only auth,firestore,functions
+//   1. firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data
 //   2. node tool/seed_emulators.mjs
 //
 // Se puede correr las veces que sea: reutiliza las cuentas si ya existen y
@@ -128,7 +128,7 @@ async function checkEmulators() {
   if (missing.length) {
     throw new SeedError(
       `No se encontraron los emuladores de Firebase: ${missing.join(', ')}.\n` +
-        'Inícialos primero con: firebase emulators:start --only auth,firestore,functions',
+        'Inícialos primero con: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
     );
   }
 }
@@ -418,7 +418,7 @@ async function seed() {
     console.warn(
       `Aviso: no se encontró el emulador de Functions (${FUNCTIONS_HOST}). Sin él, las entregas no ` +
         'agregan productos a la despensa. Inicia los emuladores con: ' +
-        'firebase emulators:start --only auth,firestore,functions',
+        'firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
     );
   }
   if (duplicates.length) {

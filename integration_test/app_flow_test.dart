@@ -2,7 +2,7 @@
 //
 // Requisitos (en otra terminal, desde la raíz del proyecto):
 //   npm --prefix functions install          (una vez)
-//   firebase emulators:start --only auth,firestore,functions
+//   firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data
 //   node tool/seed_emulators.mjs            (antes de cada corrida)
 //
 // El emulador de Functions es obligatorio: la Cloud Function

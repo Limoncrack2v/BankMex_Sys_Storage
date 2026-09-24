@@ -6,7 +6,7 @@
 // emulador de Functions solo escucha ese proyecto; por eso NO borra la base,
 // usa ids propios de cada corrida y limpia lo suyo al terminar.
 //
-// Requisitos: firebase emulators:start --only auth,firestore,functions
+// Requisitos: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/emulator.dart';

@@ -307,7 +307,7 @@ Future<void> requireEmulator() async {
   } catch (_) {
     throw StateError(
       'No se encontró el emulador de Firestore en $_firestoreHost.\n'
-      'Inícialo con: firebase emulators:start --only auth,firestore,functions',
+      'Inícialo con: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
     );
   } finally {
     client.close();
