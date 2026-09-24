@@ -81,8 +81,15 @@ service cloud.firestore {
         && next.items == original.items;
     }
 
+    // Trazabilidad offline: si vienen, deben tener el tipo correcto. Son
+    // opcionales para no romper versiones viejas de la app.
+    function validTrace(data) {
+      return (!('deviceId' in data) || (data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 64))
+        && (!('localTimestamp' in data) || (data.localTimestamp is timestamp && data.localTimestamp <= request.time + duration.value(5, 'm')));
+    }
+
     function validDelivery(data) {
-      return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom'])
+      return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom', 'deviceId', 'localTimestamp'])
         && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt'])
         && data.familyId is string
         && exists(/databases/$(database)/documents/families/$(data.familyId))
@@ -96,7 +103,8 @@ service cloud.firestore {
         && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
         && data.createdAt is timestamp
         && (!('reassignedFrom' in data) || (data.reassignedFrom is string
-          && data.reassignedFrom.size() > 0 && data.reassignedFrom.size() <= 128));
+          && data.reassignedFrom.size() > 0 && data.reassignedFrom.size() <= 128))
+        && validTrace(data);
     }
 
     match /families/{familyId} {
@@ -166,10 +174,11 @@ service cloud.firestore {
       // dos dispositivos y duplicar los productos en la despensa.
       allow update: if isStaff()
         && resource.data.status == 'scheduled'
+        && validTrace(request.resource.data)
         && ((request.resource.data.status in ['delivered', 'cancelled']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deviceId', 'localTimestamp']))
           || (request.resource.data.status == 'reassigned'
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reassignedTo'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reassignedTo', 'deviceId', 'localTimestamp'])
             && request.resource.data.reassignedTo is string
             && validReassignment(deliveryId, request.resource.data.reassignedTo, resource.data)));
     }
