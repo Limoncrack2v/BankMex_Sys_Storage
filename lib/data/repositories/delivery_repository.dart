@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../device_identity.dart';
 import '../models/delivery.dart';
 import '../models/family.dart';
 
@@ -11,7 +12,11 @@ typedef DeliveryWithSync = ({Delivery delivery, bool pendingSync});
 /// queda como entregada, la Cloud Function onDeliveryWritten
 /// (functions/index.js) agrega sus productos a families/{familyId}/pantryItems.
 class DeliveryRepository {
+  DeliveryRepository({DeviceIdentity? deviceIdentity})
+    : _device = deviceIdentity ?? DeviceIdentity.instance;
+
   final _db = FirebaseFirestore.instance;
+  final DeviceIdentity _device;
 
   CollectionReference<Map<String, dynamic>> get _deliveries =>
       _db.collection('deliveries');
@@ -26,6 +31,12 @@ class DeliveryRepository {
     }
   }
 
+  /// Quién (instalación) y cuándo (reloj del dispositivo) hizo la escritura.
+  Future<Map<String, Object>> _trace() async => {
+    'deviceId': await _device.id,
+    'localTimestamp': Timestamp.fromDate(DateTime.now()),
+  };
+
   /// Registra la entrega y regresa su id. Si se registra como entregada, la
   /// Cloud Function agrega sus productos a la despensa de la familia (con
   /// este mismo deliveryId).
@@ -39,8 +50,9 @@ class DeliveryRepository {
       );
     }
 
+    final trace = await _trace();
     final ref = _deliveries.doc();
-    await ref.set(delivery.toFirestore());
+    await ref.set({...delivery.toFirestore(), ...trace});
     return ref.id;
   }
 
@@ -56,8 +68,10 @@ class DeliveryRepository {
     }
 
     final now = DateTime.now();
+    final trace = await _trace();
     await _deliveries.doc(delivery.deliveryId).update({
       'status': DeliveryStatus.delivered.name,
+      ...trace,
     });
     return delivery.items.where((item) => item.isExpiredOn(now)).length;
   }
@@ -91,10 +105,12 @@ class DeliveryRepository {
     );
 
     final batch = _db.batch();
-    batch.set(newRef, reassigned.toFirestore());
+    final trace = await _trace();
+    batch.set(newRef, {...reassigned.toFirestore(), ...trace});
     batch.update(_deliveries.doc(delivery.deliveryId), {
       'status': DeliveryStatus.reassigned.name,
       'reassignedTo': newRef.id,
+      ...trace,
     });
     await batch.commit();
     return newRef.id;
@@ -105,8 +121,11 @@ class DeliveryRepository {
     if (delivery.status != DeliveryStatus.scheduled) {
       throw StateError('Solo se pueden cancelar entregas programadas');
     }
+
+    final trace = await _trace();
     await _deliveries.doc(delivery.deliveryId).update({
       'status': DeliveryStatus.cancelled.name,
+      ...trace,
     });
   }
 
@@ -133,9 +152,8 @@ class DeliveryRepository {
           );
         }
       }
-      return byId.values.toList()..sort(
-        (a, b) => b.delivery.createdAt.compareTo(a.delivery.createdAt),
-      );
+      return byId.values.toList()
+        ..sort((a, b) => b.delivery.createdAt.compareTo(a.delivery.createdAt));
     });
   }
 
@@ -144,8 +162,7 @@ class DeliveryRepository {
     Stream<QuerySnapshot<Map<String, dynamic>>> first,
     Stream<QuerySnapshot<Map<String, dynamic>>> second,
   ) {
-    late StreamController<List<QuerySnapshot<Map<String, dynamic>>>>
-    controller;
+    late StreamController<List<QuerySnapshot<Map<String, dynamic>>>> controller;
     QuerySnapshot<Map<String, dynamic>>? a;
     QuerySnapshot<Map<String, dynamic>>? b;
     final subscriptions = <StreamSubscription<Object?>>[];
