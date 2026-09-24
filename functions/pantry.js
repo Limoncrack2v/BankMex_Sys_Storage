@@ -91,7 +91,6 @@ function pantryItemsFor(delivery, deliveryId, deliveredAt) {
         quantity: item.quantity,
         unit: item.unit,
         daysUntilExpiration: days,
-        synchronized: true,
         deviceId: DEVICE_ID,
         localTimestamp: deliveredAt,
       },

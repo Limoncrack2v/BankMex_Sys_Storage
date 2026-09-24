@@ -279,7 +279,6 @@ function pantryItemFields([productId, type, quantity, unit, days], now) {
     quantity: dbl(quantity),
     unit: str(unit),
     daysUntilExpiration: int(days),
-    synchronized: bool(true),
     deviceId: str(DEVICE_ID),
     localTimestamp: ts(now),
   };

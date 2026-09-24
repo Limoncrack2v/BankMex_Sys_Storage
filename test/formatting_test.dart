@@ -15,7 +15,6 @@ PantryItem buildItem({
   quantity: 2,
   unit: FoodUnit.l,
   daysUntilExpiration: daysUntilExpiration,
-  synchronized: true,
   deviceId: 'device-1',
   localTimestamp: localTimestamp,
 );

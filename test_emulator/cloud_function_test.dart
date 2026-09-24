@@ -124,7 +124,7 @@ void main() {
       expect(fieldValue(arroz, 'quantity'), 2);
       expect(fieldValue(arroz, 'unit'), 'kg');
       expect(fieldValue(arroz, 'daysUntilExpiration'), 5);
-      expect(fieldValue(arroz, 'synchronized'), true);
+      expect(arroz.containsKey('synchronized'), isFalse);
       expect(fieldValue(arroz, 'deviceId'), 'cloud-function');
       expect(arroz['localTimestamp'], isNotNull);
 

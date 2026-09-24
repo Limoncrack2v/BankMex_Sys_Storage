@@ -45,7 +45,6 @@ Map<String, Map<String, Object?>> pantryItem([
   'quantity': integer(2),
   'unit': str('kg'),
   'daysUntilExpiration': integer(30),
-  'synchronized': boolean(true),
   'deviceId': str('dev'),
   'localTimestamp': now(),
   ...extra,

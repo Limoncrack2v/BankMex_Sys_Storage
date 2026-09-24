@@ -24,7 +24,6 @@ PantryItem item(
   quantity: quantity,
   unit: unit,
   daysUntilExpiration: days,
-  synchronized: true,
   deviceId: 'device-test',
   localTimestamp: registered ?? today,
 );
