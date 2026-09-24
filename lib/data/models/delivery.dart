@@ -58,9 +58,11 @@ class DeliveryItem {
 
   /// Si ya caducó en la fecha [date] (el mismo día aún no cuenta). La Cloud
   /// Function usa la misma regla para no agregarlo a la despensa.
-  bool isExpiredOn(DateTime date) =>
-      DateTime(expirationDate.year, expirationDate.month, expirationDate.day)
-          .isBefore(DateTime(date.year, date.month, date.day));
+  bool isExpiredOn(DateTime date) => DateTime(
+    expirationDate.year,
+    expirationDate.month,
+    expirationDate.day,
+  ).isBefore(DateTime(date.year, date.month, date.day));
 }
 
 class Delivery {
@@ -91,6 +93,14 @@ class Delivery {
   /// escribe DeliveryRepository.reassignDelivery (nunca toFirestore).
   final String? reassignedTo;
 
+  /// Id de la instalación de la app (DeviceIdentity) que hizo la última
+  /// escritura. Solo lo escribe DeliveryRepository (nunca toFirestore).
+  final String? deviceId;
+
+  //// Cuándo realmente se realizo un cambio del estado de una entrega.
+  /// Se hace utilizando el reloj del dispositivo.
+  final DateTime? localTimestamp;
+
   Delivery({
     required this.deliveryId,
     required this.familyId,
@@ -105,6 +115,8 @@ class Delivery {
     required this.createdAt,
     this.reassignedFrom,
     this.reassignedTo,
+    this.deviceId,
+    this.localTimestamp,
   });
 
   bool get isExempt => recoveryFee == null;
@@ -128,6 +140,8 @@ class Delivery {
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       reassignedFrom: data['reassignedFrom'] as String?,
       reassignedTo: data['reassignedTo'] as String?,
+      deviceId: data['deviceId'] as String?,
+      localTimestamp: (data['localTimestamp'] as Timestamp?)?.toDate(),
     );
   }
 

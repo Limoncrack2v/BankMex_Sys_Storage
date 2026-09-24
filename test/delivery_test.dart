@@ -195,6 +195,26 @@ void main() {
       expect(reassigned['reassignedFrom'], 'original');
       expect(reassigned.containsKey('reassignedTo'), isFalse);
     });
+
+    test('never writes deviceId or localTimestamp (the repository does)', () {
+      final delivery = Delivery(
+        deliveryId: '',
+        familyId: 'familia-1',
+        familyName: 'Familia Ramírez',
+        deliveryDate: DateTime(2026, 9, 25),
+        packages: 1,
+        status: DeliveryStatus.scheduled,
+        items: [buildItem()],
+        createdAt: DateTime(2026, 9, 21),
+        deviceId: 'device-1',
+        localTimestamp: DateTime(2026, 9, 21, 10),
+      );
+
+      final data = delivery.toFirestore();
+
+      expect(data.containsKey('deviceId'), isFalse);
+      expect(data.containsKey('localTimestamp'), isFalse);
+    });
   });
 
   group('DeliveryItem.isExpiredOn', () {

@@ -393,4 +393,40 @@ void main() {
       );
     });
   });
+
+  group('trazabilidad offline', () {
+    test('staff registra entrega con deviceId y localTimestamp', () async {
+      await assertAllowed(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({'deviceId': str('abc123'), 'localTimestamp': now()}),
+        ),
+      );
+    });
+
+    test('deviceId que no es texto rechazado', () async {
+      await assertDenied(
+        staff().setDoc('deliveries/new', delivery({'deviceId': integer(5)})),
+      );
+    });
+
+    test('staff marca como entregada con trazabilidad', () async {
+      await assertAllowed(
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          'deviceId': str('abc123'),
+          'localTimestamp': now(),
+        }),
+      );
+    });
+
+    test('al entregar, deviceId inválido rechazado', () async {
+      await assertDenied(
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          'deviceId': integer(5),
+        }),
+      );
+    });
+  });
 }
