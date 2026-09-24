@@ -64,10 +64,17 @@ App de Flutter para BAMX Guadalajara. Las familias ven su despensa, recetas, pla
 En **debug** (`flutter run`) la app usa los emuladores de Firebase (Auth 9099, Firestore 8080, Functions 5001) y **no** toca los datos reales.
 
 ```sh
-firebase emulators:start --only auth,firestore,functions   # en otra terminal
+# en otra terminal
+firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data
 node tool/seed_emulators.mjs                               # datos de prueba
 flutter run
 ```
+
+Los datos de los emuladores (cuentas de Auth y documentos de Firestore) se guardan en `exported-dev-data/` al cerrarlos con `Ctrl+C` y se vuelven a cargar al iniciarlos, así no hay que correr el seed cada vez. Si se cierran de golpe (se mata el proceso o se apaga la computadora) no se guarda lo de esa sesión.
+
+- La primera vez la carpeta no existe: los emuladores inician vacíos y se crea al cerrarlos.
+- Para empezar de cero, cierra los emuladores y borra `exported-dev-data/`.
+- Está en `.gitignore` y **nunca** se sube al repo: incluye las cuentas de Auth del emulador.
 
 Cuentas de prueba del seed (contraseña `bamx1234`):
 
