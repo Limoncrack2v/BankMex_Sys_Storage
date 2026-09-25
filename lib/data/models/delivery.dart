@@ -94,11 +94,16 @@ class Delivery {
   final String? reassignedTo;
 
   /// Id de la instalación de la app (DeviceIdentity) que hizo la última
-  /// escritura. Solo lo escribe DeliveryRepository (nunca toFirestore).
+  /// escritura. Solo lo escribe DeliveryRepository (nunca toFirestore); las
+  /// reglas lo exigen en cada escritura. Es null en una entrega que aún no se
+  /// guarda (el formulario del staff) o que no se ha vuelto a escribir desde
+  /// antes de existir la estampa.
   final String? deviceId;
 
-  //// Cuándo realmente se realizo un cambio del estado de una entrega.
-  /// Se hace utilizando el reloj del dispositivo.
+  /// Cuándo se hizo la última escritura (registrar o cambiar el estado), con
+  /// el reloj del dispositivo: si se guardó sin conexión, es la hora real y no
+  /// la de sincronización. Al marcarla como entregada, la Cloud Function la usa
+  /// como hora de entrega de los productos. Mismas reglas que [deviceId].
   final DateTime? localTimestamp;
 
   Delivery({

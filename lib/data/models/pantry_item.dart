@@ -22,8 +22,19 @@ class PantryItem {
   final FoodType type;
   final double quantity;
   final FoodUnit unit;
+  /// Días de [localTimestamp] a la caducidad (no cambia con el tiempo; los
+  /// días que quedan hoy se calculan en ui/formatting.dart).
   final int daysUntilExpiration;
+
+  /// Instalación del staff que marcó la entrega (su deviceId), o
+  /// 'cloud-function' si la entrega no tenía estampa.
   final String deviceId;
+
+  /// Cuándo recibió la familia el producto: la hora de entrega según el
+  /// dispositivo del staff, o la del servidor si no es creíble. La escribe una
+  /// vez la Cloud Function al crear el producto y ningún cliente la cambia.
+  /// El estado de sincronización no se guarda aquí: sale de
+  /// metadata.hasPendingWrites de Firestore.
   final DateTime localTimestamp;
 
   PantryItem({
