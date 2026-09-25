@@ -17,7 +17,6 @@ PantryItem buildItem({
   quantity: quantity,
   unit: FoodUnit.kg,
   daysUntilExpiration: daysUntilExpiration,
-  synchronized: true,
   deviceId: deviceId,
   localTimestamp: DateTime(2026, 9, 21),
 );
@@ -79,7 +78,6 @@ void main() {
         'quantity',
         'unit',
         'daysUntilExpiration',
-        'synchronized',
         'deviceId',
         'localTimestamp',
       });

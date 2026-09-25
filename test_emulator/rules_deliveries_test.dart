@@ -45,7 +45,6 @@ Map<String, Map<String, Object?>> pantryItem([
   'quantity': integer(2),
   'unit': str('kg'),
   'daysUntilExpiration': integer(30),
-  'synchronized': boolean(true),
   'deviceId': str('dev'),
   'localTimestamp': now(),
   ...extra,
@@ -69,8 +68,15 @@ Map<String, Map<String, Object?>> delivery([
   'status': str('scheduled'),
   'items': arr([mapValue(deliveryItem)]),
   'createdAt': now(),
+  'deviceId': str('dev-1'),
+  'localTimestamp': now(),
   ...extra,
 };
+
+/// Estampa nueva para actualización:
+/// la regla exige que localTimestamp cambie;
+/// no usar now(), que es la fecha fija con la que se creó del1.
+Map<String, Object?> restamp() => {'localTimestamp': ts(DateTime.now())};
 
 // Sesiones usadas en estos grupos.
 Db staff() => Db.user('staff1');
@@ -168,46 +174,73 @@ void main() {
 
     test('staff marca como entregada', () async {
       await assertAllowed(
-        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
     });
 
     test('cambiar la familia de una entrega rechazado', () async {
       await assertDenied(
-        staff().updateDoc('deliveries/del1', {'familyId': str('famB')}),
+        staff().updateDoc('deliveries/del1', {
+          'familyId': str('famB'),
+          ...restamp(),
+        }),
       );
     });
 
     test('no se puede marcar como entregada dos veces', () async {
       await assertAllowed(
-        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
       await assertDenied(
-        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
     });
 
     test('una entregada no regresa a programada', () async {
       await assertAllowed(
-        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
       await assertDenied(
-        staff().updateDoc('deliveries/del1', {'status': str('scheduled')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('scheduled'),
+          ...restamp(),
+        }),
       );
     });
 
     test('staff cancela una programada', () async {
       await assertAllowed(
-        staff().updateDoc('deliveries/del1', {'status': str('cancelled')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('cancelled'),
+          ...restamp(),
+        }),
       );
     });
 
     test('una cancelada no se entrega', () async {
       await assertAllowed(
-        staff().updateDoc('deliveries/del1', {'status': str('cancelled')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('cancelled'),
+          ...restamp(),
+        }),
       );
       await assertDenied(
-        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
     });
 
@@ -216,6 +249,7 @@ void main() {
         staff().updateDoc('deliveries/del1', {
           'status': str('delivered'),
           'notes': str('x'),
+          ...restamp(),
         }),
       );
     });
@@ -247,7 +281,10 @@ void main() {
     test('ni al marcarla como entregada', () async {
       await assertDenied(
         staff().commit([
-          updateWrite('deliveries/del1', {'status': str('delivered')}),
+          updateWrite('deliveries/del1', {
+            'status': str('delivered'),
+            ...restamp(),
+          }),
           setWrite(
             'families/famA/pantryItems/p8',
             pantryItem({'deliveryId': str('del1')}),
@@ -273,6 +310,7 @@ void main() {
         staff().updateDoc('deliveries/del1', {
           'status': str('delivered'),
           'pantryStockedAt': now(),
+          ...restamp(),
         }),
       );
     });
@@ -299,6 +337,7 @@ void main() {
       updateWrite('deliveries/del1', {
         'status': str('reassigned'),
         'reassignedTo': str('re1'),
+        ...restamp(),
         ...original,
       }),
     ]);
@@ -352,6 +391,7 @@ void main() {
         staff().updateDoc('deliveries/del1', {
           'status': str('reassigned'),
           'reassignedTo': str('re1'),
+          ...restamp(),
         }),
       );
     });
@@ -374,7 +414,10 @@ void main() {
 
     test('una entregada no se reasigna', () async {
       await assertAllowed(
-        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
       await assertDenied(reassign(staff()));
     });
@@ -382,14 +425,20 @@ void main() {
     test('una reasignada ya no cambia de estado', () async {
       await assertAllowed(reassign(staff()));
       await assertDenied(
-        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
     });
 
     test('la nueva se puede entregar después', () async {
       await assertAllowed(reassign(staff()));
       await assertAllowed(
-        staff().updateDoc('deliveries/re1', {'status': str('delivered')}),
+        staff().updateDoc('deliveries/re1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
       );
     });
   });
@@ -415,7 +464,7 @@ void main() {
         staff().updateDoc('deliveries/del1', {
           'status': str('delivered'),
           'deviceId': str('abc123'),
-          'localTimestamp': now(),
+          'localTimestamp': ts(DateTime.now()),
         }),
       );
     });
@@ -425,6 +474,34 @@ void main() {
         staff().updateDoc('deliveries/del1', {
           'status': str('delivered'),
           'deviceId': integer(5),
+          ...restamp(),
+        }),
+      );
+    });
+
+    test('entrega sin deviceId rechazada', () async {
+      await assertDenied(
+        staff().setDoc('deliveries/new', delivery()..remove('deviceId')),
+      );
+    });
+
+    test('entrega sin localTimestamp rechazada', () async {
+      await assertDenied(
+        staff().setDoc('deliveries/new', delivery()..remove('localTimestamp')),
+      );
+    });
+
+    test('al entregar sin estampa rechazado', () async {
+      await assertDenied(
+        staff().updateDoc('deliveries/del1', {'status': str('delivered')}),
+      );
+    });
+
+    test('al entregar con el mismo localTimestamp rechazado', () async {
+      await assertDenied(
+        staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          'localTimestamp': now(),
         }),
       );
     });

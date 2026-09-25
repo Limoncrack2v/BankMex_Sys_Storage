@@ -271,17 +271,19 @@ function memberFields(member, createdAt) {
   };
 }
 
-function pantryItemFields([productId, type, quantity, unit, days], now) {
+// localTimestamp es cuándo recibió la familia el producto (la entrega
+// seed-delivery-1, hace [daysAgo] días) y daysUntilExpiration se cuenta desde
+// ese día, igual que en la Cloud Function; así caduca [days] días después de hoy.
+function pantryItemFields([productId, type, quantity, unit, days], receivedAt, daysAgo) {
   return {
     productId: str(productId),
     deliveryId: str('seed-delivery-1'),
     type: str(type),
     quantity: dbl(quantity),
     unit: str(unit),
-    daysUntilExpiration: int(days),
-    synchronized: bool(true),
+    daysUntilExpiration: int(days + daysAgo),
     deviceId: str(DEVICE_ID),
-    localTimestamp: ts(now),
+    localTimestamp: ts(receivedAt),
   };
 }
 
@@ -336,14 +338,15 @@ async function seed() {
     );
   }
 
+  const deliveredDaysAgo = 2;
+  const deliveredAt = addDays(now, -deliveredDaysAgo);
   for (const [index, item] of PANTRY.entries()) {
     await setDocument(
       `families/${FAMILY_ID}/pantryItems/seed-item-${index + 1}`,
-      pantryItemFields(item, now),
+      pantryItemFields(item, deliveredAt, deliveredDaysAgo),
     );
   }
 
-  const deliveredAt = addDays(now, -2);
   await setDocument('deliveries/seed-delivery-1', {
     familyId: str(FAMILY_ID),
     familyName: str(FAMILY.name),
@@ -362,6 +365,8 @@ async function seed() {
       }),
     ),
     createdAt: ts(deliveredAt),
+    deviceId: str(DEVICE_ID),
+    localTimestamp: ts(deliveredAt),
   });
 
   // La entrega vuelve a quedar programada: se quitan de la despensa los
@@ -382,6 +387,8 @@ async function seed() {
       deliveryItem(['Arroz', 'grain', 2, 'kg'], addDays(scheduledFor, 210)),
     ]),
     createdAt: ts(now),
+    deviceId: str(DEVICE_ID),
+    localTimestamp: ts(now),
   });
 
   // Solicitud de "Registro de Staff" pendiente. Si una corrida anterior la

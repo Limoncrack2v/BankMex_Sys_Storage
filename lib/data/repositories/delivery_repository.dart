@@ -59,7 +59,8 @@ class DeliveryRepository {
   /// Marca como entregada una entrega programada; después la Cloud Function
   /// agrega sus productos a la despensa de la familia, menos los que ya
   /// caducaron. Regresa cuántos caducados hay hoy en este dispositivo (la
-  /// función decide con la hora en que la escritura llega al servidor). Las
+  /// función decide con la hora registrada por el dispositivo, si es creíble;
+  /// de lo contrario usa la hora en que la escritura llega al servidor). Las
   /// reglas lo rechazan si la entrega ya no estaba programada (p. ej. otro
   /// dispositivo ya la entregó).
   Future<int> markDelivered(Delivery delivery) async {

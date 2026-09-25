@@ -22,9 +22,19 @@ class PantryItem {
   final FoodType type;
   final double quantity;
   final FoodUnit unit;
+  /// Días de [localTimestamp] a la caducidad (no cambia con el tiempo; los
+  /// días que quedan hoy se calculan en ui/formatting.dart).
   final int daysUntilExpiration;
-  final bool synchronized;
+
+  /// Instalación del staff que marcó la entrega (su deviceId), o
+  /// 'cloud-function' si la entrega no tenía estampa.
   final String deviceId;
+
+  /// Cuándo recibió la familia el producto: la hora de entrega según el
+  /// dispositivo del staff, o la del servidor si no es creíble. La escribe una
+  /// vez la Cloud Function al crear el producto y ningún cliente la cambia.
+  /// El estado de sincronización no se guarda aquí: sale de
+  /// metadata.hasPendingWrites de Firestore.
   final DateTime localTimestamp;
 
   PantryItem({
@@ -35,7 +45,6 @@ class PantryItem {
     required this.quantity,
     required this.unit,
     required this.daysUntilExpiration,
-    required this.synchronized,
     required this.deviceId,
     required this.localTimestamp,
   });
@@ -51,7 +60,6 @@ class PantryItem {
       quantity: (data['quantity'] as num).toDouble(),
       unit: FoodUnit.values.byName(data['unit'] as String),
       daysUntilExpiration: (data['daysUntilExpiration'] as num).toInt(),
-      synchronized: data['synchronized'] as bool? ?? false,
       deviceId: data['deviceId'] as String,
       localTimestamp: (data['localTimestamp'] as Timestamp).toDate(),
     );
@@ -64,7 +72,6 @@ class PantryItem {
     'quantity': quantity,
     'unit': unit.name,
     'daysUntilExpiration': daysUntilExpiration,
-    'synchronized': synchronized,
     'deviceId': deviceId,
     'localTimestamp': Timestamp.fromDate(localTimestamp),
   };
@@ -77,7 +84,6 @@ class PantryItem {
     quantity: quantity,
     unit: unit,
     daysUntilExpiration: daysUntilExpiration,
-    synchronized: synchronized,
     deviceId: deviceId,
     localTimestamp: localTimestamp,
   );

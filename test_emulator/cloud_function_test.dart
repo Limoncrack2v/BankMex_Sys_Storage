@@ -33,8 +33,10 @@ Map<String, Object?> _item(
 Future<void> _writeDelivery(
   String id,
   String status,
-  List<Map<String, Object?>> items,
-) async {
+  List<Map<String, Object?>> items, {
+  String? deviceId,
+  DateTime? localTimestamp,
+}) async {
   _created.add(id);
   await assertAllowed(
     Db.admin().setDoc('deliveries/$id', {
@@ -45,6 +47,8 @@ Future<void> _writeDelivery(
       'status': str(status),
       'items': arr(items),
       'createdAt': ts(DateTime.now()),
+      if (deviceId != null) 'deviceId': str(deviceId),
+      if (localTimestamp != null) 'localTimestamp': ts(localTimestamp),
     }),
   );
 }
@@ -103,35 +107,38 @@ void main() {
   });
 
   group('onDeliveryWritten', () {
-    test('una entrega entregada llena la despensa, sin los caducados', () async {
-      final id = '$_run-entregada';
-      await _writeDelivery(id, 'delivered', [
-        _item('Arroz', 5),
-        _item('Leche', -3, type: 'dairy', unit: 'l'),
-        _item('Frijol', 30, type: 'legume', quantity: 1.5),
-      ]);
+    test(
+      'una entrega entregada llena la despensa, sin los caducados ni estampa',
+      () async {
+        final id = '$_run-entregada';
+        await _writeDelivery(id, 'delivered', [
+          _item('Arroz', 5),
+          _item('Leche', -3, type: 'dairy', unit: 'l'),
+          _item('Frijol', 30, type: 'legume', quantity: 1.5),
+        ]);
 
-      final mark = await _stockedMark(id);
-      expect(fieldValue(mark, 'pantryItemsAdded'), 2);
-      expect(fieldValue(mark, 'pantryItemsSkipped'), 1);
+        final mark = await _stockedMark(id);
+        expect(fieldValue(mark, 'pantryItemsAdded'), 2);
+        expect(fieldValue(mark, 'pantryItemsSkipped'), 1);
 
-      final pantry = await _pantryOf(id);
-      expect(pantry.map((item) => item.id), containsAll(['$id-1', '$id-3']));
+        final pantry = await _pantryOf(id);
+        expect(pantry.map((item) => item.id), containsAll(['$id-1', '$id-3']));
 
-      final arroz = pantry.firstWhere((item) => item.id == '$id-1').fields;
-      expect(fieldValue(arroz, 'productId'), 'Arroz');
-      expect(fieldValue(arroz, 'type'), 'grain');
-      expect(fieldValue(arroz, 'quantity'), 2);
-      expect(fieldValue(arroz, 'unit'), 'kg');
-      expect(fieldValue(arroz, 'daysUntilExpiration'), 5);
-      expect(fieldValue(arroz, 'synchronized'), true);
-      expect(fieldValue(arroz, 'deviceId'), 'cloud-function');
-      expect(arroz['localTimestamp'], isNotNull);
+        final arroz = pantry.firstWhere((item) => item.id == '$id-1').fields;
+        expect(fieldValue(arroz, 'productId'), 'Arroz');
+        expect(fieldValue(arroz, 'type'), 'grain');
+        expect(fieldValue(arroz, 'quantity'), 2);
+        expect(fieldValue(arroz, 'unit'), 'kg');
+        expect(fieldValue(arroz, 'daysUntilExpiration'), 5);
+        expect(arroz.containsKey('synchronized'), isFalse);
+        expect(fieldValue(arroz, 'deviceId'), 'cloud-function');
+        expect(arroz['localTimestamp'], isNotNull);
 
-      final frijol = pantry.firstWhere((item) => item.id == '$id-3').fields;
-      expect(fieldValue(frijol, 'quantity'), 1.5);
-      expect(fieldValue(frijol, 'daysUntilExpiration'), 30);
-    });
+        final frijol = pantry.firstWhere((item) => item.id == '$id-3').fields;
+        expect(fieldValue(frijol, 'quantity'), 1.5);
+        expect(fieldValue(frijol, 'daysUntilExpiration'), 30);
+      },
+    );
 
     test('una programada no llena la despensa hasta que se entrega', () async {
       final id = '$_run-programada';
@@ -155,7 +162,9 @@ void main() {
       await _stockedMark(id);
 
       await assertAllowed(
-        Db.admin().updateDoc('deliveries/$id', {'notes': str('otra escritura')}),
+        Db.admin().updateDoc('deliveries/$id', {
+          'notes': str('otra escritura'),
+        }),
       );
       await Future<void>.delayed(const Duration(seconds: 3));
       expect(await _pantryOf(id), hasLength(1));
@@ -171,6 +180,86 @@ void main() {
       await Future<void>.delayed(const Duration(seconds: 3));
       expect(await _pantryOf(id), isEmpty);
       expect((await adminDoc('deliveries/$id'))?['pantryStockedAt'], isNull);
+    });
+
+    test(
+      'con estampa: la despensa lleva el deviceId y la hora de entrega',
+      () async {
+        final id = '$_run-con-estampa';
+        // JS Date solo guarda milisegundos
+        final handover = DateTime.fromMillisecondsSinceEpoch(
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        await _writeDelivery(
+          id,
+          'delivered',
+          [_item('Arroz', 5)],
+          deviceId: 'staff-phone',
+          localTimestamp: handover,
+        );
+
+        await _stockedMark(id);
+        final pantry = await _pantryOf(id);
+        final arroz = pantry.firstWhere((item) => item.id == '$id-1').fields;
+        expect(fieldValue(arroz, 'deviceId'), 'staff-phone');
+        expect(
+          DateTime.parse(fieldValue(arroz, 'localTimestamp') as String)
+              .isAtSameMomentAs(handover),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'offline: un producto que caducó después de entregarlo sí entra',
+      () async {
+        final id = '$_run-offline';
+        // JS Date solo guarda milisegundos
+        final handover = DateTime.fromMillisecondsSinceEpoch(
+          DateTime.now()
+              .subtract(const Duration(days: 2))
+              .millisecondsSinceEpoch,
+        );
+        await _writeDelivery(
+          id,
+          'delivered',
+          [_item('Leche', -1, type: 'dairy', unit: 'l')],
+          deviceId: 'staff-phone',
+          localTimestamp: handover,
+        );
+
+        final mark = await _stockedMark(id);
+        final stockedAt = DateTime.parse(
+          fieldValue(mark, 'pantryStockedAt') as String,
+        );
+        expect(
+          stockedAt.difference(handover),
+          greaterThanOrEqualTo(const Duration(days: 1)),
+        );
+        final pantry = await _pantryOf(id);
+        final leche = pantry.firstWhere((item) => item.id == '$id-1').fields;
+        expect(
+          DateTime.parse(fieldValue(leche, 'localTimestamp') as String)
+              .isAtSameMomentAs(handover),
+          isTrue,
+        );
+        expect(fieldValue(leche, 'daysUntilExpiration'), 1);
+      },
+    );
+
+    test('hora no creíble: se usa la del servidor', () async {
+      final id = '$_run-reloj-no-creible';
+      await _writeDelivery(
+        id,
+        'delivered',
+        [_item('Leche', -1, type: 'dairy', unit: 'l')],
+        deviceId: 'staff-phone',
+        localTimestamp: DateTime.now().subtract(const Duration(days: 30)),
+      );
+
+      final mark = await _stockedMark(id);
+      expect(fieldValue(mark, 'pantryItemsSkipped'), 1);
+      expect(fieldValue(mark, 'pantryItemsAdded'), 0);
     });
   });
 }
