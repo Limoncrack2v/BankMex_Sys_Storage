@@ -8,7 +8,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 
-const { pantryItemsFor, pantryItemId } = require('./pantry');
+const { pantryItemsFor, pantryItemId, handoverTime } = require('./pantry');
 
 initializeApp();
 const db = getFirestore();
@@ -53,13 +53,13 @@ exports.onDeliveryWritten = onDocumentWritten(
 );
 
 /**
- * En una transacción: crea los PantryItem de la entrega (los que no han
- * caducado en [deliveredAt]) y marca la entrega con pantryStockedAt. Si la
- * entrega ya tenía la marca no hace nada, así que un reintento o un segundo
+ * En una transacción: crea los PantryItem de la entrega que no habían
+ * caducado a la hora de entrega y marca la entrega con pantryStockedAt. Si la
+ * entrega ya tenía la marca, no hace nada; así, un reintento o un segundo
  * evento no duplica productos. Regresa cuántos agregó y omitió, o null si no
  * hizo nada.
  */
-async function stockDelivery(deliveryRef, deliveredAt) {
+async function stockDelivery(deliveryRef, serverTime) {
   return db.runTransaction(async (tx) => {
     const snapshot = await tx.get(deliveryRef);
     if (!snapshot.exists) return null;
@@ -80,7 +80,8 @@ async function stockDelivery(deliveryRef, deliveredAt) {
       return null;
     }
 
-    const { items, expired, invalid } = pantryItemsFor(delivery, snapshot.id, deliveredAt);
+    const receivedAt = handoverTime(delivery, serverTime);
+    const { items, expired, invalid } = pantryItemsFor(delivery, snapshot.id, receivedAt);
     if (invalid.length) {
       logger.error('Productos inválidos omitidos', { deliveryId: snapshot.id, invalid });
     }
@@ -90,7 +91,7 @@ async function stockDelivery(deliveryRef, deliveredAt) {
       tx.create(pantry.doc(pantryItemId(snapshot.id, index)), data);
     }
     tx.update(deliveryRef, {
-      pantryStockedAt: deliveredAt,
+      pantryStockedAt: serverTime,
       pantryItemsAdded: items.length,
       pantryItemsSkipped: expired + invalid.length,
     });

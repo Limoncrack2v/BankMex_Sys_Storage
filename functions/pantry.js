@@ -7,8 +7,7 @@
 const TIME_ZONE = 'America/Mexico_City';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// deviceId de los productos que crea la Cloud Function (no los crea un
-// dispositivo).
+// deviceId de las entregas sin un deviceId válido (fallback).
 const DEVICE_ID = 'cloud-function';
 
 // Mismos valores que FoodType, FoodUnit y PantryItem.maxQuantity de
@@ -38,6 +37,29 @@ function toDate(value) {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   if (value && typeof value.toDate === 'function') return value.toDate();
   return null;
+}
+
+// Límites para creerle al reloj del dispositivo del staff (localTimestamp).
+const MAX_HANDOVER_LAG_MS = 7 * DAY_MS;
+
+// Igual que el margen de validTrace en firestore.rules.
+const MAX_CLOCK_AHEAD_MS = 5 * 60 * 1000;
+
+/**
+ * Cuándo recibió la familia la entrega: la hora del dispositivo del staff al
+ * marcarla (localTimestamp) si es creíble; si falta o no es creíble, la hora
+ * del servidor [serverTime].
+ */
+function handoverTime(delivery, serverTime) {
+  const local = toDate(delivery.localTimestamp);
+
+  if (local === null) return serverTime;
+
+  const lag = serverTime.getTime() - local.getTime();
+
+  if (lag > MAX_HANDOVER_LAG_MS || lag < -MAX_CLOCK_AHEAD_MS) return serverTime;
+
+  return local;
 }
 
 /** Motivo por el que un producto de la entrega no es válido, o null. */
@@ -71,6 +93,8 @@ function pantryItemsFor(delivery, deliveryId, deliveredAt) {
   const invalid = [];
 
   const source = Array.isArray(delivery.items) ? delivery.items : [];
+  const deviceId = 
+    typeof delivery.deviceId === 'string' && delivery.deviceId ? delivery.deviceId : DEVICE_ID;
   source.forEach((item, index) => {
     const reason = invalidReason(item);
     if (reason) {
@@ -91,7 +115,7 @@ function pantryItemsFor(delivery, deliveryId, deliveredAt) {
         quantity: item.quantity,
         unit: item.unit,
         daysUntilExpiration: days,
-        deviceId: DEVICE_ID,
+        deviceId: deviceId,
         localTimestamp: deliveredAt,
       },
     });
@@ -115,4 +139,5 @@ module.exports = {
   invalidReason,
   pantryItemsFor,
   pantryItemId,
+  handoverTime,
 };
