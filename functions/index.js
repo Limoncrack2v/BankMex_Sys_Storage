@@ -4,11 +4,12 @@
 // families/{familyId}/pantryItems: firestore.rules lo prohíbe y solo esta
 // función los crea, con el Admin SDK, cuando una entrega queda confirmada.
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 
 const { pantryItemsFor, pantryItemId, handoverTime } = require('./pantry');
+const { nextDeliveryDate } = require('./next_delivery');
 
 initializeApp();
 const db = getFirestore();
@@ -98,4 +99,50 @@ async function stockDelivery(deliveryRef, serverTime) {
 
     return { added: items.length, expired, invalid: invalid.length };
   });
+}
+
+/**
+ * Mantiene families/{familyId}.nextDeliveryDate: la fecha de la próxima
+ * entrega programada de la familia.
+ * Si no hay, el campo se borra.
+ */
+exports.syncNextDelivery = onDocumentWritten(
+  {
+    document: 'deliveries/{deliveryId}',
+    region: 'northamerica-south1',
+  },
+  async (event) => {
+    const beforeSnapshot = event.data?.before;
+    const afterSnapshot = event.data?.after;
+
+    const before = beforeSnapshot?.exists ? beforeSnapshot.data() : undefined;
+    const after = afterSnapshot?.exists ? afterSnapshot.data() : undefined;
+
+    if (before && after &&
+      before.familyId === after.familyId &&
+      before.status === after.status &&
+      before.deliveryDate.isEqual(after.deliveryDate))
+      return;
+
+    const familyIds = new Set([before?.familyId, after?.familyId].filter(Boolean));
+
+    for (const familyId of familyIds)
+      await refreshNextDelivery(familyId);
+  },
+);
+
+async function refreshNextDelivery(familyId) {
+  const deliveries = await db.collection('deliveries')
+    .where('familyId', '==', familyId)
+    .where('status', '==', 'scheduled')
+    .get();
+
+  const deliveryDates = deliveries.docs.map((doc) => doc.data());
+  const nextDate = nextDeliveryDate(deliveryDates, new Date());
+
+  const familyRef = db.collection('families').doc(familyId);
+
+  if (!(await familyRef.get()).exists) return;
+
+  await familyRef.update({ nextDeliveryDate: nextDate ?? FieldValue.delete() });
 }
