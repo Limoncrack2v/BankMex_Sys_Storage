@@ -167,3 +167,12 @@ String formatAge(int age) => age == 1 ? '1 año' : '$age años';
 
 /// "68 kg", "68.5 kg".
 String formatWeight(double kg) => '${formatNumber(kg)} kg';
+
+/// "≈ 1,830 kcal/día" (requerimiento aproximado).
+String formatDailyKcal(int kcal) {
+  final whole = kcal.toString().replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (_) => ',',
+  );
+  return '≈ $whole kcal/día';
+}

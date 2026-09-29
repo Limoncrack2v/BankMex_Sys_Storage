@@ -50,10 +50,58 @@ Member member(String name, {List<Allergy>? allergies}) => Member(
   allergies: allergies,
 );
 
+Member child(String name, {int? age, double? weightKg}) => Member(
+  memberId: 'member-${_nextId++}',
+  name: name,
+  memberType: MemberType.child,
+  createdAt: DateTime(2026, 9, 1),
+  age: age,
+  weightKg: weightKg,
+);
+
 List<double> quantities(Recipe recipe) =>
     recipe.ingredients.map((i) => i.quantity).toList();
 
 void main() {
+  group('householdPortions', () {
+    test('adults count 1 regardless of age or weight', () {
+      expect(householdPortions([member('Ana'), member('Luis')]), 2);
+      expect(householdPortions(const []), 0);
+    });
+
+    test('children count by age, and weight when known', () {
+      expect(householdPortions([child('Sofía', age: 5)]), closeTo(0.6, 1e-9));
+      // 0.6 * 0.7 + (20 / 70) * 0.3
+      expect(
+        householdPortions([child('Sofía', age: 5, weightKg: 20)]),
+        closeTo(0.42 + 20 / 70 * 0.3, 1e-9),
+      );
+      expect(householdPortions([child('Beto', age: 1)]), closeTo(0.25, 1e-9));
+      expect(householdPortions([child('Leo', age: 15)]), closeTo(1, 1e-9));
+    });
+
+    test('weight alone is a share of an adult weight, bounded', () {
+      expect(householdPortions([child('Sofía', weightKg: 35)]), 0.5);
+      expect(householdPortions([child('Bebé', weightKg: 3)]), 0.2);
+      expect(householdPortions([child('Leo', weightKg: 90)]), 1);
+    });
+
+    test('a child without age or weight is not cut down', () {
+      expect(householdPortions([child('Sofía')]), 1);
+    });
+
+    test('scaledForHousehold uses portions and headcount', () {
+      final scaled = scaledForHousehold(SampleData.sopaDeLentejas, [
+        member('Ana'),
+        member('Luis'),
+        child('Sofía', weightKg: 35),
+      ]);
+
+      expect(scaled.servings, 3);
+      expect(scaled.ingredients.first.quantity, 0.156);
+    });
+  });
+
   group('scaledRecipe', () {
     test('multiplies every quantity by household / servings', () {
       final scaled = scaledRecipe(SampleData.sopaDeLentejas, 6);
@@ -121,6 +169,16 @@ void main() {
       expect(scaledRecipe(base, 0), same(base));
       expect(scaledRecipe(base, -1), same(base));
       expect(scaledRecipe(base, base.servings), same(base));
+    });
+
+    test('scales quantities by portions but shows the headcount', () {
+      final scaled = scaledRecipe(SampleData.sopaDeLentejas, 3, portions: 2.5);
+
+      expect(scaled.servings, 3);
+      expect(scaled.ingredients.first.quantity, 0.156);
+      // Mismo número de integrantes, pero comen menos que 4 adultos.
+      final base = SampleData.sopaDeLentejas;
+      expect(scaledRecipe(base, base.servings, portions: 3), isNot(same(base)));
     });
 
     test('the scaled recipe drives availability and consumption', () {

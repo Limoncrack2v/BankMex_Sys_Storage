@@ -111,7 +111,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     // la receta original (la ajusta él mismo).
     final originals = Map<Recipe, Recipe>.identity();
     for (final recipe in recipes) {
-      originals[scaledRecipe(recipe, members.length)] = recipe;
+      originals[scaledForHousehold(recipe, members)] = recipe;
     }
     final plan = buildWeeklyPlan(originals.keys.toList(), pantry, today: today);
     final hasProducts = pantry.any(
