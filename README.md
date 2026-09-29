@@ -59,6 +59,16 @@ App de Flutter para BAMX Guadalajara. Las familias ven su despensa, recetas, pla
    npm --prefix functions install
    ```
 
+5. Para compilar en **Android**, Flutter necesita un JDK que pueda correr la versión de Gradle del proyecto. La versión de Gradle es **una sola para todo el equipo**: la fija `android/gradle/wrapper/gradle-wrapper.properties` (Gradle 9.3.1, la que pide el plugin de Android 9.1.0 de `android/settings.gradle.kts`) y `./gradlew` la descarga igual en todas las computadoras. Lo que cambia en cada computadora es el JDK: Gradle 9 necesita JDK 17 o más reciente.
+
+   ```sh
+   flutter doctor -v                         # "Java version" debe ser 17 o más reciente
+   flutter config --jdk-dir "<ruta al JDK>"  # solo si no lo es; se guarda en tu computadora, no en el repo
+   cd android && ./gradlew --version         # muestra el Gradle y el JDK que se usan
+   ```
+
+   Si Android Studio ofrece actualizar o bajar la versión de Gradle o del plugin de Android, no subas ese cambio en un PR de otra cosa: cambia la compilación de todo el equipo. Si hace falta cambiarla, que sea en su propio PR. Compilar para web (Chrome) no usa Gradle, así que ahí no se nota si la versión está mal.
+
 ## Correr la app
 
 En **debug** (`flutter run`) la app usa los emuladores de Firebase (Auth 9099, Firestore 8080, Functions 5001) y **no** toca los datos reales.
