@@ -105,11 +105,14 @@ async function stockDelivery(deliveryRef, serverTime) {
  * Mantiene families/{familyId}.nextDeliveryDate: la fecha de la próxima
  * entrega programada de la familia.
  * Si no hay, el campo se borra.
+ * Las familias no pueden leer deliveries (tienen cuotas, justificaciones 
+ * y notas del staff); por eso se copia solo la fecha.
  */
 exports.syncNextDelivery = onDocumentWritten(
   {
     document: 'deliveries/{deliveryId}',
     region: 'northamerica-south1',
+    retry: true,
   },
   async (event) => {
     const beforeSnapshot = event.data?.before;
@@ -121,13 +124,15 @@ exports.syncNextDelivery = onDocumentWritten(
     if (before && after &&
       before.familyId === after.familyId &&
       before.status === after.status &&
-      before.deliveryDate.isEqual(after.deliveryDate))
+      before.deliveryDate?.isEqual?.(after.deliveryDate)) {
       return;
+    }
 
     const familyIds = new Set([before?.familyId, after?.familyId].filter(Boolean));
 
-    for (const familyId of familyIds)
+    for (const familyId of familyIds) {
       await refreshNextDelivery(familyId);
+    }
   },
 );
 
@@ -137,8 +142,8 @@ async function refreshNextDelivery(familyId) {
     .where('status', '==', 'scheduled')
     .get();
 
-  const deliveryDates = deliveries.docs.map((doc) => doc.data());
-  const nextDate = nextDeliveryDate(deliveryDates, new Date());
+  const scheduled = deliveries.docs.map((doc) => doc.data());
+  const nextDate = nextDeliveryDate(scheduled, new Date());
 
   const familyRef = db.collection('families').doc(familyId);
 
