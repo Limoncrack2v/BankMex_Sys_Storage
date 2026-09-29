@@ -125,7 +125,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   /// La receta con porciones para los integrantes del hogar (la original
   /// mientras no se conocen o si no hay ninguno registrado).
-  Recipe get _recipe => scaledRecipe(widget.recipe, _members?.length ?? 0);
+  Recipe get _recipe => scaledForHousehold(widget.recipe, _members ?? const []);
 
   Future<void> _complete() async {
     final pantry = _pantry;
@@ -296,7 +296,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           'ajustar las porciones.';
     }
     final count = size == 1 ? '1 integrante' : '$size integrantes';
-    return '$intro Ajustamos las porciones a tu hogar ($count).';
+    final byAge = householdPortions(members) != size
+        ? ', según su edad y peso'
+        : '';
+    return '$intro Ajustamos las porciones a tu hogar ($count$byAge).';
   }
 }
 

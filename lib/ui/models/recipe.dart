@@ -2,13 +2,16 @@ import 'dart:math' as math;
 
 import '../../data/models/member.dart';
 import '../../data/models/pantry_item.dart';
+import '../../domain/models/child_profile.dart';
+import '../../domain/portion_adjuster.dart';
 import '../formatting.dart';
 import 'expiration_urgency.dart';
 
 // Las recetas siguen siendo un catálogo de ejemplo (aún no hay colección en
-// Firestore), pero se comparan con la despensa real, se ajustan al número de
-// integrantes y se revisan contra las alergias de la familia. El plan de
-// comidas se arma con esas recetas y lo que caduca primero en la despensa.
+// Firestore), pero se comparan con la despensa real, se ajustan a la edad y el
+// peso de los integrantes y se revisan contra las alergias de la familia. El
+// plan de comidas se arma con esas recetas y lo que caduca primero en la
+// despensa.
 
 class RecipeIngredient {
   const RecipeIngredient(this.name, this.quantity, this.unit);
@@ -298,17 +301,18 @@ bool _isCountUnit(FoodUnit unit) =>
     unit == FoodUnit.piece || unit == FoodUnit.can || unit == FoodUnit.pack;
 
 /// [recipe] con porciones para [householdSize] personas: cada cantidad se
-/// multiplica por householdSize / servings y se redondea a 3 decimales (las
-/// piezas, latas y paquetes se redondean hacia arriba). Si no se conoce el
-/// tamaño del hogar (0) o ya coincide con las porciones, regresa la misma
-/// receta.
-Recipe scaledRecipe(Recipe recipe, int householdSize) {
+/// multiplica por portions / servings (portions es householdSize si no se
+/// da) y se redondea a 3 decimales (las piezas, latas y paquetes se redondean
+/// hacia arriba). Si no se conoce el tamaño del hogar (0) o ya coincide con
+/// las porciones, regresa la misma receta.
+Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
+  final target = portions ?? householdSize.toDouble();
   if (householdSize <= 0 ||
       recipe.servings <= 0 ||
-      householdSize == recipe.servings) {
+      (householdSize == recipe.servings && target == recipe.servings)) {
     return recipe;
   }
-  final factor = householdSize / recipe.servings;
+  final factor = target / recipe.servings;
   return Recipe(
     name: recipe.name,
     image: recipe.image,
@@ -325,6 +329,31 @@ Recipe scaledRecipe(Recipe recipe, int householdSize) {
     ],
     steps: recipe.steps,
   );
+}
+
+/// [recipe] ajustada a lo que come el hogar según la edad y el peso de sus
+/// integrantes ([householdPortions]).
+Recipe scaledForHousehold(Recipe recipe, List<Member> members) =>
+    scaledRecipe(recipe, members.length, portions: householdPortions(members));
+
+/// Porciones de adulto que come el hogar: cada adulto cuenta 1 y cada niño
+/// según su edad y peso ([PortionAdjuster.childFactor]); con solo el peso se
+/// usa su proporción del peso de un adulto. Un niño sin edad ni peso cuenta
+/// 1, para no recortar comida sin datos.
+double householdPortions(List<Member> members) {
+  var portions = 0.0;
+  for (final member in members) {
+    portions += switch ((member.memberType, member.age, member.weightKg)) {
+      (MemberType.adult, _, _) => 1.0,
+      (_, final int age, final weight) => PortionAdjuster.childFactor(
+        ChildProfile(age: age, weight: weight ?? 0),
+      ),
+      (_, null, final double weight) =>
+        (weight / PortionAdjuster.adultWeightKg).clamp(0.2, 1.0),
+      _ => 1.0,
+    };
+  }
+  return portions;
 }
 
 double _scaledQuantity(RecipeIngredient ingredient, double factor) {

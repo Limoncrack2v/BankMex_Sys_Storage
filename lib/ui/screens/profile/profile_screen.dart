@@ -4,6 +4,7 @@ import '../../../data/models/family.dart';
 import '../../../data/models/member.dart';
 import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/member_repository.dart';
+import '../../../domain/energy_requirement.dart';
 import '../../formatting.dart';
 import '../../session_navigation.dart';
 import '../../theme/app_assets.dart';
@@ -101,6 +102,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           familyName: familyName,
           adults: adults,
           children: members == null ? null : members.length - adults!,
+          energy: members == null || members.isEmpty
+              ? null
+              : EnergyRequirement.household(members),
         ),
         const SizedBox(height: 16),
         Text(
@@ -158,6 +162,7 @@ class _HouseholdSummary extends StatelessWidget {
     required this.familyName,
     required this.adults,
     required this.children,
+    required this.energy,
   });
 
   final String familyName;
@@ -165,6 +170,9 @@ class _HouseholdSummary extends StatelessWidget {
   /// null mientras cargan los integrantes.
   final int? adults;
   final int? children;
+
+  /// Calorías diarias aproximadas del hogar (null sin integrantes).
+  final ({int kcal, int missing})? energy;
 
   @override
   Widget build(BuildContext context) {
@@ -194,6 +202,18 @@ class _HouseholdSummary extends StatelessWidget {
               ),
             ],
           ),
+          if (energy case (:final kcal, :final missing)) ...[
+            const SizedBox(height: 12),
+            Text(
+              kcal == 0
+                  ? 'Agrega la edad de los integrantes para estimar las '
+                        'calorías del hogar.'
+                  : 'El hogar necesita ${formatDailyKcal(kcal)} '
+                        '(FAO/OMS)${missing == 0 ? '' : ', sin contar a '
+                                  '$missing sin edad'}.',
+              style: AppText.nunito(14, 21, color: AppColors.textMuted),
+            ),
+          ],
         ],
       ),
     );
@@ -243,6 +263,7 @@ class _MemberCard extends StatelessWidget {
     final age = member.age;
     final weight = member.weightKg;
     final allergies = member.allergies ?? const <Allergy>[];
+    final kcal = EnergyRequirement.dailyKcal(member);
 
     return Material(
       color: AppColors.surface,
@@ -277,6 +298,16 @@ class _MemberCard extends StatelessWidget {
                       style: AppText.baloo(17, 25.5, weight: FontWeight.w600),
                     ),
                     Text(memberKindLabel(member), style: muted),
+                    Text(
+                      kcal == null
+                          ? 'Agrega su edad para estimar sus calorías'
+                          : formatDailyKcal(kcal),
+                      style: AppText.nunito(
+                        13,
+                        19.5,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
                     if (allergies.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
