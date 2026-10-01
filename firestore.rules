@@ -98,6 +98,8 @@ service cloud.firestore {
         && data.packages is int && data.packages >= 1 && data.packages <= 100
         && (!('recoveryFee' in data) || (data.recoveryFee is number && data.recoveryFee >= 0 && data.recoveryFee <= 100000))
         && (!('justification' in data) || (data.justification is string && data.justification.size() <= 500))
+        // Con cuota (no exenta) la justificación es obligatoria, para auditoría.
+        && (!('recoveryFee' in data) || ('justification' in data && data.justification.trim().size() > 0))
         && data.status in ['scheduled', 'delivered', 'cancelled']
         && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
         && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
