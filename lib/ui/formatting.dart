@@ -85,6 +85,11 @@ String productDisplayName(String productId) {
 DateTime _dateOnlyUtc(DateTime date) =>
     DateTime.utc(date.year, date.month, date.day);
 
+/// Días de calendario de [today] a [date]: 0 = hoy, 1 = mañana, negativo = ya
+/// pasó. Cuenta días y no horas: de hoy a las 23:00 a mañana a la 1:00 es 1.
+int daysUntil(DateTime date, {DateTime? today}) =>
+    _dateOnlyUtc(date).difference(_dateOnlyUtc(today ?? DateTime.now())).inDays;
+
 /// Días que le quedan hoy a un producto. daysUntilExpiration se cuenta desde
 /// localTimestamp (cuando se registró el producto), así que se descuentan los
 /// días que ya pasaron. Puede ser negativo si ya caducó.

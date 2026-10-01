@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/models/family.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
 import '../../formatting.dart';
 import '../../models/expiration_urgency.dart';
@@ -10,6 +12,7 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_icon.dart';
+import '../../widgets/next_delivery_banner.dart';
 import '../../widgets/pill.dart';
 import 'consumption_sheet.dart';
 
@@ -28,16 +31,24 @@ class PantryScreen extends StatefulWidget {
 class _PantryScreenState extends State<PantryScreen> {
   late Stream<List<_PantryRow>> _items;
 
+  // El hogar trae nextDeliveryDate (lo escribe syncNextDelivery): al ser un
+  // stream, el aviso cambia en vivo si el staff programa o cancela una entrega.
+  late Stream<Family?> _family;
+
   @override
   void initState() {
     super.initState();
     _items = _watchItems();
+    _family = FamilyRepository().watchFamily(widget.familyId);
   }
 
   @override
   void didUpdateWidget(PantryScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.familyId != widget.familyId) _items = _watchItems();
+    if (oldWidget.familyId != widget.familyId) {
+      _items = _watchItems();
+      _family = FamilyRepository().watchFamily(widget.familyId);
+    }
   }
 
   // Con los metadatos de cada documento se sabe si un cambio (p. ej. un
@@ -53,27 +64,41 @@ class _PantryScreenState extends State<PantryScreen> {
       children: [
         const AppHeader(title: 'Despensa'),
         Expanded(
-          child: StreamBuilder<List<_PantryRow>>(
-            stream: _items,
-            builder: (context, snapshot) {
-              final waiting =
-                  snapshot.connectionState == ConnectionState.waiting;
-              if (snapshot.hasError && !waiting) {
-                return _PantryError(onRetry: _retry);
-              }
-              final rows = snapshot.data;
-              if (rows == null) {
-                return const Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                );
-              }
-              return _PantryList(
-                entries: _sortedEntries(rows),
-                onRegisterConsumption: (items) => showConsumptionSheet(
-                  context,
-                  familyId: widget.familyId,
-                  items: items,
-                ),
+          // El aviso de la próxima entrega va dentro de la lista, como los
+          // otros avisos: así lleva su mismo espaciado y se desplaza con ella.
+          child: StreamBuilder<Family?>(
+            stream: _family,
+            builder: (context, familySnapshot) {
+              final nextDelivery = familySnapshot.data?.nextDeliveryDate;
+              return StreamBuilder<List<_PantryRow>>(
+                stream: _items,
+                builder: (context, snapshot) {
+                  final waiting =
+                      snapshot.connectionState == ConnectionState.waiting;
+                  if (snapshot.hasError && !waiting) {
+                    return _PantryError(
+                      nextDelivery: nextDelivery,
+                      onRetry: _retry,
+                    );
+                  }
+                  final rows = snapshot.data;
+                  if (rows == null) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    );
+                  }
+                  return _PantryList(
+                    entries: _sortedEntries(rows),
+                    nextDelivery: nextDelivery,
+                    onRegisterConsumption: (items) => showConsumptionSheet(
+                      context,
+                      familyId: widget.familyId,
+                      items: items,
+                    ),
+                  );
+                },
               );
             },
           ),
@@ -113,10 +138,14 @@ class _PantryEntry {
 class _PantryList extends StatelessWidget {
   const _PantryList({
     required this.entries,
+    required this.nextDelivery,
     required this.onRegisterConsumption,
   });
 
   final List<_PantryEntry> entries;
+
+  /// families/{familyId}.nextDeliveryDate (lo escribe syncNextDelivery).
+  final DateTime? nextDelivery;
   final ValueChanged<List<PantryItem>> onRegisterConsumption;
 
   @override
@@ -131,6 +160,10 @@ class _PantryList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        NextDeliveryBanner(
+          date: nextDelivery,
+          margin: const EdgeInsets.only(bottom: 12),
+        ),
         if (expired > 0) ...[
           InfoBanner(
             message: expired == 1
@@ -179,8 +212,9 @@ class _PantryList extends StatelessWidget {
 }
 
 class _PantryError extends StatelessWidget {
-  const _PantryError({required this.onRetry});
+  const _PantryError({required this.nextDelivery, required this.onRetry});
 
+  final DateTime? nextDelivery;
   final VoidCallback onRetry;
 
   @override
@@ -188,6 +222,10 @@ class _PantryError extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        NextDeliveryBanner(
+          date: nextDelivery,
+          margin: const EdgeInsets.only(bottom: 12),
+        ),
         const InfoBanner(
           message:
               'No pudimos cargar tu despensa. Revisa tu conexión e intenta '
