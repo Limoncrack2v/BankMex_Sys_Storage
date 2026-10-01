@@ -11,6 +11,9 @@ class Family {
   final String authUid;
   final List<String> appliances;
 
+  /// Solo la Cloud Function syncNextDelivery la escribe; la app solo la lee
+  final DateTime? nextDeliveryDate;
+
   Family({
     required this.familyId,
     this.name,
@@ -19,11 +22,12 @@ class Family {
     this.recoveryQuotaDefault,
     required this.authUid,
     required this.appliances,
+    this.nextDeliveryDate,
   });
 
   factory Family.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
-    
+
     return Family(
       familyId: doc.id,
       name: data['name'] as String?,
@@ -32,6 +36,7 @@ class Family {
       recoveryQuotaDefault: (data['recoveryQuotaDefault'] as num?)?.toDouble(),
       authUid: data['authUid'] as String,
       appliances: List<String>.from(data['appliances'] as List? ?? []),
+      nextDeliveryDate: (data['nextDeliveryDate'] as Timestamp?)?.toDate(),
     );
   }
 

@@ -160,6 +160,30 @@ void main() {
       expect(formatDateLong(DateTime(2026, 1, 15)), '15 ene 2026');
       expect(formatDateLong(DateTime(2025, 12, 31)), '31 dic 2025');
     });
+
+    test('daysUntil counts calendar days from today', () {
+      final today = DateTime(2026, 10, 1, 9);
+      expect(daysUntil(DateTime(2026, 10, 1, 18), today: today), 0);
+      expect(daysUntil(DateTime(2026, 10, 2), today: today), 1);
+      expect(daysUntil(DateTime(2026, 9, 30), today: today), -1);
+      expect(daysUntil(DateTime(2026, 10, 8), today: today), 7);
+    });
+
+    test('daysUntil counts days, not hours', () {
+      // Solo pasan 2 horas, pero ya es otro día.
+      expect(
+        daysUntil(DateTime(2026, 10, 2, 1), today: DateTime(2026, 10, 1, 23)),
+        1,
+      );
+    });
+
+    test('daysUntil crosses month and year ends', () {
+      expect(
+        daysUntil(DateTime(2026, 11, 1), today: DateTime(2026, 10, 31)),
+        1,
+      );
+      expect(daysUntil(DateTime(2027, 1, 1), today: DateTime(2026, 12, 31)), 1);
+    });
   });
 
   group('formatRecoveryFee', () {

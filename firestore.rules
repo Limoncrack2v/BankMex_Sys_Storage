@@ -17,8 +17,11 @@ service cloud.firestore {
         || (isStaff() && exists(/databases/$(database)/documents/families/$(familyId)));
     }
 
+    // nextDeliveryDate solo lo escribe la Cloud Function syncNextDelivery;
+    // aquí se acepta porque validFamily revisa el documento completo, 
+    // y abajo se impide que un cliente lo cree o lo cambie.
     function validFamily(data) {
-      return data.keys().hasOnly(['name', 'address', 'registrationDate', 'recoveryQuotaDefault', 'authUid', 'appliances'])
+      return data.keys().hasOnly(['name', 'address', 'registrationDate', 'recoveryQuotaDefault', 'authUid', 'appliances', 'nextDeliveryDate'])
         && data.keys().hasAll(['address', 'registrationDate', 'authUid', 'appliances'])
         && (!('name' in data) || (data.name is string && data.name.size() >= 1 && data.name.size() <= 100))
         && data.address is string && data.address.size() <= 200
@@ -26,7 +29,8 @@ service cloud.firestore {
         && (!('recoveryQuotaDefault' in data) || data.recoveryQuotaDefault == null
           || (data.recoveryQuotaDefault is number && data.recoveryQuotaDefault >= 0))
         && data.authUid is string && data.authUid.size() > 0
-        && data.appliances is list && data.appliances.size() <= 20;
+        && data.appliances is list && data.appliances.size() <= 20
+        && (!('nextDeliveryDate' in data) || data.nextDeliveryDate is timestamp);
     }
 
     function validUserProfile(data) {
@@ -114,13 +118,15 @@ service cloud.firestore {
       allow create: if isStaff()
         && validFamily(request.resource.data)
         && familyId == request.resource.data.authUid
-        && getAfter(/databases/$(database)/documents/users/$(familyId)).data.role == 'family';
+        && getAfter(/databases/$(database)/documents/users/$(familyId)).data.role == 'family'
+        && !('nextDeliveryDate' in request.resource.data);
       allow read: if request.auth != null && (resource.data.authUid == request.auth.uid || isStaff());
       // La familia solo puede cambiar sus electrodomésticos; el staff corrige
       // los demás datos sin cambiar la cuenta dueña.
       allow update: if request.auth != null
         && request.resource.data.authUid == resource.data.authUid
         && validFamily(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['nextDeliveryDate'])
         && (isStaff()
           || (request.auth.uid == resource.data.authUid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appliances'])));

@@ -93,7 +93,7 @@ function pantryItemsFor(delivery, deliveryId, deliveredAt) {
   const invalid = [];
 
   const source = Array.isArray(delivery.items) ? delivery.items : [];
-  const deviceId = 
+  const deviceId =
     typeof delivery.deviceId === 'string' && delivery.deviceId ? delivery.deviceId : DEVICE_ID;
   source.forEach((item, index) => {
     const reason = invalidReason(item);
@@ -140,4 +140,5 @@ module.exports = {
   pantryItemsFor,
   pantryItemId,
   handoverTime,
+  toDate,
 };
