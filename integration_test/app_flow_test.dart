@@ -174,8 +174,10 @@ void main() {
       await shot('04_cuenta_creada');
       await _tap(tester, find.text('Listo'));
 
-      // 3. Entrega ya entregada con un producto y su caducidad.
+      // 3. Entrega ya entregada con un producto y su caducidad. La familia
+      // nueva tiene la cuota estándar ($250), así que pide justificación.
       await _selectFamily(tester, stamp, familyName);
+      await _enter(tester, _justificationField(), 'Cuota estándar');
 
       await _tap(tester, _pickerIn('Fecha de entrega'));
       await _confirmDatePicker(tester);
@@ -196,6 +198,7 @@ void main() {
       // Una entrega programada que se reasigna a la Familia Ramírez (la
       // familia nueva ya no la recibe) y después se cancela.
       await _selectFamily(tester, stamp, familyName);
+      await _enter(tester, _justificationField(), 'Cuota estándar');
       await _tap(tester, _pickerIn('Fecha de entrega'));
       await _confirmDatePicker(tester);
       await _enter(tester, _fieldWithHint('Ej. Arroz'), 'Frijol');
@@ -522,6 +525,9 @@ Future<void> _selectFamily(
 }
 
 Finder _fieldWithHint(String hint) => find.widgetWithText(TextField, hint);
+
+Finder _justificationField() =>
+    _fieldWithHint('Motivo del monto (nivel de ingreso, tipo de entrega…)');
 
 Finder _passwordField() => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.obscureText,

@@ -30,6 +30,8 @@ const FAMILY_ID = 'seed-familia-ramirez';
 const FAMILY_NAME = 'Familia Ramírez';
 const DEVICE_ID = 'seed';
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Igual que Family.standardRecoveryQuota (lib/data/models/family.dart), en MXN.
+const STANDARD_RECOVERY_QUOTA = 250;
 
 const STAFF = { email: 'staff@bamx.test', name: 'Staff BAMX' };
 const STAFF_REQUEST = { email: 'solicitud.staff@bamx.test', name: 'Laura Méndez' };
@@ -72,9 +74,7 @@ class SeedError extends Error {}
 const str = (value) => ({ stringValue: value });
 const int = (value) => ({ integerValue: String(value) });
 const dbl = (value) => ({ doubleValue: value });
-const bool = (value) => ({ booleanValue: value });
 const ts = (date) => ({ timestampValue: date.toISOString() });
-const nul = () => ({ nullValue: null });
 const arr = (values) => ({ arrayValue: values.length ? { values } : {} });
 const map = (fields) => ({ mapValue: { fields } });
 
@@ -325,7 +325,7 @@ async function seed() {
     name: str(FAMILY.name),
     address: str(FAMILY.address),
     registrationDate: ts(registeredAt),
-    recoveryQuotaDefault: nul(),
+    recoveryQuotaDefault: dbl(STANDARD_RECOVERY_QUOTA),
     authUid: str(family.uid),
     appliances: arr([str('refrigerador'), str('estufa')]),
   });

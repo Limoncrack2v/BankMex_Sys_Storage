@@ -1,12 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Family {
+  /// Cuota de recuperación estándar de BAMX en MXN: la que recibe por defecto
+  /// una familia nueva.
+  static const double standardRecoveryQuota = 250;
+
   final String familyId;
 
   /// Nombre del hogar, p. ej. "Familia Ramírez".
   final String? name;
   final String address;
   final DateTime registrationDate;
+
+  /// Cuota de recuperación por defecto de sus entregas en MXN (el formulario
+  /// de entregas la propone); null si la familia está exenta.
   final double? recoveryQuotaDefault;
   final String authUid;
   final List<String> appliances;

@@ -205,6 +205,19 @@ class _DeliveryFormState extends State<_DeliveryForm> {
 
   void _onEdited(String _) => setState(() {});
 
+  /// Al elegir familia se propone su cuota por defecto (Exenta si no tiene);
+  /// el staff puede cambiarla antes de registrar.
+  void _selectFamily(Family? family) {
+    setState(() {
+      _family = family;
+      if (family == null) return;
+      final quota = family.recoveryQuotaDefault;
+      _exempt = quota == null;
+      _fee.text = quota == null ? '' : formatNumber(quota);
+      if (_exempt) _justification.clear();
+    });
+  }
+
   void _toggleExempt() {
     setState(() {
       _exempt = !_exempt;
@@ -437,7 +450,7 @@ class _DeliveryFormState extends State<_DeliveryForm> {
             families: widget.families,
             controller: _familyText,
             selected: _family,
-            onSelected: (family) => setState(() => _family = family),
+            onSelected: _selectFamily,
           ),
         ),
         const SizedBox(height: 16),
