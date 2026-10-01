@@ -153,7 +153,10 @@ void main() {
       await assertDenied(
         staff().setDoc(
           'deliveries/new',
-          delivery({'recoveryFee': integer(-1)}),
+          delivery({
+            'recoveryFee': integer(-1),
+            'justification': str('Nivel de ingreso'),
+          }),
         ),
       );
     });
@@ -504,6 +507,54 @@ void main() {
           'localTimestamp': now(),
         }),
       );
+    });
+  });
+
+  group('cuota de recuperación', () {
+    test('cuota con justificación permitida', () async {
+      await assertAllowed(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({
+            'recoveryFee': integer(250),
+            'justification': str('Cuota estándar'),
+          }),
+        ),
+      );
+    });
+
+    test('cuota sin justificación rechazada', () async {
+      await assertDenied(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({'recoveryFee': integer(250)}),
+        ),
+      );
+    });
+
+    test('cuota con justificación en blanco rechazada', () async {
+      await assertDenied(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({
+            'recoveryFee': integer(250),
+            'justification': str('   '),
+          }),
+        ),
+      );
+    });
+
+    test('cuota en cero también pide justificación', () async {
+      await assertDenied(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({'recoveryFee': integer(0)}),
+        ),
+      );
+    });
+
+    test('exenta no pide justificación', () async {
+      await assertAllowed(staff().setDoc('deliveries/new', delivery()));
     });
   });
 }

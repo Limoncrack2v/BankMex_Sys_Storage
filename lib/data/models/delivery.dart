@@ -78,8 +78,12 @@ class Delivery {
   final DateTime deliveryDate;
   final int packages;
 
-  /// null = exenta de cuota de recuperación.
+  /// Cuota de recuperación en MXN; null = exenta. Al registrar, el formulario
+  /// la propone desde Family.recoveryQuotaDefault.
   final double? recoveryFee;
+
+  /// Motivo de la cuota, para auditoría. Obligatoria si hay cuota (no exenta);
+  /// lo revisan validate() y validDelivery en firestore.rules.
   final String? justification;
   final DeliveryStatus status;
   final String? notes;
@@ -186,6 +190,9 @@ class Delivery {
     if (recoveryFee != null &&
         (!recoveryFee!.isFinite || recoveryFee! < 0 || recoveryFee! > 100000)) {
       return 'La cuota de recuperación no es válida';
+    }
+    if (recoveryFee != null && (justification?.trim() ?? '').isEmpty) {
+      return 'Escribe la justificación de la cuota de recuperación.';
     }
     if (items.isEmpty || items.length > maxItems) {
       return 'Agrega entre 1 y $maxItems productos';
