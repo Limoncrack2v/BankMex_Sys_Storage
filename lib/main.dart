@@ -6,12 +6,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_options.dart';
 import 'data/firebase_environment.dart';
+import 'data/auth_persistence.dart';
 import 'ui/screens/session/session_gate.dart';
 import 'ui/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await configureAuthPersistence(FirebaseAuth.instance);
   await connectToEmulatorsIfDebug(
     auth: FirebaseAuth.instance,
     firestore: FirebaseFirestore.instance,
