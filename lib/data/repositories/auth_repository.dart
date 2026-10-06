@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -209,6 +211,8 @@ class AuthRepository {
 
     try {
       await connectToEmulatorsIfDebug(auth: auth);
+
+      if (kIsWeb) await auth.setPersistence(Persistence.NONE);
 
       final UserCredential credential;
       try {
