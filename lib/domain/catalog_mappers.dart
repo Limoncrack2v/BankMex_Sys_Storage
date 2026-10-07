@@ -52,11 +52,14 @@ abstract final class CatalogMappers {
       authUid: authUid,
       adults: members.isEmpty ? 1 : adults,
       children: children,
-      dietaryRestrictions: members
-          .expand((m) => m.allergies ?? const <data.Allergy>[])
-          .map((a) => a.name)
-          .toSet()
-          .toList(),
+      dietaryRestrictions: {
+        for (final m in members) ...[
+          for (final a in m.allergies ?? const <data.Allergy>[]) a.name,
+          for (final c
+              in m.chronicConditions ?? const <data.ChronicCondition>[])
+            c.name,
+        ],
+      }.toList(),
     );
   }
 

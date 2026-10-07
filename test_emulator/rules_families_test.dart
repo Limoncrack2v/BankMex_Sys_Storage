@@ -161,6 +161,36 @@ void main() {
       );
     });
 
+    test('staff registra un hogar con electrodomésticos', () async {
+      await assertAllowed(
+        staff().commit([
+          setWrite('users/newbie', profile('family')),
+          setWrite(
+            'families/newbie',
+            family('newbie', {
+              'appliances': arr([str('estufa'), str('ollaPresion')]),
+            }),
+          ),
+        ]),
+      );
+    });
+
+    test('electrodoméstico desconocido rechazado', () async {
+      await assertDenied(
+        fam1().updateDoc('families/famA', {
+          'appliances': arr([str('freidora')]),
+        }),
+      );
+    });
+
+    test('electrodoméstico repetido rechazado', () async {
+      await assertDenied(
+        fam1().updateDoc('families/famA', {
+          'appliances': arr([str('estufa'), str('estufa')]),
+        }),
+      );
+    });
+
     test('la familia no cambia su nombre', () async {
       await assertDenied(
         fam1().updateDoc('families/famA', {'name': str('Familia B')}),

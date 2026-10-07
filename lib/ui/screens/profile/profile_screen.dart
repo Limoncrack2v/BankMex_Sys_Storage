@@ -263,6 +263,7 @@ class _MemberCard extends StatelessWidget {
     final age = member.age;
     final weight = member.weightKg;
     final allergies = member.allergies ?? const <Allergy>[];
+    final conditions = member.chronicConditions ?? const <ChronicCondition>[];
     final kcal = EnergyRequirement.dailyKcal(member);
 
     return Material(
@@ -313,6 +314,19 @@ class _MemberCard extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
                           'Alergias: ${allergies.map(allergyLabel).join(', ')}',
+                          style: AppText.nunito(
+                            13,
+                            19.5,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    if (conditions.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Enfermedades crónicas: '
+                          '${conditions.map(chronicConditionLabel).join(', ')}',
                           style: AppText.nunito(
                             13,
                             19.5,

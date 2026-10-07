@@ -141,6 +141,46 @@ void main() {
       );
     });
 
+    test('enfermedades crónicas válidas', () async {
+      await assertAllowed(
+        fam1().setDoc(
+          m,
+          member({
+            'chronicConditions': arr([str('diabetes'), str('kidneyDisease')]),
+          }),
+        ),
+      );
+    });
+
+    test('enfermedades crónicas vacías ("Ninguna") válidas', () async {
+      await assertAllowed(
+        fam1().setDoc(m, member({'chronicConditions': arr([])})),
+      );
+    });
+
+    test('enfermedad crónica desconocida rechazada', () async {
+      await assertDenied(
+        fam1().setDoc(
+          m,
+          member({
+            'chronicConditions': arr([str('asthma')]),
+          }),
+        ),
+      );
+    });
+
+    test('enfermedades crónicas como texto rechazadas', () async {
+      await assertDenied(
+        fam1().setDoc(m, member({'chronicConditions': str('diabetes')})),
+      );
+    });
+
+    test('borrar enfermedades crónicas al editar', () async {
+      await assertAllowed(
+        fam1().updateDoc(m1, {'chronicConditions': deleteField}),
+      );
+    });
+
     test('campo extra rechazado', () async {
       await assertDenied(fam1().setDoc(m, member({'foo': integer(1)})));
     });
@@ -175,6 +215,18 @@ void main() {
 
     test('la familia lee sus integrantes', () async {
       await assertAllowed(fam1().listDocs('members', parent: 'families/famA'));
+    });
+
+    test('la familia lee un integrante', () async {
+      await assertAllowed(fam1().getDoc(m1));
+    });
+
+    test('staff no lista los integrantes de una familia', () async {
+      await assertDenied(staff().listDocs('members', parent: 'families/famA'));
+    });
+
+    test('staff no lee los datos de salud de un integrante', () async {
+      await assertDenied(staff().getDoc(m1));
     });
   });
 }

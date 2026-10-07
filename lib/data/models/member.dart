@@ -8,6 +8,15 @@ enum MemberSex { male, female }
 /// Alergias y restricciones alimentarias que se pueden registrar.
 enum Allergy { dairy, gluten, peanut, shellfish, egg, soy }
 
+/// Enfermedades crónicas que cambian lo que conviene comer.
+enum ChronicCondition {
+  diabetes,
+  hypertension,
+  obesity,
+  kidneyDisease,
+  highCholesterol,
+}
+
 class Member {
   static const int maxNameLength = 100;
   static const int maxAge = 120;
@@ -24,6 +33,9 @@ class Member {
   /// null = no se ha capturado; vacía = "Ninguna".
   final List<Allergy>? allergies;
 
+  /// null = no se ha capturado; vacía = "Ninguna".
+  final List<ChronicCondition>? chronicConditions;
+
   Member({
     required this.memberId,
     required this.name,
@@ -33,12 +45,14 @@ class Member {
     this.weightKg,
     this.sex,
     this.allergies,
+    this.chronicConditions,
   });
 
   factory Member.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
     final sex = data['sex'] as String?;
     final allergies = data['allergies'] as List?;
+    final conditions = data['chronicConditions'] as List?;
 
     return Member(
       memberId: doc.id,
@@ -50,6 +64,9 @@ class Member {
       sex: sex == null ? null : MemberSex.values.byName(sex),
       allergies: allergies
           ?.map((a) => Allergy.values.byName(a as String))
+          .toList(),
+      chronicConditions: conditions
+          ?.map((c) => ChronicCondition.values.byName(c as String))
           .toList(),
     );
   }
@@ -64,6 +81,8 @@ class Member {
     if (weightKg != null) 'weightKg': weightKg,
     if (sex != null) 'sex': sex!.name,
     if (allergies != null) 'allergies': allergies!.map((a) => a.name).toList(),
+    if (chronicConditions != null)
+      'chronicConditions': chronicConditions!.map((c) => c.name).toList(),
   };
 
   Member copyWith({String? memberId}) => Member(
@@ -75,6 +94,7 @@ class Member {
     weightKg: weightKg,
     sex: sex,
     allergies: allergies,
+    chronicConditions: chronicConditions,
   );
 
   static String? validateName(String name) {
@@ -98,6 +118,10 @@ class Member {
     }
     if (allergies != null && allergies!.toSet().length != allergies!.length) {
       return 'Las alergias no pueden repetirse';
+    }
+    if (chronicConditions != null &&
+        chronicConditions!.toSet().length != chronicConditions!.length) {
+      return 'Las enfermedades crónicas no pueden repetirse';
     }
     return null;
   }

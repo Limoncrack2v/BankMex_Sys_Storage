@@ -1,3 +1,4 @@
+import '../data/models/family.dart';
 import '../data/models/member.dart';
 import '../data/models/pantry_item.dart';
 
@@ -165,6 +166,23 @@ String allergyLabel(Allergy allergy) => switch (allergy) {
   Allergy.shellfish => 'Mariscos',
   Allergy.egg => 'Huevo',
   Allergy.soy => 'Soya',
+};
+
+String chronicConditionLabel(ChronicCondition condition) => switch (condition) {
+  ChronicCondition.diabetes => 'Diabetes',
+  ChronicCondition.hypertension => 'Hipertensión',
+  ChronicCondition.obesity => 'Obesidad',
+  ChronicCondition.kidneyDisease => 'Enfermedad renal',
+  ChronicCondition.highCholesterol => 'Colesterol alto',
+};
+
+String applianceLabel(Appliance appliance) => switch (appliance) {
+  Appliance.stove => 'Estufa',
+  Appliance.fridge => 'Refrigerador',
+  Appliance.oven => 'Horno',
+  Appliance.microwave => 'Microondas',
+  Appliance.blender => 'Licuadora',
+  Appliance.pressureCooker => 'Olla de presión',
 };
 
 /// "1 año", "38 años".

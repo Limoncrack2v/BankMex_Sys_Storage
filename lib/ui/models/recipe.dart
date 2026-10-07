@@ -399,14 +399,16 @@ const allergenKeywords = <Allergy, List<String>>{
 /// Si el nombre de un ingrediente contiene el alérgeno: "Leche entera" y
 /// "Quesos" llevan lácteos. Se compara palabra por palabra, así que
 /// "Lechuga" no cuenta como leche ni "Panela" como pan.
-bool containsAllergen(String ingredientName, Allergy allergy) {
-  final keywords = [
-    for (final keyword in allergenKeywords[allergy] ?? const <String>[])
-      normalizeName(keyword),
+bool containsAllergen(String ingredientName, Allergy allergy) =>
+    _containsKeyword(ingredientName, allergenKeywords[allergy]);
+
+bool _containsKeyword(String ingredientName, List<String>? keywords) {
+  final normalized = [
+    for (final keyword in keywords ?? const <String>[]) normalizeName(keyword),
   ];
   return normalizeName(ingredientName)
       .split(' ')
-      .any((word) => keywords.any((keyword) => _sameWord(word, keyword)));
+      .any((word) => normalized.any((keyword) => _sameWord(word, keyword)));
 }
 
 /// Una alergia de la familia que choca con una receta: quiénes la tienen y
@@ -451,6 +453,129 @@ String allergyWarning(AllergyConflict conflict) {
   return 'Atención: esta receta contiene '
       '${allergyLabel(allergy).toLowerCase()} (${joinWithAnd(ingredients)}), '
       'y ${joinWithAnd(members)} $verb.';
+}
+
+// ---------------------------------------------------------------------------
+// Enfermedades crónicas de la familia.
+
+/// Lo que conviene evitar con cada enfermedad, en la forma de
+/// [normalizeName]: azúcares con diabetes, sal y embutidos con hipertensión y
+/// enfermedad renal (también refrescos, por el fósforo), y grasas saturadas
+/// con colesterol alto. Igual que con las alergias, se busca en el nombre del
+/// ingrediente palabra por palabra.
+const conditionKeywords = <ChronicCondition, List<String>>{
+  ChronicCondition.diabetes: [
+    'azucar',
+    'refresco',
+    'jugo',
+    'miel',
+    'dulce',
+    'mermelada',
+    'chocolate',
+    'piloncillo',
+    'cajeta',
+    'jarabe',
+  ],
+  ChronicCondition.hypertension: [
+    'sal',
+    'consome',
+    'jamon',
+    'salchicha',
+    'chorizo',
+    'tocino',
+    'embutido',
+  ],
+  ChronicCondition.obesity: [
+    'azucar',
+    'refresco',
+    'dulce',
+    'manteca',
+    'chicharron',
+    'fritura',
+  ],
+  ChronicCondition.kidneyDisease: [
+    'sal',
+    'consome',
+    'refresco',
+    'jamon',
+    'salchicha',
+    'chorizo',
+    'embutido',
+  ],
+  ChronicCondition.highCholesterol: [
+    'manteca',
+    'mantequilla',
+    'tocino',
+    'chicharron',
+    'chorizo',
+    'crema',
+  ],
+};
+
+/// Si el nombre de un ingrediente lleva algo que conviene evitar con
+/// [condition]: "Sal de mesa" con hipertensión, pero no "Salsa verde".
+bool containsRestricted(String ingredientName, ChronicCondition condition) =>
+    _containsKeyword(ingredientName, conditionKeywords[condition]);
+
+/// Lista de exclusión del hogar: las palabras de los alérgenos y de las
+/// enfermedades crónicas de [members], sin repetir y en orden alfabético.
+List<String> exclusionKeywords(List<Member> members) {
+  final keywords = <String>{
+    for (final member in members) ...[
+      for (final allergy in member.allergies ?? const <Allergy>[])
+        ...?allergenKeywords[allergy],
+      for (final condition
+          in member.chronicConditions ?? const <ChronicCondition>[])
+        ...?conditionKeywords[condition],
+    ],
+  };
+  return keywords.toList()..sort();
+}
+
+/// Una enfermedad crónica de la familia que choca con una receta: quiénes la
+/// tienen y qué ingredientes conviene evitar.
+typedef ConditionConflict = ({
+  ChronicCondition condition,
+  List<String> members,
+  List<String> ingredients,
+});
+
+/// Enfermedades de [members] con las que choca [recipe], en el orden de
+/// [ChronicCondition].
+List<ConditionConflict> conditionConflicts(
+  Recipe recipe,
+  List<Member> members,
+) {
+  final conflicts = <ConditionConflict>[];
+  for (final condition in ChronicCondition.values) {
+    final affected = [
+      for (final member in members)
+        if (member.chronicConditions?.contains(condition) ?? false)
+          member.name.trim(),
+    ];
+    if (affected.isEmpty) continue;
+    final ingredients = [
+      for (final ingredient in recipe.ingredients)
+        if (containsRestricted(ingredient.name, condition)) ingredient.name,
+    ];
+    if (ingredients.isEmpty) continue;
+    conflicts.add((
+      condition: condition,
+      members: affected,
+      ingredients: ingredients,
+    ));
+  }
+  return conflicts;
+}
+
+/// "Cuidado: esta receta lleva Sal y Jamón, que conviene evitar con
+/// hipertensión (José)."
+String conditionWarning(ConditionConflict conflict) {
+  final (:condition, :members, :ingredients) = conflict;
+  return 'Cuidado: esta receta lleva ${joinWithAnd(ingredients)}, que '
+      'conviene evitar con '
+      '${chronicConditionLabel(condition).toLowerCase()} '
+      '(${joinWithAnd(members)}).';
 }
 
 /// "A", "A y B", "A, B y C". Antes de un sonido "i" se usa "e" ("María e

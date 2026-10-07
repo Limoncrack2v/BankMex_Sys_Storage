@@ -109,9 +109,27 @@ Ningún cliente, incluido el staff, crea productos en `families/{familyId}/pantr
 2. La Cloud Function `onDeliveryWritten` (`functions/index.js`) detecta que la entrega quedó como entregada. En una transacción crea un `PantryItem` por producto, menos los que ya caducaron, y marca la entrega con `pantryStockedAt`. La marca evita que un reintento duplique productos.
 3. La familia ve los productos en su despensa. Al registrar consumo solo puede bajar la cantidad de un producto, o borrarlo cuando se acaba.
 
+### Despensas estándar
+
+El contenido fijo de cada despensa del banco está en `standardBaskets/{basketId}`: nombre, descripción y productos (`productId`, `type`, `quantity`, `unit` y `shelfLifeDays`, los días que dura desde la entrega). `StandardBasket.toDeliveryItems(fecha)` los convierte en los productos de una entrega.
+
+- La única fuente es `tool/standard_baskets.mjs`. `node tool/seed_emulators.mjs` las carga en los emuladores y `./scripts/seed_standard_baskets.sh` en el proyecto real (pide confirmación).
+- Solo el staff las lee; ningún cliente las escribe.
+
 Una entrega **programada** también se puede **reasignar** a otra familia. En un solo batch, la original queda como `reassigned` (con `reassignedTo`) y se crea una entrega nueva programada para la otra familia (con `reassignedFrom`), con la misma fecha, despensas y productos.
 
 Los integrantes de la familia se guardan en la subcolección `families/{familyId}/members`, con `MemberRepository` y sus propias reglas (`validMember`).
+
+### Datos de salud de los integrantes
+
+Cada integrante puede tener edad, peso, sexo, alergias y enfermedades crónicas: son datos de salud (MASVS-PRIVACY-1, OWASP Mobile M6).
+
+- **Quién los lee:** solo la familia dueña del hogar. El staff no los lee, ni con el SDK: ninguna pantalla de staff los usa. El staff sigue registrando el hogar (`families/{id}`); los integrantes los agrega la familia desde su perfil.
+- **Retención:** cuando una familia deja el programa, sus integrantes se borran a más tardar 6 meses después. Al borrar `families/{familyId}` desde la app **no** se borran sus subcolecciones, así que los integrantes se eliminan aparte:
+
+  ```sh
+  firebase firestore:delete --recursive "families/<familyId>" --project bank-storage-bamx
+  ```
 
 ## Cuentas
 
