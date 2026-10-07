@@ -13,11 +13,11 @@ import 'ui/theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await configureAuthPersistence(FirebaseAuth.instance);
   await connectToEmulatorsIfDebug(
     auth: FirebaseAuth.instance,
     firestore: FirebaseFirestore.instance,
   );
+  await configureAuthPersistence(FirebaseAuth.instance);
 
   runApp(const MyApp());
 }
