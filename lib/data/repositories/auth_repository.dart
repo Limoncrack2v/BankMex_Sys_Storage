@@ -45,6 +45,13 @@ class AuthRepository {
 
   User? get currentUser => _auth.currentUser;
 
+  /// Usuario de la sesión guardada. En web Firebase la carga de forma
+  /// asíncrona, así que currentUser puede ser null justo al abrir la app
+  /// aunque haya sesión; el primer evento de authStateChanges llega cuando
+  /// ya terminó de cargarla.
+  Future<User?> restoredUser() => _auth.authStateChanges().first;
+
+
   Future<AuthSession> signIn(String email, String password) async {
     final UserCredential credential;
     try {
