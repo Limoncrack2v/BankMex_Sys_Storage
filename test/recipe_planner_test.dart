@@ -64,7 +64,6 @@ void main() {
       recipes: recipes,
       now: now,
     );
-    //final suggested = null;
     final suggested = await planner.suggestRecipe(
       family: family,
       pantryItems: items,
@@ -95,12 +94,14 @@ void main() {
   });
 
   test('plans the same days as MealPlanGenerator', () async {
+    // Un día después de now, para que perder startDate se note.
+    final start = DateTime(2026, 10, 7);
     final expected = MealPlanGenerator.generateMealPlan(
       family: family,
       pantryItems: items,
       recipes: recipes,
       days: 7,
-      startDate: now,
+      startDate: start,
       now: now,
     );
     final generated = await planner.planDays(
@@ -108,7 +109,7 @@ void main() {
       pantryItems: items,
       recipes: recipes,
       days: 7,
-      startDate: now,
+      startDate: start,
       now: now,
     );
     expect(generated.requestedDays, 7);
