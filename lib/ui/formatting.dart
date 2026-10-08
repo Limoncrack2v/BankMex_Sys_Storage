@@ -1,6 +1,7 @@
 import '../data/models/family.dart';
 import '../data/models/member.dart';
 import '../data/models/pantry_item.dart';
+import '../domain/models/recipe.dart';
 
 /// Textos y formatos en español compartidos por las pantallas.
 
@@ -183,6 +184,16 @@ String applianceLabel(Appliance appliance) => switch (appliance) {
   Appliance.microwave => 'Microondas',
   Appliance.blender => 'Licuadora',
   Appliance.pressureCooker => 'Olla de presión',
+};
+
+String nutritionalTagLabel(NutritionalTag tag) => switch (tag) {
+  NutritionalTag.lowSodium => 'Bajo en sodio',
+  NutritionalTag.lowSugar => 'Bajo en azúcar',
+  NutritionalTag.lowFat => 'Bajo en grasa',
+  NutritionalTag.highFiber => 'Alto en fibra',
+  NutritionalTag.highProtein => 'Alto en proteína',
+  NutritionalTag.vegetarian => 'Vegetariano',
+  NutritionalTag.diabeticFriendly => 'Apto para diabéticos',
 };
 
 /// "1 año", "38 años".

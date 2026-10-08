@@ -76,6 +76,8 @@ class BankStorageFacade {
     required int prepTimeMinutes,
     required int caloriesPerServing,
     List<String> dietaryTags = const [],
+    List<String> nutritionalTags = const [],
+    List<String> requiredEquipment = const [],
     String image = '',
     int servings = 4,
   }) {
@@ -87,6 +89,8 @@ class BankStorageFacade {
       prepTimeMinutes: prepTimeMinutes,
       caloriesPerServing: caloriesPerServing,
       dietaryTags: dietaryTags,
+      nutritionalTags: nutritionalTags,
+      requiredEquipment: requiredEquipment,
     ).copyWith(image: image, servings: servings);
     return recipes.create(pending);
   }
@@ -100,6 +104,8 @@ class BankStorageFacade {
     required int prepTimeMinutes,
     required int caloriesPerServing,
     List<String> dietaryTags = const [],
+    List<String> nutritionalTags = const [],
+    List<String> requiredEquipment = const [],
     String image = '',
     int servings = 4,
   }) {
@@ -111,6 +117,8 @@ class BankStorageFacade {
       prepTimeMinutes: prepTimeMinutes,
       caloriesPerServing: caloriesPerServing,
       dietaryTags: dietaryTags,
+      nutritionalTags: nutritionalTags,
+      requiredEquipment: requiredEquipment,
     ).copyWith(image: image, servings: servings);
     return recipes.create(published);
   }
@@ -119,6 +127,10 @@ class BankStorageFacade {
     if (recipe.id.isEmpty) {
       throw ArgumentError('updateRecipe requires an id');
     }
+    RecipeCatalog.validateTags(
+      nutritionalTags: recipe.nutritionalTags,
+      requiredEquipment: recipe.requiredEquipment,
+    );
     return recipes.update(recipe);
   }
 

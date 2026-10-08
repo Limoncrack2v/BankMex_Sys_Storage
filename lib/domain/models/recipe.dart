@@ -1,3 +1,5 @@
+import '../../data/models/family.dart';
+
 enum RecipeStatus {
   pending,
   approved;
@@ -18,6 +20,30 @@ enum RecipeStatus {
       default:
         return RecipeStatus.pending;
     }
+  }
+}
+
+/// Etiquetas nutricionales de una receta. [id] es el valor que se guarda en
+/// recipes/{id}.nutritionalTags.
+enum NutritionalTag {
+  lowSodium('bajoEnSodio'),
+  lowSugar('bajoEnAzucar'),
+  lowFat('bajoEnGrasa'),
+  highFiber('altoEnFibra'),
+  highProtein('altoEnProteina'),
+  vegetarian('vegetariano'),
+  diabeticFriendly('aptoDiabeticos');
+
+  const NutritionalTag(this.id);
+
+  final String id;
+
+  /// null si [id] no es una etiqueta conocida.
+  static NutritionalTag? fromId(String id) {
+    for (final tag in values) {
+      if (tag.id == id) return tag;
+    }
+    return null;
   }
 }
 
@@ -71,6 +97,8 @@ class Recipe {
     required this.caloriesPerServing,
     required this.status,
     this.dietaryTags = const [],
+    this.nutritionalTags = const [],
+    this.requiredEquipment = const [],
     this.image = '',
     this.servings = 4,
   });
@@ -83,6 +111,14 @@ class Recipe {
   final int caloriesPerServing;
   final RecipeStatus status;
   final List<String> dietaryTags;
+
+  /// Ids de [NutritionalTag], sin repetir.
+  final List<String> nutritionalTags;
+
+  /// Ids de [Appliance] que hacen falta para prepararla, sin repetir. Vacía
+  /// si no necesita ninguno. Son los mismos ids de families/{id}.appliances
+  /// para poder compararlos con lo que tiene cada hogar.
+  final List<String> requiredEquipment;
   final String image;
   final int servings;
 
@@ -90,6 +126,9 @@ class Recipe {
     final rawIngredients = map['ingredients'] as List<dynamic>? ?? const [];
     final rawSteps = map['steps'] as List<dynamic>? ?? const [];
     final rawTags = map['dietaryTags'] as List<dynamic>? ?? const [];
+    final rawNutritional =
+        map['nutritionalTags'] as List<dynamic>? ?? const [];
+    final rawEquipment = map['requiredEquipment'] as List<dynamic>? ?? const [];
     return Recipe(
       id: id,
       name: map['name'] as String? ?? '',
@@ -101,6 +140,8 @@ class Recipe {
       caloriesPerServing: (map['caloriesPerServing'] as num?)?.toInt() ?? 0,
       status: RecipeStatus.fromFirestore(map['status'] as String?),
       dietaryTags: rawTags.map((item) => item.toString()).toList(),
+      nutritionalTags: rawNutritional.map((item) => item.toString()).toList(),
+      requiredEquipment: rawEquipment.map((item) => item.toString()).toList(),
       image: map['image'] as String? ?? '',
       servings: (map['servings'] as num?)?.toInt() ?? 4,
     );
@@ -114,6 +155,8 @@ class Recipe {
         'caloriesPerServing': caloriesPerServing,
         'status': status.firestoreValue,
         'dietaryTags': dietaryTags,
+        'nutritionalTags': nutritionalTags,
+        'requiredEquipment': requiredEquipment,
         'image': image,
         'servings': servings,
       };
@@ -129,6 +172,8 @@ class Recipe {
     int? caloriesPerServing,
     RecipeStatus? status,
     List<String>? dietaryTags,
+    List<String>? nutritionalTags,
+    List<String>? requiredEquipment,
     String? image,
     int? servings,
   }) {
@@ -141,8 +186,24 @@ class Recipe {
       caloriesPerServing: caloriesPerServing ?? this.caloriesPerServing,
       status: status ?? this.status,
       dietaryTags: dietaryTags ?? this.dietaryTags,
+      nutritionalTags: nutritionalTags ?? this.nutritionalTags,
+      requiredEquipment: requiredEquipment ?? this.requiredEquipment,
       image: image ?? this.image,
       servings: servings ?? this.servings,
     );
   }
+
+  static String? validateNutritionalTags(List<String> tags) {
+    if (tags.any((id) => NutritionalTag.fromId(id) == null)) {
+      return 'Etiqueta nutricional desconocida';
+    }
+    if (tags.toSet().length != tags.length) {
+      return 'Las etiquetas nutricionales no pueden repetirse';
+    }
+    return null;
+  }
+
+  /// Mismas reglas que [Family.validateAppliances].
+  static String? validateRequiredEquipment(List<String> equipment) =>
+      Family.validateAppliances(equipment);
 }
