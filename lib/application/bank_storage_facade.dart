@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../data/firestore_paths.dart';
+import '../data/models/family.dart';
 import '../data/models/pantry_item.dart';
 import '../data/repositories/family_repository.dart';
 import '../data/repositories/meal_plan_repository.dart';
@@ -10,6 +11,7 @@ import '../data/repositories/recipe_repository.dart';
 import '../domain/catalog_mappers.dart';
 import '../domain/consumption_stats.dart';
 import '../domain/meal_plan_generator.dart';
+import '../domain/meal_plan_length.dart';
 import '../domain/models/consumption_waste_stats.dart';
 import '../domain/models/family_profile.dart';
 import '../domain/models/pantry_item.dart' as domain;
@@ -18,7 +20,7 @@ import '../domain/name_normalizer.dart';
 import '../domain/pantry_recipe_filter.dart';
 import '../domain/portion_adjuster.dart';
 import '../domain/recipe_catalog.dart';
-import '../domain/recipe_on_demand.dart';
+import '../domain/recipe_planner.dart';
 import '../domain/unit_converter.dart';
 
 /// Orquesta el catálogo y el plan sobre los repos del equipo.
@@ -35,10 +37,12 @@ class BankStorageFacade {
     RecipeRepository? recipes,
     MealPlanRepository? mealPlans,
     FirebaseFirestore? firestore,
-  })  : families = families ?? FamilyRepository(),
-        pantry = pantry ?? PantryRepository(),
-        members = members ?? MemberRepository(),
-        _db = firestore ?? FirebaseFirestore.instance {
+    RecipePlanner? planner,
+  }) : families = families ?? FamilyRepository(),
+       planner = planner ?? const RuleBasedRecipePlanner(),
+       pantry = pantry ?? PantryRepository(),
+       members = members ?? MemberRepository(),
+       _db = firestore ?? FirebaseFirestore.instance {
     this.recipes = recipes ?? RecipeRepository(_db);
     this.mealPlans = mealPlans ?? MealPlanRepository(_db);
   }
@@ -46,16 +50,24 @@ class BankStorageFacade {
   final FamilyRepository families;
   final PantryRepository pantry;
   final MemberRepository members;
+  final RecipePlanner planner;
   late final RecipeRepository recipes;
   late final MealPlanRepository mealPlans;
   final FirebaseFirestore _db;
 
-  Future<FamilyProfile> _profile(String familyId) async {
+  Future<Family> _family(String familyId) async {
     final family = await families.getFamily(familyId);
     if (family == null) throw StateError('Family $familyId not found');
-    final memberList = await members.watchAllMembers(familyId).first;
+    return family;
+  }
+
+  Future<FamilyProfile> _profile(String familyId) async =>
+      _profileOf(await _family(familyId));
+
+  Future<FamilyProfile> _profileOf(Family family) async {
+    final memberList = await members.watchAllMembers(family.familyId).first;
     return CatalogMappers.familyProfile(
-      familyId: familyId,
+      familyId: family.familyId,
       authUid: family.authUid,
       members: memberList,
     );
@@ -201,25 +213,29 @@ class BankStorageFacade {
     final profile = await _profile(familyId);
     final items = await _domainPantry(familyId);
     final catalog = await recipes.listByStatus(RecipeStatus.approved);
-    return RecipeOnDemand.getSingleRecipeOnDemand(
+    return planner.suggestRecipe(
       family: profile,
       pantryItems: items,
       recipes: catalog,
     );
   }
 
+  /// Sin [days], el plan es semanal o quincenal según la próxima entrega de
+  /// la familia (ver [MealPlanLength]).
   Future<MealPlanGeneration> generateMealPlan({
     required String familyId,
-    required int days,
+    int? days,
   }) async {
-    final profile = await _profile(familyId);
+    final family = await _family(familyId);
+    final profile = await _profileOf(family);
     final items = await _domainPantry(familyId);
     final catalog = await recipes.listByStatus(RecipeStatus.approved);
-    final generated = MealPlanGenerator.generateMealPlan(
+    final generated = await planner.planDays(
       family: profile,
       pantryItems: items,
       recipes: catalog,
-      days: days,
+      days:
+          days ?? MealPlanLength.daysFor(nextDelivery: family.nextDeliveryDate),
     );
     final saved = await mealPlans.create(generated.plan);
     return MealPlanGeneration(
@@ -244,11 +260,16 @@ class BankStorageFacade {
 
     for (final ingredient in adjusted.ingredients) {
       var needed = UnitConverter.toBase(ingredient.quantity, ingredient.unit);
-      final matches = current.where((item) {
-        return NameNormalizer.matches(item.productId, ingredient.productName) &&
-            UnitConverter.compatible(item.unit.name, ingredient.unit);
-      }).toList()
-        ..sort((a, b) => a.daysUntilExpiration.compareTo(b.daysUntilExpiration));
+      final matches =
+          current.where((item) {
+            return NameNormalizer.matches(
+                  item.productId,
+                  ingredient.productName,
+                ) &&
+                UnitConverter.compatible(item.unit.name, ingredient.unit);
+          }).toList()..sort(
+            (a, b) => a.daysUntilExpiration.compareTo(b.daysUntilExpiration),
+          );
 
       for (final item in matches) {
         if (needed <= 0) break;
@@ -263,12 +284,12 @@ class BankStorageFacade {
             .doc(familyId)
             .collection(FirestorePaths.consumptionLogs)
             .add({
-          'productId': item.productId,
-          'quantity': takeInUnit,
-          'unit': item.unit.name,
-          'category': item.type.name,
-          'at': Timestamp.fromDate(now),
-        });
+              'productId': item.productId,
+              'quantity': takeInUnit,
+              'unit': item.unit.name,
+              'category': item.type.name,
+              'at': Timestamp.fromDate(now),
+            });
       }
     }
 
