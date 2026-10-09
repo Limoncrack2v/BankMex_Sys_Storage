@@ -19,7 +19,7 @@ import 'sign_in_screen.dart';
 class StaffSignUpScreen extends StatefulWidget {
   const StaffSignUpScreen({super.key});
 
-  static const int minPasswordLength = 8;
+  static const int minPasswordLength = AuthRepository.minPasswordLength;
 
   @override
   State<StaffSignUpScreen> createState() => _StaffSignUpScreenState();
