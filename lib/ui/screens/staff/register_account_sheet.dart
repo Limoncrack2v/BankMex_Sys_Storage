@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/app_user.dart';
+import '../../../data/models/family.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../formatting.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -48,6 +50,7 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
   final _staffName = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _appliances = <Appliance>{};
   _AccountKind _kind = _AccountKind.family;
   bool _obscurePassword = true;
   bool _saving = false;
@@ -83,6 +86,11 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
 
   void _onChanged(String _) => setState(() => _error = null);
 
+  void _toggleAppliance(Appliance appliance) => setState(() {
+    _error = null;
+    if (!_appliances.remove(appliance)) _appliances.add(appliance);
+  });
+
   void _selectKind(_AccountKind kind) => setState(() {
     _kind = kind;
     _error = null;
@@ -116,6 +124,12 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
         email: email,
         password: _password.text,
         address: isFamily ? _address.text.trim() : null,
+        appliances: isFamily
+            ? [
+                for (final appliance in Appliance.values)
+                  if (_appliances.contains(appliance)) appliance.id,
+              ]
+            : const [],
       );
     } on AuthException catch (e) {
       error = e.message;
@@ -195,7 +209,10 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
             const SizedBox(height: 12),
           ],
           Text(
-            'Todos los campos son obligatorios.',
+            _isFamily
+                ? 'Los electrodomésticos son opcionales; los demás campos son '
+                      'obligatorios.'
+                : 'Todos los campos son obligatorios.',
             style: AppText.nunito(14, 21, color: AppColors.textMuted),
           ),
           const SizedBox(height: 8),
@@ -266,6 +283,34 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
               keyboardType: TextInputType.streetAddress,
               maxLength: 200,
               onChanged: _onChanged,
+            ),
+          ),
+          const SizedBox(height: 16),
+          LabeledField(
+            label: 'Electrodomésticos',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Toca los que tiene el hogar. Sirven para sugerir recetas '
+                  'que pueda preparar.',
+                  style: AppText.nunito(14, 21, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final appliance in Appliance.values)
+                      OptionButton(
+                        label: applianceLabel(appliance),
+                        selected: _appliances.contains(appliance),
+                        pill: true,
+                        onTap: () => _toggleAppliance(appliance),
+                      ),
+                  ],
+                ),
+              ],
             ),
           ),
         ] else

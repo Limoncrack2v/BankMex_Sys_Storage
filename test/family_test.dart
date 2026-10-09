@@ -24,5 +24,40 @@ void main() {
       final data = buildFamily(nextDeliveryDate: DateTime(2026, 10, 2)).toFirestore();
       expect(data.containsKey('nextDeliveryDate'), isFalse);
     });
+
+    test('escribe los ids de los electrodomésticos', () {
+      final data = buildFamily(
+        appliances: [Appliance.stove.id, Appliance.fridge.id],
+      ).toFirestore();
+      expect(data['appliances'], ['estufa', 'refrigerador']);
+    });
+  });
+
+  group('Family.validateAppliances', () {
+    test('acepta ninguno y electrodomésticos conocidos', () {
+      expect(Family.validateAppliances(const []), isNull);
+      expect(
+        Family.validateAppliances([
+          for (final appliance in Appliance.values) appliance.id,
+        ]),
+        isNull,
+      );
+    });
+
+    test('rechaza ids desconocidos y repetidos', () {
+      expect(Family.validateAppliances(const ['freidora']), isNotNull);
+      expect(Family.validateAppliances(const ['horno', 'horno']), isNotNull);
+    });
+
+    test('los ids coinciden con los que aceptan las reglas', () {
+      expect(Appliance.values.map((a) => a.id), [
+        'estufa',
+        'refrigerador',
+        'horno',
+        'microondas',
+        'licuadora',
+        'ollaPresion',
+      ]);
+    });
   });
 }

@@ -203,13 +203,19 @@ class AuthRepository {
   ///   no cerrar la sesión del staff.
   /// - El perfil y el hogar los escribe el staff en un solo batch, así nunca
   ///   queda uno sin el otro. Si el batch falla se borra la cuenta de Auth.
+  ///
+  /// [appliances] son ids de [Appliance]; solo se usan para familias.
   Future<Family?> registerAccount({
     required String role,
     required String name,
     required String email,
     required String password,
     String? address,
+    List<String> appliances = const [],
   }) async {
+    final appliancesError = Family.validateAppliances(appliances);
+    if (appliancesError != null) throw ArgumentError(appliancesError);
+
     final app = await Firebase.initializeApp(
       name: 'registro-${DateTime.now().microsecondsSinceEpoch}',
       options: Firebase.app().options,
@@ -262,7 +268,7 @@ class AuthRepository {
           address: (address ?? '').trim(),
           registrationDate: now,
           authUid: newUser.uid,
-          appliances: const [],
+          appliances: appliances,
         );
         batch.set(
           db.collection('families').doc(newUser.uid),

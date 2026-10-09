@@ -1,5 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../domain/models/appliance.dart';
+
+export '../../domain/models/appliance.dart';
+
 class Family {
   final String familyId;
 
@@ -9,6 +13,8 @@ class Family {
   final DateTime registrationDate;
   final double? recoveryQuotaDefault;
   final String authUid;
+
+  /// Ids de [Appliance], sin repetir.
   final List<String> appliances;
 
   /// Solo la Cloud Function syncNextDelivery la escribe; la app solo la lee
@@ -46,6 +52,9 @@ class Family {
     final trimmed = name?.trim() ?? '';
     return trimmed.isNotEmpty ? trimmed : address;
   }
+
+  static String? validateAppliances(List<String> appliances) =>
+      Appliance.validateIds(appliances);
 
   Map<String, dynamic> toFirestore() => {
     if (name != null) 'name': name!.trim(),

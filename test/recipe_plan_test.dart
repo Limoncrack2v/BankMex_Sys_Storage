@@ -42,12 +42,17 @@ Recipe recipe(
   steps: const ['Paso 1.'],
 );
 
-Member member(String name, {List<Allergy>? allergies}) => Member(
+Member member(
+  String name, {
+  List<Allergy>? allergies,
+  List<ChronicCondition>? conditions,
+}) => Member(
   memberId: 'member-${_nextId++}',
   name: name,
   memberType: MemberType.adult,
   createdAt: DateTime(2026, 9, 1),
   allergies: allergies,
+  chronicConditions: conditions,
 );
 
 Member child(String name, {int? age, double? weightKg}) => Member(
@@ -199,6 +204,79 @@ void main() {
       );
       final plan = planConsumption(forFour, pantry, today: today);
       expect(plan.map((c) => c.amount), [0.3, 0.8, 4]);
+    });
+  });
+
+  group('conditionConflicts', () {
+    test('finds the ingredients to avoid and who has the condition', () {
+      final conflicts = conditionConflicts(SampleData.sandwichDeJamonYQueso, [
+        member('José', conditions: const [ChronicCondition.hypertension]),
+        member('María', conditions: const []),
+        member('Ana'),
+      ]);
+
+      expect(conflicts, hasLength(1));
+      expect(conflicts.single.condition, ChronicCondition.hypertension);
+      expect(conflicts.single.members, ['José']);
+      expect(conflicts.single.ingredients, ['Jamón de pavo']);
+      expect(
+        conditionWarning(conflicts.single),
+        'Cuidado: esta receta lleva Jamón de pavo, que conviene evitar con '
+        'hipertensión (José).',
+      );
+    });
+
+    test('compares whole words', () {
+      expect(
+        containsRestricted('Sal de mesa', ChronicCondition.hypertension),
+        isTrue,
+      );
+      expect(
+        containsRestricted('Salsa verde', ChronicCondition.hypertension),
+        isFalse,
+      );
+      expect(
+        containsRestricted('Azúcar morena', ChronicCondition.diabetes),
+        isTrue,
+      );
+      expect(
+        containsRestricted('Refrescos', ChronicCondition.kidneyDisease),
+        isTrue,
+      );
+      expect(
+        containsRestricted('Crema ácida', ChronicCondition.highCholesterol),
+        isTrue,
+      );
+    });
+
+    test('no conflicts when nobody has a condition', () {
+      expect(
+        conditionConflicts(SampleData.sandwichDeJamonYQueso, [member('Ana')]),
+        isEmpty,
+      );
+    });
+  });
+
+  group('exclusionKeywords', () {
+    test('joins allergies and conditions without repeats', () {
+      final keywords = exclusionKeywords([
+        member('María', allergies: const [Allergy.egg]),
+        member(
+          'José',
+          conditions: const [
+            ChronicCondition.diabetes,
+            ChronicCondition.obesity,
+          ],
+        ),
+      ]);
+
+      expect(keywords, containsAll(['huevo', 'azucar', 'manteca']));
+      expect(keywords.where((k) => k == 'azucar'), hasLength(1));
+      expect(keywords, orderedEquals([...keywords]..sort()));
+    });
+
+    test('empty when nobody registered allergies or conditions', () {
+      expect(exclusionKeywords([member('Ana')]), isEmpty);
     });
   });
 

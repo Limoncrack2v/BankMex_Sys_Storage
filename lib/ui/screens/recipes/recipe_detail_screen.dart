@@ -178,6 +178,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         ? null
         : checkAvailability(recipe, pantry);
     final conflicts = allergyConflicts(recipe, members ?? const []);
+    final conditions = conditionConflicts(recipe, members ?? const []);
 
     return PopScope(
       canPop: !_saving,
@@ -234,6 +235,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                 'No pudimos revisar las alergias de tu '
                                 'familia. Revisa tu conexión e intenta de '
                                 'nuevo.',
+                            background: AppColors.warningSoft,
+                            foreground: AppColors.warningText,
+                          ),
+                        ],
+                        if (conditions.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          InfoBanner(
+                            message: conditions
+                                .map(conditionWarning)
+                                .join('\n'),
                             background: AppColors.warningSoft,
                             foreground: AppColors.warningText,
                           ),
