@@ -1,4 +1,4 @@
-import '../../data/models/family.dart';
+import 'appliance.dart';
 
 enum RecipeStatus {
   pending,
@@ -193,8 +193,30 @@ class Recipe {
     );
   }
 
-  static String? validateNutritionalTags(List<String> tags) {
-    if (tags.any((id) => NutritionalTag.fromId(id) == null)) {
+  /// Ids de [nutritionalTags] que esta versión de la app no conoce, sin
+  /// repetir (un id repetido haría que la validación rechace la receta). El
+  /// formulario los conserva al editar.
+  List<String> get unknownNutritionalTags => {
+    for (final id in nutritionalTags)
+      if (NutritionalTag.fromId(id) == null) id,
+  }.toList();
+
+  /// Igual que [unknownNutritionalTags], para [requiredEquipment].
+  List<String> get unknownEquipment => {
+    for (final id in requiredEquipment)
+      if (Appliance.fromId(id) == null) id,
+  }.toList();
+
+  /// [keep] son ids que ya estaban guardados en la receta: se aceptan aunque
+  /// esta versión de la app no los conozca, para no borrarlos al editar.
+  static String? validateNutritionalTags(
+    List<String> tags, {
+    Set<String> keep = const {},
+  }) {
+    final unknown = tags.where(
+      (id) => NutritionalTag.fromId(id) == null && !keep.contains(id),
+    );
+    if (unknown.isNotEmpty) {
       return 'Etiqueta nutricional desconocida';
     }
     if (tags.toSet().length != tags.length) {
@@ -203,7 +225,10 @@ class Recipe {
     return null;
   }
 
-  /// Mismas reglas que [Family.validateAppliances].
-  static String? validateRequiredEquipment(List<String> equipment) =>
-      Family.validateAppliances(equipment);
+  /// Mismas reglas que los electrodomésticos del hogar
+  /// ([Appliance.validateIds]); [keep] igual que en [validateNutritionalTags].
+  static String? validateRequiredEquipment(
+    List<String> equipment, {
+    Set<String> keep = const {},
+  }) => Appliance.validateIds(equipment, keep: keep);
 }

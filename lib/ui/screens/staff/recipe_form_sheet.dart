@@ -101,14 +101,8 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
         final appliance = Appliance.fromId(id);
         if (appliance != null) _equipment.add(appliance);
       }
-      _unknownNutritionalTags = [
-        for (final id in recipe.nutritionalTags)
-          if (NutritionalTag.fromId(id) == null) id,
-      ];
-      _unknownEquipment = [
-        for (final id in recipe.requiredEquipment)
-          if (Appliance.fromId(id) == null) id,
-      ];
+      _unknownNutritionalTags = recipe.unknownNutritionalTags;
+      _unknownEquipment = recipe.unknownEquipment;
     }
     _ingredients = [
       for (final ingredient in recipe?.ingredients ?? const [])
@@ -244,6 +238,7 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
           image: _image,
           servings: _servingCount,
         ),
+        previous: recipe,
       );
     }
 

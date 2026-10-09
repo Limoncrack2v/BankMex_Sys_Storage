@@ -32,14 +32,23 @@ class RecipeCatalog {
   }
 
   /// Lanza [ArgumentError] con un mensaje para mostrar si alguna etiqueta o
-  /// electrodoméstico no se reconoce o se repite.
+  /// electrodoméstico no se reconoce o se repite. Al editar, [previous] es la
+  /// receta guardada: los ids que ya tenía se aceptan aunque esta versión de
+  /// la app no los conozca, para no borrarlos.
   static void validateTags({
     required List<String> nutritionalTags,
     required List<String> requiredEquipment,
+    Recipe? previous,
   }) {
     final error =
-        Recipe.validateNutritionalTags(nutritionalTags) ??
-        Recipe.validateRequiredEquipment(requiredEquipment);
+        Recipe.validateNutritionalTags(
+          nutritionalTags,
+          keep: {...?previous?.nutritionalTags},
+        ) ??
+        Recipe.validateRequiredEquipment(
+          requiredEquipment,
+          keep: {...?previous?.requiredEquipment},
+        );
     if (error != null) throw ArgumentError(error);
   }
 

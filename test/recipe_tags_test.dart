@@ -1,7 +1,50 @@
+import 'package:bank_storage_app/application/bank_storage_facade.dart';
 import 'package:bank_storage_app/data/models/family.dart';
+import 'package:bank_storage_app/data/repositories/family_repository.dart';
+import 'package:bank_storage_app/data/repositories/meal_plan_repository.dart';
+import 'package:bank_storage_app/data/repositories/member_repository.dart';
+import 'package:bank_storage_app/data/repositories/pantry_repository.dart';
+import 'package:bank_storage_app/data/repositories/recipe_repository.dart';
 import 'package:bank_storage_app/domain/models/recipe.dart';
 import 'package:bank_storage_app/domain/recipe_catalog.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// RecipeRepository de mentira: guarda lo que le piden crear o actualizar.
+class _FakeRecipes extends Fake implements RecipeRepository {
+  final saved = <Recipe>[];
+
+  @override
+  Future<Recipe> create(Recipe recipe) async {
+    saved.add(recipe);
+    return recipe;
+  }
+
+  @override
+  Future<Recipe> update(Recipe recipe) async {
+    saved.add(recipe);
+    return recipe;
+  }
+}
+
+class _FakeFamilies extends Fake implements FamilyRepository {}
+
+class _FakePantry extends Fake implements PantryRepository {}
+
+class _FakeMembers extends Fake implements MemberRepository {}
+
+class _FakeMealPlans extends Fake implements MealPlanRepository {}
+
+class _FakeFirestore extends Fake implements FirebaseFirestore {}
+
+BankStorageFacade _facade(_FakeRecipes recipes) => BankStorageFacade(
+  families: _FakeFamilies(),
+  pantry: _FakePantry(),
+  members: _FakeMembers(),
+  recipes: recipes,
+  mealPlans: _FakeMealPlans(),
+  firestore: _FakeFirestore(),
+);
 
 const _ingredients = [
   RecipeIngredient(productName: 'Frijol', quantity: 0.5, unit: 'kg'),
@@ -96,6 +139,129 @@ void main() {
       expect(
         () => _publish(requiredEquipment: const ['Estufa']),
         throwsArgumentError,
+      );
+    });
+  });
+
+  group('editar una receta con ids que esta versión no conoce', () {
+    final stored = Recipe.fromMap('r1', {
+      'name': 'Guardada',
+      'status': 'approved',
+      'nutritionalTags': ['bajoEnSodio', 'sinGluten'],
+      'requiredEquipment': ['estufa', 'freidoraDeAire'],
+    });
+
+    test('los validadores aceptan los ids que ya estaban guardados', () {
+      expect(Recipe.validateNutritionalTags(const ['sinGluten']), isNotNull);
+      expect(
+        Recipe.validateNutritionalTags(
+          const ['sinGluten'],
+          keep: const {'sinGluten'},
+        ),
+        isNull,
+      );
+      expect(
+        Recipe.validateNutritionalTags(
+          const ['sinGluten', 'sinGluten'],
+          keep: const {'sinGluten'},
+        ),
+        isNotNull,
+      );
+      expect(
+        Recipe.validateRequiredEquipment(const ['freidoraDeAire']),
+        isNotNull,
+      );
+      expect(
+        Recipe.validateRequiredEquipment(
+          const ['freidoraDeAire'],
+          keep: const {'freidoraDeAire'},
+        ),
+        isNull,
+      );
+    });
+
+    test(
+      'guardar conserva los ids desconocidos de la receta guardada',
+      () async {
+        final recipes = _FakeRecipes();
+
+        await _facade(recipes)
+            .updateRecipe(stored.copyWith(name: 'Editada'), previous: stored);
+
+        expect(recipes.saved.single.name, 'Editada');
+        expect(recipes.saved.single.nutritionalTags, [
+          'bajoEnSodio',
+          'sinGluten',
+        ]);
+        expect(recipes.saved.single.requiredEquipment, [
+          'estufa',
+          'freidoraDeAire',
+        ]);
+      },
+    );
+
+    test('un id desconocido nuevo llega como Future fallido, sin lanzar al '
+        'llamar', () async {
+      final recipes = _FakeRecipes();
+      final edited = stored.copyWith(
+        nutritionalTags: const ['bajoEnSodio', 'picante'],
+      );
+
+      late Future<Recipe> save;
+      expect(
+        () => save = _facade(recipes).updateRecipe(edited, previous: stored),
+        returnsNormally,
+      );
+      await expectLater(save, throwsArgumentError);
+      expect(recipes.saved, isEmpty);
+    });
+
+    test('publicar o dejar pendiente con un id desconocido también llega '
+        'como Future fallido', () async {
+      final recipes = _FakeRecipes();
+      final facade = _facade(recipes);
+      final creates = <Future<Recipe> Function()>[
+        () => facade.publishRecipe(
+          name: 'Nueva',
+          ingredients: _ingredients,
+          steps: const ['Cocer'],
+          prepTimeMinutes: 30,
+          caloriesPerServing: 150,
+          nutritionalTags: const ['picante'],
+        ),
+        () => facade.submitRecipe(
+          name: 'Nueva',
+          ingredients: _ingredients,
+          steps: const ['Cocer'],
+          prepTimeMinutes: 30,
+          caloriesPerServing: 150,
+          nutritionalTags: const ['picante'],
+        ),
+      ];
+
+      for (final create in creates) {
+        late Future<Recipe> save;
+        expect(() => save = create(), returnsNormally);
+        await expectLater(save, throwsArgumentError);
+      }
+      expect(recipes.saved, isEmpty);
+    });
+
+    test('los ids desconocidos repetidos se conservan una sola vez', () {
+      final recipe = Recipe.fromMap('r2', {
+        'name': 'Repetida',
+        'nutritionalTags': ['sinGluten', 'bajoEnSodio', 'sinGluten'],
+        'requiredEquipment': ['freidoraDeAire', 'estufa', 'freidoraDeAire'],
+      });
+
+      expect(recipe.unknownNutritionalTags, ['sinGluten']);
+      expect(recipe.unknownEquipment, ['freidoraDeAire']);
+      expect(
+        Recipe.validateNutritionalTags([
+          'bajoEnSodio',
+          ...recipe.unknownNutritionalTags,
+        ], keep: recipe.nutritionalTags.toSet()),
+        isNull,
       );
     });
   });
