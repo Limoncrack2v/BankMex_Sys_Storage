@@ -89,6 +89,7 @@ void main() {
       family: family,
       pantryItems: items,
       recipes: [pending],
+      now: now,
     );
     expect(suggested, isNull);
   });
