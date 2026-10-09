@@ -42,7 +42,7 @@ function recipeFields({
     status: str(status),
     dietaryTags: arr([]),
     // Ids de NutritionalTag y de Appliance (lib/domain/models/recipe.dart y
-    // lib/data/models/family.dart).
+    // lib/domain/models/appliance.dart).
     nutritionalTags: arr(nutritionalTags.map(str)),
     requiredEquipment: arr(equipment.map(str)),
     ingredients: arr(ingredients),

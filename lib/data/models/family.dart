@@ -1,28 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Electrodomésticos con los que cuenta el hogar. [id] es el valor que se
-/// guarda en families/{id}.appliances (validFamily en firestore.rules solo
-/// acepta estos).
-enum Appliance {
-  stove('estufa'),
-  fridge('refrigerador'),
-  oven('horno'),
-  microwave('microondas'),
-  blender('licuadora'),
-  pressureCooker('ollaPresion');
+import '../../domain/models/appliance.dart';
 
-  const Appliance(this.id);
-
-  final String id;
-
-  /// null si [id] no es un electrodoméstico conocido.
-  static Appliance? fromId(String id) {
-    for (final appliance in values) {
-      if (appliance.id == id) return appliance;
-    }
-    return null;
-  }
-}
+export '../../domain/models/appliance.dart';
 
 class Family {
   final String familyId;
@@ -73,15 +53,8 @@ class Family {
     return trimmed.isNotEmpty ? trimmed : address;
   }
 
-  static String? validateAppliances(List<String> appliances) {
-    if (appliances.any((id) => Appliance.fromId(id) == null)) {
-      return 'Electrodoméstico desconocido';
-    }
-    if (appliances.toSet().length != appliances.length) {
-      return 'Los electrodomésticos no pueden repetirse';
-    }
-    return null;
-  }
+  static String? validateAppliances(List<String> appliances) =>
+      Appliance.validateIds(appliances);
 
   Map<String, dynamic> toFirestore() => {
     if (name != null) 'name': name!.trim(),
