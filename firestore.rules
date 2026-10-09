@@ -60,10 +60,12 @@ service cloud.firestore {
         && (!('sex' in data) || data.sex in ['male', 'female'])
         && (!('allergies' in data) || (data.allergies is list
           && data.allergies.size() <= 6
-          && data.allergies.hasOnly(['dairy', 'gluten', 'peanut', 'shellfish', 'egg', 'soy'])))
+          && data.allergies.hasOnly(['dairy', 'gluten', 'peanut', 'shellfish', 'egg', 'soy'])
+          && data.allergies.toSet().size() == data.allergies.size()))
         && (!('chronicConditions' in data) || (data.chronicConditions is list
           && data.chronicConditions.size() <= 5
-          && data.chronicConditions.hasOnly(['diabetes', 'hypertension', 'obesity', 'kidneyDisease', 'highCholesterol'])));
+          && data.chronicConditions.hasOnly(['diabetes', 'hypertension', 'obesity', 'kidneyDisease', 'highCholesterol'])
+          && data.chronicConditions.toSet().size() == data.chronicConditions.size()));
     }
 
     function validStaffRequest(data) {
@@ -153,13 +155,13 @@ service cloud.firestore {
       }
 
       // Los integrantes guardan datos de salud (edad, peso, sexo, alergias y
-      // enfermedades crónicas). Solo la familia los lee: ninguna pantalla de
-      // staff los necesita (MASVS-PRIVACY-1).
+      // enfermedades crónicas). Solo la familia dueña los lee y los escribe:
+      // la familia los agrega desde su perfil y ninguna pantalla de staff los
+      // usa (MASVS-PRIVACY-1).
       match /members/{memberId} {
-        allow read: if isFamilyOwner(familyId);
-        allow delete: if canAccessFamily(familyId);
-        allow create: if canAccessFamily(familyId) && validMember(request.resource.data);
-        allow update: if canAccessFamily(familyId)
+        allow read, delete: if isFamilyOwner(familyId);
+        allow create: if isFamilyOwner(familyId) && validMember(request.resource.data);
+        allow update: if isFamilyOwner(familyId)
           && validMember(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
       }

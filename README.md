@@ -124,7 +124,7 @@ Los integrantes de la familia se guardan en la subcolección `families/{familyId
 
 Cada integrante puede tener edad, peso, sexo, alergias y enfermedades crónicas: son datos de salud (MASVS-PRIVACY-1, OWASP Mobile M6).
 
-- **Quién los lee:** solo la familia dueña del hogar. El staff no los lee, ni con el SDK: ninguna pantalla de staff los usa. El staff sigue registrando el hogar (`families/{id}`); los integrantes los agrega la familia desde su perfil.
+- **Quién los lee y los escribe:** en la app, solo la familia dueña del hogar. El staff no los lee ni los escribe, ni con el SDK: ninguna pantalla de staff los usa. El staff sigue registrando el hogar (`families/{id}`); los integrantes los agrega la familia desde su perfil.
 - **Retención:** cuando una familia deja el programa, sus integrantes se borran a más tardar 6 meses después. Al borrar `families/{familyId}` desde la app **no** se borran sus subcolecciones, así que los integrantes se eliminan aparte:
 
   ```sh
