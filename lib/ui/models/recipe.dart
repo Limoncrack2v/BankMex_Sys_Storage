@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../data/models/member.dart';
 import '../../data/models/pantry_item.dart';
+import '../../domain/meal_plan_length.dart';
 import '../../domain/models/child_profile.dart';
 import '../../domain/portion_adjuster.dart';
 import '../formatting.dart';
@@ -48,11 +49,16 @@ class Recipe {
 
 class MealPlanEntry {
   const MealPlanEntry({
+    required this.date,
     required this.day,
     required this.recipe,
     required this.reason,
     required this.urgency,
   });
+
+  /// Día al que corresponde, sin hora. En un plan de 14 días distingue los
+  /// dos "Lun".
+  final DateTime date;
 
   /// Abreviatura del día, p. ej. "Lun".
   final String day;
@@ -477,15 +483,17 @@ typedef _RankedRecipe = ({
   int? days,
 });
 
-/// Plan de 7 días que empieza hoy. Primero van las recetas que usan lo que
+/// Plan de [days] días que empieza hoy: 7 o 14, según la próxima entrega de
+/// la familia (ver [MealPlanLength]). Primero van las recetas que usan lo que
 /// caduca antes en la despensa (lo caducado no cuenta); las que no usan nada
 /// de la despensa van al final. Entre iguales va primero la que tiene menos
-/// ingredientes faltantes. Con menos de 7 recetas se repiten en el mismo
+/// ingredientes faltantes. Con menos recetas que días se repiten en el mismo
 /// orden.
-List<MealPlanEntry> buildWeeklyPlan(
+List<MealPlanEntry> buildMealPlan(
   List<Recipe> recipes,
   List<PantryItem> pantry, {
   DateTime? today,
+  int days = MealPlanLength.weekly,
 }) {
   if (recipes.isEmpty) return const [];
   final now = today ?? DateTime.now();
@@ -495,10 +503,10 @@ List<MealPlanEntry> buildWeeklyPlan(
   ]..sort(_compareRanked);
 
   return [
-    for (var day = 0; day < 7; day++)
+    for (var offset = 0; offset < days; offset++)
       _planEntry(
-        ranked[day % ranked.length],
-        _weekdays[(now.weekday - 1 + day) % 7],
+        ranked[offset % ranked.length],
+        DateTime(now.year, now.month, now.day + offset),
       ),
   ];
 }
@@ -548,7 +556,7 @@ int _compareRanked(_RankedRecipe a, _RankedRecipe b) {
 
 /// El motivo nombra el producto solo si caduca pronto (7 días o menos); si
 /// no, basta con decir si faltan ingredientes.
-MealPlanEntry _planEntry(_RankedRecipe ranked, String day) {
+MealPlanEntry _planEntry(_RankedRecipe ranked, DateTime date) {
   final (:recipe, :missing, :mostUrgent, :days, index: _) = ranked;
   final urgency = days == null
       ? ExpirationUrgency.fresh
@@ -564,7 +572,8 @@ MealPlanEntry _planEntry(_RankedRecipe ranked, String day) {
   ];
 
   return MealPlanEntry(
-    day: day,
+    date: date,
+    day: _weekdays[date.weekday - 1],
     recipe: recipe,
     reason: reasons.isEmpty
         ? 'Con productos de tu despensa'
