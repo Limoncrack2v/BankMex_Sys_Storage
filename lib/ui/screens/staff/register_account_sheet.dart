@@ -37,7 +37,7 @@ class RegisterAccountSheet extends StatefulWidget {
 }
 
 class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
-  static const _minPasswordLength = 6;
+  static const _minPasswordLength = AuthRepository.minPasswordLength;
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
   /// Si el alta tarda más que esto (p. ej. Firestore sin conexión después de
@@ -365,7 +365,7 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
           ),
         ),
         const SizedBox(height: 6),
-        // «Mínimo 6 caracteres.» se pone en rojo mientras es más corta.
+        // «Mínimo N caracteres.» se pone en rojo mientras es más corta.
         Text.rich(
           TextSpan(
             children: [

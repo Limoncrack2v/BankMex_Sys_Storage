@@ -35,6 +35,13 @@ class AuthException implements Exception {
 }
 
 class AuthRepository {
+  /// Mínimo de caracteres de cualquier contraseña nueva: la del Registro de
+  /// Staff y la de las cuentas que crea el staff. Firebase solo exige 6.
+  static const minPasswordLength = 8;
+
+  static const _weakPasswordMessage =
+      'La contraseña debe tener al menos $minPasswordLength caracteres.';
+
   static const _noAccessMessage =
       'No se pudo iniciar sesión. Contacta a tu centro de BAMX para más '
       'información.';
@@ -146,7 +153,7 @@ class AuthRepository {
         'email-already-in-use' =>
           'Ya existe una cuenta con este correo electrónico.',
         'invalid-email' => 'Ingresa un correo válido.',
-        'weak-password' => 'La contraseña debe tener al menos 8 caracteres.',
+        'weak-password' => _weakPasswordMessage,
         'network-request-failed' => _offlineMessage,
         _ => _requestFailedMessage,
       });
@@ -238,7 +245,7 @@ class AuthRepository {
           'email-already-in-use' =>
             'Ya existe una cuenta con este correo electrónico.',
           'invalid-email' => 'Ingresa un correo válido.',
-          'weak-password' => 'La contraseña debe tener al menos 6 caracteres.',
+          'weak-password' => _weakPasswordMessage,
           'network-request-failed' => _offlineMessage,
           _ => 'No se pudo crear la cuenta. Intenta de nuevo.',
         });
