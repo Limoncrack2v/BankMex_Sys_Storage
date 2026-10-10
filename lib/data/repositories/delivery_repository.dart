@@ -90,6 +90,10 @@ class DeliveryRepository {
       throw ArgumentError('Elige una familia distinta a la de la entrega');
     }
 
+    if (delivery.missingJustification) {
+      throw ArgumentError('La entrega tiene cuota sin justificación');
+    }
+
     final newRef = _deliveries.doc();
     final reassigned = Delivery(
       deliveryId: newRef.id,
