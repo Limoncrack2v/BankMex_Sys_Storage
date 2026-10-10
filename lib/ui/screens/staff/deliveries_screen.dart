@@ -21,6 +21,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
+import '../../models/quota_proposal.dart';
 
 /// Sin conexión, Firestore guarda el cambio en el dispositivo pero el commit
 /// no termina hasta sincronizar. Pasado este tiempo se da por guardado y la
@@ -48,7 +49,6 @@ class DeliveriesScreen extends StatefulWidget {
 class _DeliveriesScreenState extends State<DeliveriesScreen> {
   late final Stream<List<Family>> _families;
   late final Stream<List<DeliveryWithSync>> _deliveries;
-
 
   @override
   void initState() {
@@ -123,6 +123,16 @@ class _DeliveryFormState extends State<_DeliveryForm> {
   Family? _family;
   DateTime? _date;
   bool _exempt = true;
+
+  /// Familia para la que se propuso la cuota por última vez (quotaOnSelect).
+  String? _quotaFamilyId;
+
+  /// El staff tocó la cuota, Exenta o la justificación desde esa propuesta.
+  bool _quotaEdited = false;
+
+  /// Aviso de que elegir otra familia reemplazó lo que el staff escribió.
+  String? _quotaNotice;
+
   DeliveryStatus _status = DeliveryStatus.scheduled;
   List<_ProductDraft> _products = [_ProductDraft()];
   bool _saving = false;
@@ -205,22 +215,49 @@ class _DeliveryFormState extends State<_DeliveryForm> {
 
   void _onEdited(String _) => setState(() {});
 
-  /// Al elegir familia se propone su cuota por defecto (Exenta si no tiene);
-  /// el staff puede cambiarla antes de registrar.
+  void _onQuotaEdited(String _) => setState(() {
+    _quotaEdited = true;
+    _quotaNotice = null;
+  });
+
+  String _quotaResetNotice(Family family) {
+    final quota = family.recoveryQuotaDefault;
+    final label = quota == null ? 'Exenta' : '\$ ${formatNumber(quota)}';
+    return 'La cuota se cambió a la de ${family.displayName} ($label) y se '
+        'borró lo que habías escrito. Revísala antes de registrar.';
+  }
+
+  /// Al elegir una familia distinta se propone su cuota por defecto (Exenta
+  /// si no tiene) y se borra la justificación; si eso reemplaza algo que el
+  /// staff escribió, se avisa. Volver a elegir la misma no cambia nada.
   void _selectFamily(Family? family) {
     setState(() {
       _family = family;
       if (family == null) return;
+      final action = quotaOnSelect(
+        proposedFor: _quotaFamilyId,
+        selected: family.familyId,
+        edited: _quotaEdited,
+      );
+      if (action == QuotaOnSelect.keep) return;
       final quota = family.recoveryQuotaDefault;
       _exempt = quota == null;
       _fee.text = quota == null ? '' : formatNumber(quota);
-      if (_exempt) _justification.clear();
+      _justification.clear();
+      _quotaFamilyId = family.familyId;
+      _quotaEdited = false;
+      _quotaNotice = action == QuotaOnSelect.proposeAndWarn
+          ? _quotaResetNotice(family)
+          : null;
     });
   }
 
   void _toggleExempt() {
     setState(() {
       _exempt = !_exempt;
+      _quotaEdited = true;
+      _quotaNotice = null;
+
       if (_exempt) {
         _fee.clear();
         _justification.clear();
@@ -311,6 +348,9 @@ class _DeliveryFormState extends State<_DeliveryForm> {
       _packages.text = '1';
       _fee.clear();
       _exempt = true;
+      _quotaFamilyId = null;
+      _quotaEdited = false;
+      _quotaNotice = null;
       _justification.clear();
       _status = DeliveryStatus.scheduled;
       _notes.clear();
@@ -502,7 +542,7 @@ class _DeliveryFormState extends State<_DeliveryForm> {
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                   ],
                   maxLength: 9,
-                  onChanged: _onEdited,
+                  onChanged: _onQuotaEdited,
                 ),
               ),
               const SizedBox(width: 8),
@@ -529,10 +569,22 @@ class _DeliveryFormState extends State<_DeliveryForm> {
               minLines: 2,
               maxLines: 3,
               maxLength: 500,
-              onChanged: _onEdited,
+              onChanged: _onQuotaEdited,
             ),
           ),
         ],
+        if (_quotaNotice != null) ...[
+          const SizedBox(height: 12),
+          Semantics(
+            liveRegion: true,
+            child: InfoBanner(
+              message: _quotaNotice!,
+              background: AppColors.warningSoft,
+              foreground: AppColors.warningText,
+            ),
+          ),
+        ],
+
         const SizedBox(height: 16),
         LabeledField(
           label: 'Estado',
@@ -1410,11 +1462,8 @@ class _DeliveriesTable extends StatelessWidget {
     final delivery = row.delivery;
     final body = AppText.nunito(15, 22.5);
 
-    void open(_DeliveryAction action) => _showDeliveryActionSheet(
-      context,
-      delivery: delivery,
-      action: action,
-    );
+    void open(_DeliveryAction action) =>
+        _showDeliveryActionSheet(context, delivery: delivery, action: action);
 
     void reassign() => showAppBottomSheet<void>(
       context,
@@ -1561,12 +1610,11 @@ class _LinkButton extends StatelessWidget {
         child: Text(
           label,
           textAlign: TextAlign.center,
-          style: AppText.nunito(
-            15,
-            22.5,
-            weight: FontWeight.w700,
-            color: color,
-          ).copyWith(decoration: TextDecoration.underline, decorationColor: color),
+          style: AppText.nunito(15, 22.5, weight: FontWeight.w700, color: color)
+              .copyWith(
+                decoration: TextDecoration.underline,
+                decorationColor: color,
+              ),
         ),
       ),
     );
@@ -1588,8 +1636,7 @@ Future<void> _showDeliveryActionSheet(
     context,
     // Arrastrar para cerrar ignoraría AppSheet.busy mientras se guarda.
     enableDrag: false,
-    builder: (_) =>
-        _DeliveryActionSheet(delivery: delivery, action: action),
+    builder: (_) => _DeliveryActionSheet(delivery: delivery, action: action),
   );
 }
 
