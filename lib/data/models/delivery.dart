@@ -130,6 +130,11 @@ class Delivery {
 
   bool get isExempt => recoveryFee == null;
 
+  /// Tiene cuota pero no justificación. No pasa con las entregas del
+  /// formulario; sí con documentos creados por fuera (consola, scripts).
+  bool get missingJustification =>
+      recoveryFee != null && (justification?.trim() ?? '').isEmpty;
+
   factory Delivery.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
 
@@ -191,7 +196,7 @@ class Delivery {
         (!recoveryFee!.isFinite || recoveryFee! < 0 || recoveryFee! > 100000)) {
       return 'La cuota de recuperación no es válida';
     }
-    if (recoveryFee != null && (justification?.trim() ?? '').isEmpty) {
+    if (missingJustification) {
       return 'Escribe la justificación de la cuota de recuperación.';
     }
     if (items.isEmpty || items.length > maxItems) {

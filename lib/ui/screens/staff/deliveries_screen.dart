@@ -29,6 +29,10 @@ import '../../models/quota_proposal.dart';
 const _saveTimeout = Duration(seconds: 4);
 const _maxRecoveryFee = 100000.0;
 const _pendingSyncNote = 'Se sincronizará cuando haya conexión.';
+const _missingJustificationNote =
+    'Esta entrega tiene cuota de recuperación sin justificación, así que no '
+    'se puede reasignar. Cancélala y registra una nueva para la familia que '
+    'la recibirá.';
 
 /// Contenido de la pestaña Entregas del staff: registro de una entrega por
 /// familia (con sus productos y caducidades) y tabla de entregas recientes.
@@ -1882,6 +1886,9 @@ class _ReassignSheetState extends State<_ReassignSheet> {
   bool _alreadyChanged = false;
   String? _successMessage;
 
+  /// Tiene cuota sin justificación: las reglas rechazarían la entrega nueva.
+  bool get _blocked => widget.delivery.missingJustification;
+
   @override
   void initState() {
     super.initState();
@@ -1895,7 +1902,7 @@ class _ReassignSheetState extends State<_ReassignSheet> {
   }
 
   Future<void> _confirm() async {
-    if (_saving || _alreadyChanged) return;
+    if (_saving || _alreadyChanged || _blocked) return;
     final receiver = _receiver;
     if (receiver == null) {
       setState(() => _attempted = true);
@@ -1960,6 +1967,8 @@ class _ReassignSheetState extends State<_ReassignSheet> {
     }
 
     final missingReceiver = _attempted && _receiver == null;
+    final error = _blocked ? _missingJustificationNote : _error;
+
     return AppSheet(
       title: 'Reasignar entrega',
       busy: _saving,
@@ -1974,24 +1983,26 @@ class _ReassignSheetState extends State<_ReassignSheet> {
               'para la familia que la reciba.',
               style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
             ),
-            const SizedBox(height: 16),
-            LabeledField(
-              label: 'Familia',
-              required: true,
-              child: _FamilyCombobox(
-                families: _families,
-                controller: _familyText,
-                selected: _receiver,
-                excludeFamilyId: widget.delivery.familyId,
-                onSelected: (family) => setState(() => _receiver = family),
+            if (!_blocked) ...[
+              const SizedBox(height: 16),
+              LabeledField(
+                label: 'Familia',
+                required: true,
+                child: _FamilyCombobox(
+                  families: _families,
+                  controller: _familyText,
+                  selected: _receiver,
+                  excludeFamilyId: widget.delivery.familyId,
+                  onSelected: (family) => setState(() => _receiver = family),
+                ),
               ),
-            ),
-            if (missingReceiver) ...[
-              const SizedBox(height: 6),
-              const _HelperText(
-                'Selecciona la familia receptora',
-                color: AppColors.dangerText,
-              ),
+              if (missingReceiver) ...[
+                const SizedBox(height: 6),
+                const _HelperText(
+                  'Selecciona la familia receptora',
+                  color: AppColors.dangerText,
+                ),
+              ],
             ],
           ],
         ),
@@ -2000,11 +2011,11 @@ class _ReassignSheetState extends State<_ReassignSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_error != null) ...[
+          if (error != null) ...[
             Semantics(
               liveRegion: true,
               child: InfoBanner(
-                message: _error!,
+                message: error,
                 background: AppColors.dangerSoft,
                 foreground: AppColors.dangerText,
               ),
@@ -2015,14 +2026,14 @@ class _ReassignSheetState extends State<_ReassignSheet> {
             label: 'Confirmar reasignación',
             icon: AppIcons.check,
             loading: _saving,
-            onPressed: _alreadyChanged ? null : _confirm,
+            onPressed: _alreadyChanged || _blocked ? null : _confirm,
           ),
           const SizedBox(height: 8),
           Center(
             child: Opacity(
               opacity: _saving ? 0.4 : 1,
               child: TextLinkButton(
-                label: _alreadyChanged ? 'Cerrar' : 'Volver',
+                label: _alreadyChanged || _blocked ? 'Cerrar' : 'Volver',
                 onPressed: _close,
               ),
             ),

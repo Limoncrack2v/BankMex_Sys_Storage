@@ -309,4 +309,28 @@ void main() {
       expect(buildDelivery().validate(), isNull);
     });
   });
+
+  group('Delivery.missingJustification', () {
+    test('is true for a fee with no justification or a blank one', () {
+      expect(buildDelivery(recoveryFee: 250).missingJustification, isTrue);
+      expect(
+        buildDelivery(
+          recoveryFee: 250,
+          justification: '   ',
+        ).missingJustification,
+        isTrue,
+      );
+    });
+
+    test('is false for a justified fee and for an exempt delivery', () {
+      expect(
+        buildDelivery(
+          recoveryFee: 250,
+          justification: 'Cuota estándar',
+        ).missingJustification,
+        isFalse,
+      );
+      expect(buildDelivery().missingJustification, isFalse);
+    });
+  });
 }
