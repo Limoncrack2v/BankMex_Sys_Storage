@@ -1,5 +1,7 @@
+import '../data/models/family.dart';
 import '../data/models/member.dart';
 import '../data/models/pantry_item.dart';
+import '../domain/models/recipe.dart';
 
 /// Textos y formatos en español compartidos por las pantallas.
 
@@ -85,6 +87,11 @@ String productDisplayName(String productId) {
 DateTime _dateOnlyUtc(DateTime date) =>
     DateTime.utc(date.year, date.month, date.day);
 
+/// Días de calendario de [today] a [date]: 0 = hoy, 1 = mañana, negativo = ya
+/// pasó. Cuenta días y no horas: de hoy a las 23:00 a mañana a la 1:00 es 1.
+int daysUntil(DateTime date, {DateTime? today}) =>
+    _dateOnlyUtc(date).difference(_dateOnlyUtc(today ?? DateTime.now())).inDays;
+
 /// Días que le quedan hoy a un producto. daysUntilExpiration se cuenta desde
 /// localTimestamp (cuando se registró el producto), así que se descuentan los
 /// días que ya pasaron. Puede ser negativo si ya caducó.
@@ -160,6 +167,33 @@ String allergyLabel(Allergy allergy) => switch (allergy) {
   Allergy.shellfish => 'Mariscos',
   Allergy.egg => 'Huevo',
   Allergy.soy => 'Soya',
+};
+
+String chronicConditionLabel(ChronicCondition condition) => switch (condition) {
+  ChronicCondition.diabetes => 'Diabetes',
+  ChronicCondition.hypertension => 'Hipertensión',
+  ChronicCondition.obesity => 'Obesidad',
+  ChronicCondition.kidneyDisease => 'Enfermedad renal',
+  ChronicCondition.highCholesterol => 'Colesterol alto',
+};
+
+String applianceLabel(Appliance appliance) => switch (appliance) {
+  Appliance.stove => 'Estufa',
+  Appliance.fridge => 'Refrigerador',
+  Appliance.oven => 'Horno',
+  Appliance.microwave => 'Microondas',
+  Appliance.blender => 'Licuadora',
+  Appliance.pressureCooker => 'Olla de presión',
+};
+
+String nutritionalTagLabel(NutritionalTag tag) => switch (tag) {
+  NutritionalTag.lowSodium => 'Bajo en sodio',
+  NutritionalTag.lowSugar => 'Bajo en azúcar',
+  NutritionalTag.lowFat => 'Bajo en grasa',
+  NutritionalTag.highFiber => 'Alto en fibra',
+  NutritionalTag.highProtein => 'Alto en proteína',
+  NutritionalTag.vegetarian => 'Vegetariano',
+  NutritionalTag.diabeticFriendly => 'Apto para diabéticos',
 };
 
 /// "1 año", "38 años".

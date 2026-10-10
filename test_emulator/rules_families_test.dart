@@ -48,6 +48,7 @@ Future<void> seedFixtures() async {
     'recoveryQuotaDefault': nul(),
     'authUid': str('fam1'),
     'appliances': arr([]),
+    'nextDeliveryDate': now(),
   });
   await admin.setDoc('families/famB', {
     'name': str('Familia B'),
@@ -93,11 +94,7 @@ void main() {
     test('familia busca su hogar por authUid', () async {
       // La familia solo puede listar si la consulta ya filtra por su cuenta.
       await assertAllowed(
-        fam1().listDocs(
-          'families',
-          where: ('authUid', str('fam1')),
-          limit: 1,
-        ),
+        fam1().listDocs('families', where: ('authUid', str('fam1')), limit: 1),
       );
     });
 
@@ -106,9 +103,7 @@ void main() {
     });
 
     test('una cuenta ya no puede crear su propio hogar', () async {
-      await assertDenied(
-        newbie().setDoc('families/newbie', family('newbie')),
-      );
+      await assertDenied(newbie().setDoc('families/newbie', family('newbie')));
     });
 
     // El hogar y su perfil van en el mismo batch: la regla usa getAfter sobre
@@ -150,7 +145,10 @@ void main() {
       await assertDenied(
         staff().commit([
           setWrite('users/newbie', profile('family')),
-          setWrite('families/newbie', family('newbie', {'hack': boolean(true)})),
+          setWrite(
+            'families/newbie',
+            family('newbie', {'hack': boolean(true)}),
+          ),
         ]),
       );
     });
@@ -159,6 +157,36 @@ void main() {
       await assertAllowed(
         fam1().updateDoc('families/famA', {
           'appliances': arr([str('estufa')]),
+        }),
+      );
+    });
+
+    test('staff registra un hogar con electrodomésticos', () async {
+      await assertAllowed(
+        staff().commit([
+          setWrite('users/newbie', profile('family')),
+          setWrite(
+            'families/newbie',
+            family('newbie', {
+              'appliances': arr([str('estufa'), str('ollaPresion')]),
+            }),
+          ),
+        ]),
+      );
+    });
+
+    test('electrodoméstico desconocido rechazado', () async {
+      await assertDenied(
+        fam1().updateDoc('families/famA', {
+          'appliances': arr([str('freidora')]),
+        }),
+      );
+    });
+
+    test('electrodoméstico repetido rechazado', () async {
+      await assertDenied(
+        fam1().updateDoc('families/famA', {
+          'appliances': arr([str('estufa'), str('estufa')]),
         }),
       );
     });
@@ -196,6 +224,63 @@ void main() {
 
     test('la familia no borra su hogar', () async {
       await assertDenied(fam1().deleteDoc('families/famA'));
+    });
+  });
+
+  group('próxima entrega', () {
+    test('staff corrige el nombre de un hogar con próxima entrega', () async {
+      await assertAllowed(
+        staff().updateDoc('families/famA', {'name': str('Familia C')}),
+      );
+    });
+
+    test(
+      'la familia cambia sus electrodomésticos con próxima entrega',
+      () async {
+        await assertAllowed(
+          fam1().updateDoc('families/famA', {
+            'appliances': arr([str('refrigerador')]),
+          }),
+        );
+      },
+    );
+
+    test('staff no escribe la próxima entrega', () async {
+      await assertDenied(
+        staff().updateDoc('families/famA', {
+          'nextDeliveryDate': ts(DateTime.now()),
+        }),
+      );
+    });
+
+    test('la familia no escribe la próxima entrega', () async {
+      await assertDenied(
+        fam1().updateDoc('families/famA', {
+          'nextDeliveryDate': ts(DateTime.now()),
+        }),
+      );
+    });
+
+    test('no se crea un hogar con próxima entrega', () async {
+      await assertDenied(
+        staff().commit([
+          setWrite('users/newbie', profile('family')),
+          setWrite(
+            'families/newbie',
+            family('newbie', {'nextDeliveryDate': now()}),
+          ),
+        ]),
+      );
+    });
+
+    test('staff no borra la próxima entrega', () async {
+      await assertDenied(
+        staff().updateDoc('families/famA', {'nextDeliveryDate': deleteField}),
+      );
+    });
+
+    test('staff corrige el nombre de un hogar sin próxima entrega', () async {
+      await assertAllowed(staff().updateDoc('families/famB', {'name': str('Familia D')}));
     });
   });
 }

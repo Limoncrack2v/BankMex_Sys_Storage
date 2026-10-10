@@ -29,6 +29,8 @@ function recipeFields({
   kcal,
   ingredients,
   steps,
+  nutritionalTags = [],
+  equipment = [],
   status = 'approved',
 }) {
   return {
@@ -39,6 +41,10 @@ function recipeFields({
     caloriesPerServing: int(kcal),
     status: str(status),
     dietaryTags: arr([]),
+    // Ids de NutritionalTag y de Appliance (lib/domain/models/recipe.dart y
+    // lib/domain/models/appliance.dart).
+    nutritionalTags: arr(nutritionalTags.map(str)),
+    requiredEquipment: arr(equipment.map(str)),
     ingredients: arr(ingredients),
     steps: arr(steps.map(str)),
   };
@@ -59,6 +65,8 @@ const RECIPES = [
         ingredient('Zanahoria', 0.3, 'kg'),
         ingredient('Aceite vegetal', 0.05, 'l'),
       ],
+      nutritionalTags: ['altoEnFibra', 'bajoEnGrasa', 'vegetariano'],
+      equipment: ['estufa'],
       steps: [
         'Enjuaga las lentejas y ponlas a cocer en agua durante 25 minutos.',
         'Pica el jitomate y la zanahoria en cubos pequeños.',
@@ -82,6 +90,8 @@ const RECIPES = [
         ingredient('Jitomate', 0.2, 'kg'),
         ingredient('Aceite vegetal', 0.03, 'l'),
       ],
+      nutritionalTags: ['altoEnProteina'],
+      equipment: ['estufa'],
       steps: [
         'Enjuaga el arroz y fríelo en un poco de aceite hasta que se dore.',
         'Agrega el jitomate picado y sofríe un par de minutos.',
@@ -103,6 +113,8 @@ const RECIPES = [
         ingredient('Leche entera', 0.5, 'l'),
         ingredient('Plátano', 2, 'piece'),
       ],
+      nutritionalTags: ['altoEnFibra', 'vegetariano'],
+      equipment: ['estufa'],
       steps: [
         'Calienta la leche en una olla a fuego medio.',
         'Agrega la avena y cocina 5 minutos sin dejar de mover.',
@@ -119,6 +131,8 @@ const RECIPES = [
       servings: 6,
       kcal: 200,
       ingredients: [ingredient('Frijol', 0.5, 'kg')],
+      nutritionalTags: ['altoEnFibra', 'altoEnProteina', 'bajoEnGrasa', 'vegetariano'],
+      equipment: ['estufa'],
       steps: [
         'Limpia y enjuaga los frijoles.',
         'Ponlos a cocer en una olla con 2 litros de agua.',
@@ -141,6 +155,7 @@ const RECIPES = [
         ingredient('Queso panela', 0.1, 'kg'),
         ingredient('Jitomate', 0.1, 'kg'),
       ],
+      equipment: ['estufa'],
       steps: [
         'Rebana el jitomate y el queso.',
         'Arma los sándwiches con jamón, queso y jitomate.',
@@ -162,6 +177,8 @@ const RECIPES = [
         ingredient('Zanahoria', 0.2, 'kg'),
         ingredient('Aceite vegetal', 0.03, 'l'),
       ],
+      nutritionalTags: ['bajoEnGrasa', 'vegetariano'],
+      equipment: ['estufa', 'licuadora'],
       steps: [
         'Licúa el jitomate con un poco de agua.',
         'Fríe la pasta en el aceite hasta que se dore.',
@@ -182,6 +199,8 @@ const RECIPES = [
         ingredient('Nopal PRUEBA-EMULADOR', 4, 'piece'),
         ingredient('Jitomate', 0.2, 'kg'),
       ],
+      nutritionalTags: ['bajoEnSodio', 'bajoEnAzucar', 'aptoDiabeticos', 'vegetariano'],
+      equipment: ['estufa'],
       steps: [
         'Esta receta se insertó en el emulador para ver el catálogo en Firestore.',
         'Asa el nopal y sirve con jitomate.',
@@ -198,6 +217,7 @@ const RECIPES = [
       kcal: 90,
       status: 'pending',
       ingredients: [ingredient('Naranja', 0.4, 'kg')],
+      nutritionalTags: ['bajoEnSodio', 'bajoEnGrasa', 'vegetariano'],
       steps: ['Pela y sirve.'],
     }),
   ],

@@ -76,9 +76,11 @@ class BankStorageFacade {
     required int prepTimeMinutes,
     required int caloriesPerServing,
     List<String> dietaryTags = const [],
+    List<String> nutritionalTags = const [],
+    List<String> requiredEquipment = const [],
     String image = '',
     int servings = 4,
-  }) {
+  }) async {
     final pending = RecipeCatalog.submitRecipe(
       id: id,
       name: name,
@@ -87,6 +89,8 @@ class BankStorageFacade {
       prepTimeMinutes: prepTimeMinutes,
       caloriesPerServing: caloriesPerServing,
       dietaryTags: dietaryTags,
+      nutritionalTags: nutritionalTags,
+      requiredEquipment: requiredEquipment,
     ).copyWith(image: image, servings: servings);
     return recipes.create(pending);
   }
@@ -100,9 +104,11 @@ class BankStorageFacade {
     required int prepTimeMinutes,
     required int caloriesPerServing,
     List<String> dietaryTags = const [],
+    List<String> nutritionalTags = const [],
+    List<String> requiredEquipment = const [],
     String image = '',
     int servings = 4,
-  }) {
+  }) async {
     final published = RecipeCatalog.publishRecipe(
       id: id,
       name: name,
@@ -111,14 +117,30 @@ class BankStorageFacade {
       prepTimeMinutes: prepTimeMinutes,
       caloriesPerServing: caloriesPerServing,
       dietaryTags: dietaryTags,
+      nutritionalTags: nutritionalTags,
+      requiredEquipment: requiredEquipment,
     ).copyWith(image: image, servings: servings);
     return recipes.create(published);
   }
 
-  Future<Recipe> updateRecipe(Recipe recipe) {
+  /// [previous] es la receta guardada antes de editarla: sus etiquetas y
+  /// electrodomésticos se conservan aunque esta versión no los conozca. Es
+  /// obligatoria para que nadie la olvide al llamar desde el formulario.
+  ///
+  /// Los tres métodos que guardan son async para que un error de validación
+  /// llegue como Future fallido y el formulario lo muestre.
+  Future<Recipe> updateRecipe(
+    Recipe recipe, {
+    required Recipe previous,
+  }) async {
     if (recipe.id.isEmpty) {
       throw ArgumentError('updateRecipe requires an id');
     }
+    RecipeCatalog.validateTags(
+      nutritionalTags: recipe.nutritionalTags,
+      requiredEquipment: recipe.requiredEquipment,
+      previous: previous,
+    );
     return recipes.update(recipe);
   }
 

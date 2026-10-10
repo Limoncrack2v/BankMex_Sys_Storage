@@ -17,8 +17,11 @@ service cloud.firestore {
         || (isStaff() && exists(/databases/$(database)/documents/families/$(familyId)));
     }
 
+    // nextDeliveryDate solo lo escribe la Cloud Function syncNextDelivery;
+    // aquí se acepta porque validFamily revisa el documento completo, 
+    // y abajo se impide que un cliente lo cree o lo cambie.
     function validFamily(data) {
-      return data.keys().hasOnly(['name', 'address', 'registrationDate', 'recoveryQuotaDefault', 'authUid', 'appliances'])
+      return data.keys().hasOnly(['name', 'address', 'registrationDate', 'recoveryQuotaDefault', 'authUid', 'appliances', 'nextDeliveryDate'])
         && data.keys().hasAll(['address', 'registrationDate', 'authUid', 'appliances'])
         && (!('name' in data) || (data.name is string && data.name.size() >= 1 && data.name.size() <= 100))
         && data.address is string && data.address.size() <= 200
@@ -26,7 +29,10 @@ service cloud.firestore {
         && (!('recoveryQuotaDefault' in data) || data.recoveryQuotaDefault == null
           || (data.recoveryQuotaDefault is number && data.recoveryQuotaDefault >= 0))
         && data.authUid is string && data.authUid.size() > 0
-        && data.appliances is list && data.appliances.size() <= 20;
+        && data.appliances is list
+        && data.appliances.hasOnly(['estufa', 'refrigerador', 'horno', 'microondas', 'licuadora', 'ollaPresion'])
+        && data.appliances.toSet().size() == data.appliances.size()
+        && (!('nextDeliveryDate' in data) || data.nextDeliveryDate is timestamp);
     }
 
     function validUserProfile(data) {
@@ -42,7 +48,7 @@ service cloud.firestore {
     }
 
     function validMember(data) {
-      return data.keys().hasOnly(['name', 'memberType', 'createdAt', 'age', 'weightKg', 'sex', 'allergies'])
+      return data.keys().hasOnly(['name', 'memberType', 'createdAt', 'age', 'weightKg', 'sex', 'allergies', 'chronicConditions'])
         && data.keys().hasAll(['name', 'memberType', 'createdAt'])
         && data.name is string
         && data.name.size() >= 1
@@ -54,7 +60,12 @@ service cloud.firestore {
         && (!('sex' in data) || data.sex in ['male', 'female'])
         && (!('allergies' in data) || (data.allergies is list
           && data.allergies.size() <= 6
-          && data.allergies.hasOnly(['dairy', 'gluten', 'peanut', 'shellfish', 'egg', 'soy'])));
+          && data.allergies.hasOnly(['dairy', 'gluten', 'peanut', 'shellfish', 'egg', 'soy'])
+          && data.allergies.toSet().size() == data.allergies.size()))
+        && (!('chronicConditions' in data) || (data.chronicConditions is list
+          && data.chronicConditions.size() <= 5
+          && data.chronicConditions.hasOnly(['diabetes', 'hypertension', 'obesity', 'kidneyDisease', 'highCholesterol'])
+          && data.chronicConditions.toSet().size() == data.chronicConditions.size()));
     }
 
     function validStaffRequest(data) {
@@ -116,13 +127,15 @@ service cloud.firestore {
       allow create: if isStaff()
         && validFamily(request.resource.data)
         && familyId == request.resource.data.authUid
-        && getAfter(/databases/$(database)/documents/users/$(familyId)).data.role == 'family';
+        && getAfter(/databases/$(database)/documents/users/$(familyId)).data.role == 'family'
+        && !('nextDeliveryDate' in request.resource.data);
       allow read: if request.auth != null && (resource.data.authUid == request.auth.uid || isStaff());
       // La familia solo puede cambiar sus electrodomésticos; el staff corrige
       // los demás datos sin cambiar la cuenta dueña.
       allow update: if request.auth != null
         && request.resource.data.authUid == resource.data.authUid
         && validFamily(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['nextDeliveryDate'])
         && (isStaff()
           || (request.auth.uid == resource.data.authUid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appliances'])));
@@ -143,10 +156,14 @@ service cloud.firestore {
           && request.resource.data.quantity < resource.data.quantity;
       }
 
+      // Los integrantes guardan datos de salud (edad, peso, sexo, alergias y
+      // enfermedades crónicas). Solo la familia dueña los lee y los escribe:
+      // la familia los agrega desde su perfil y ninguna pantalla de staff los
+      // usa (MASVS-PRIVACY-1).
       match /members/{memberId} {
-        allow read, delete: if canAccessFamily(familyId);
-        allow create: if canAccessFamily(familyId) && validMember(request.resource.data);
-        allow update: if canAccessFamily(familyId)
+        allow read, delete: if isFamilyOwner(familyId);
+        allow create: if isFamilyOwner(familyId) && validMember(request.resource.data);
+        allow update: if isFamilyOwner(familyId)
           && validMember(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
       }
@@ -207,6 +224,14 @@ service cloud.firestore {
         && (request.resource.data.status == 'rejected'
           || (request.resource.data.status == 'approved'
             && getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'staff'));
+    }
+
+    // Contenido fijo de cada despensa del banco. Solo lo escriben los scripts
+    // de tool/ (standard_baskets.mjs) con credenciales de administrador; el
+    // staff lo lee para llenar los productos de una entrega.
+    match /standardBaskets/{basketId} {
+      allow read: if isStaff();
+      allow write: if false;
     }
 
     match /users/{userId} {

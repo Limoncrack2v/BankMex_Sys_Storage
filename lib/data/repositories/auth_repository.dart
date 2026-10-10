@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -42,6 +44,13 @@ class AuthRepository {
   final _auth = FirebaseAuth.instance;
 
   User? get currentUser => _auth.currentUser;
+
+  /// Usuario de la sesión guardada. En web Firebase la carga de forma
+  /// asíncrona, así que currentUser puede ser null justo al abrir la app
+  /// aunque haya sesión; el primer evento de authStateChanges llega cuando
+  /// ya terminó de cargarla.
+  Future<User?> restoredUser() => _auth.authStateChanges().first;
+
 
   Future<AuthSession> signIn(String email, String password) async {
     final UserCredential credential;
@@ -194,13 +203,19 @@ class AuthRepository {
   ///   no cerrar la sesión del staff.
   /// - El perfil y el hogar los escribe el staff en un solo batch, así nunca
   ///   queda uno sin el otro. Si el batch falla se borra la cuenta de Auth.
+  ///
+  /// [appliances] son ids de [Appliance]; solo se usan para familias.
   Future<Family?> registerAccount({
     required String role,
     required String name,
     required String email,
     required String password,
     String? address,
+    List<String> appliances = const [],
   }) async {
+    final appliancesError = Family.validateAppliances(appliances);
+    if (appliancesError != null) throw ArgumentError(appliancesError);
+
     final app = await Firebase.initializeApp(
       name: 'registro-${DateTime.now().microsecondsSinceEpoch}',
       options: Firebase.app().options,
@@ -209,6 +224,8 @@ class AuthRepository {
 
     try {
       await connectToEmulatorsIfDebug(auth: auth);
+
+      if (kIsWeb) await auth.setPersistence(Persistence.NONE);
 
       final UserCredential credential;
       try {
@@ -252,7 +269,7 @@ class AuthRepository {
           registrationDate: now,
           recoveryQuotaDefault: Family.standardRecoveryQuota,
           authUid: newUser.uid,
-          appliances: const [],
+          appliances: appliances,
         );
         batch.set(
           db.collection('families').doc(newUser.uid),

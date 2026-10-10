@@ -130,6 +130,17 @@ void main() {
       await assertDenied(fam1().setDoc(m, member({'sex': str('x')})));
     });
 
+    test('alergias repetidas rechazadas', () async {
+      await assertDenied(
+        fam1().setDoc(
+          m,
+          member({
+            'allergies': arr([str('gluten'), str('gluten')]),
+          }),
+        ),
+      );
+    });
+
     test('alergia desconocida rechazada', () async {
       await assertDenied(
         fam1().setDoc(
@@ -141,6 +152,64 @@ void main() {
       );
     });
 
+    test('enfermedades crónicas válidas', () async {
+      await assertAllowed(
+        fam1().setDoc(
+          m,
+          member({
+            'chronicConditions': arr([str('diabetes'), str('kidneyDisease')]),
+          }),
+        ),
+      );
+    });
+
+    test('enfermedades crónicas vacías ("Ninguna") válidas', () async {
+      await assertAllowed(
+        fam1().setDoc(m, member({'chronicConditions': arr([])})),
+      );
+    });
+
+    test('enfermedad crónica desconocida rechazada', () async {
+      await assertDenied(
+        fam1().setDoc(
+          m,
+          member({
+            'chronicConditions': arr([str('asthma')]),
+          }),
+        ),
+      );
+    });
+
+    test('enfermedades crónicas como texto rechazadas', () async {
+      await assertDenied(
+        fam1().setDoc(m, member({'chronicConditions': str('diabetes')})),
+      );
+    });
+
+    test('enfermedades crónicas repetidas rechazadas', () async {
+      await assertDenied(
+        fam1().setDoc(
+          m,
+          member({
+            'chronicConditions': arr([str('obesity'), str('obesity')]),
+          }),
+        ),
+      );
+    });
+
+    test('borrar enfermedades crónicas al editar', () async {
+      await Db.admin().setDoc(
+        m1,
+        member({
+          'age': integer(30),
+          'chronicConditions': arr([str('diabetes')]),
+        }),
+      );
+      await assertAllowed(
+        fam1().updateDoc(m1, {'chronicConditions': deleteField}),
+      );
+    });
+
     test('campo extra rechazado', () async {
       await assertDenied(fam1().setDoc(m, member({'foo': integer(1)})));
     });
@@ -149,8 +218,34 @@ void main() {
       await assertDenied(fam2().setDoc(m, member()));
     });
 
-    test('staff registra integrantes', () async {
-      await assertAllowed(staff().setDoc(m, member()));
+    test('staff no registra integrantes', () async {
+      await assertDenied(staff().setDoc(m, member()));
+    });
+
+    test('staff no edita los datos de salud de un integrante', () async {
+      await assertDenied(staff().updateDoc(m1, {'age': integer(31)}));
+    });
+
+    test('la familia borra un integrante', () async {
+      await assertAllowed(fam1().deleteDoc(m1));
+    });
+
+    test('otra familia no borra integrantes', () async {
+      await assertDenied(fam2().deleteDoc(m1));
+    });
+
+    test('otra familia no edita integrantes', () async {
+      await assertDenied(fam2().updateDoc(m1, {'age': integer(31)}));
+    });
+
+    test('sin sesión no se leen ni se escriben integrantes', () async {
+      await assertDenied(Db.anonymous().getDoc(m1));
+      await assertDenied(Db.anonymous().setDoc(m, member()));
+      await assertDenied(Db.anonymous().deleteDoc(m1));
+    });
+
+    test('staff no borra integrantes', () async {
+      await assertDenied(staff().deleteDoc(m1));
     });
 
     test('editar sin cambiar createdAt', () async {
@@ -175,6 +270,18 @@ void main() {
 
     test('la familia lee sus integrantes', () async {
       await assertAllowed(fam1().listDocs('members', parent: 'families/famA'));
+    });
+
+    test('la familia lee un integrante', () async {
+      await assertAllowed(fam1().getDoc(m1));
+    });
+
+    test('staff no lista los integrantes de una familia', () async {
+      await assertDenied(staff().listDocs('members', parent: 'families/famA'));
+    });
+
+    test('staff no lee los datos de salud de un integrante', () async {
+      await assertDenied(staff().getDoc(m1));
     });
   });
 }

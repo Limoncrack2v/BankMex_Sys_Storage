@@ -10,7 +10,13 @@ class RecipeCatalog {
     required int prepTimeMinutes,
     required int caloriesPerServing,
     List<String> dietaryTags = const [],
+    List<String> nutritionalTags = const [],
+    List<String> requiredEquipment = const [],
   }) {
+    validateTags(
+      nutritionalTags: nutritionalTags,
+      requiredEquipment: requiredEquipment,
+    );
     return Recipe(
       id: id,
       name: name,
@@ -20,7 +26,30 @@ class RecipeCatalog {
       caloriesPerServing: caloriesPerServing,
       status: RecipeStatus.pending,
       dietaryTags: dietaryTags,
+      nutritionalTags: nutritionalTags,
+      requiredEquipment: requiredEquipment,
     );
+  }
+
+  /// Lanza [ArgumentError] con un mensaje para mostrar si alguna etiqueta o
+  /// electrodoméstico no se reconoce o se repite. Al editar, [previous] es la
+  /// receta guardada: los ids que ya tenía se aceptan aunque esta versión de
+  /// la app no los conozca, para no borrarlos.
+  static void validateTags({
+    required List<String> nutritionalTags,
+    required List<String> requiredEquipment,
+    Recipe? previous,
+  }) {
+    final error =
+        Recipe.validateNutritionalTags(
+          nutritionalTags,
+          keep: {...?previous?.nutritionalTags},
+        ) ??
+        Recipe.validateRequiredEquipment(
+          requiredEquipment,
+          keep: {...?previous?.requiredEquipment},
+        );
+    if (error != null) throw ArgumentError(error);
   }
 
   static Recipe approveRecipe(Recipe recipe) {
@@ -36,6 +65,8 @@ class RecipeCatalog {
     required int prepTimeMinutes,
     required int caloriesPerServing,
     List<String> dietaryTags = const [],
+    List<String> nutritionalTags = const [],
+    List<String> requiredEquipment = const [],
   }) {
     return approveRecipe(
       submitRecipe(
@@ -46,6 +77,8 @@ class RecipeCatalog {
         prepTimeMinutes: prepTimeMinutes,
         caloriesPerServing: caloriesPerServing,
         dietaryTags: dietaryTags,
+        nutritionalTags: nutritionalTags,
+        requiredEquipment: requiredEquipment,
       ),
     );
   }

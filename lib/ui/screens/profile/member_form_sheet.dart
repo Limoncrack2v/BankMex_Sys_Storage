@@ -83,6 +83,10 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
   _MemberKind? _kind;
   late final Set<Allergy> _allergies;
   late bool _noAllergies;
+
+  /// Opcional: sin elegir nada se guarda como no capturado.
+  late final Set<ChronicCondition> _conditions;
+  late bool _noConditions;
   bool _saving = false;
   bool _deleting = false;
   bool _confirmingDelete = false;
@@ -121,6 +125,8 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
     };
     _allergies = {...?initial?.allergies};
     _noAllergies = initial?.allergies?.isEmpty ?? false;
+    _conditions = {...?initial?.chronicConditions};
+    _noConditions = initial?.chronicConditions?.isEmpty ?? false;
   }
 
   @override
@@ -144,6 +150,24 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
       _error = null;
       _noAllergies = true;
       _allergies.clear();
+    });
+  }
+
+  void _toggleCondition(ChronicCondition condition) {
+    setState(() {
+      _error = null;
+      _noConditions = false;
+      if (!_conditions.remove(condition)) _conditions.add(condition);
+    });
+  }
+
+  /// Volver a tocar «Ninguna» la deselecciona (queda sin capturar), porque la
+  /// sección es opcional.
+  void _toggleNoConditions() {
+    setState(() {
+      _error = null;
+      _noConditions = !_noConditions;
+      _conditions.clear();
     });
   }
 
@@ -183,6 +207,11 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
       allergies: _noAllergies
           ? const []
           : Allergy.values.where(_allergies.contains).toList(),
+      chronicConditions: _noConditions
+          ? const []
+          : _conditions.isEmpty
+          ? null
+          : ChronicCondition.values.where(_conditions.contains).toList(),
     );
     final error = member.validate();
     return error == null
@@ -516,6 +545,39 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
                       selected: _allergies.contains(allergy),
                       pill: true,
                       onTap: () => _toggleAllergy(allergy),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        LabeledField(
+          label: 'Enfermedades crónicas',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Opcional. Nos ayuda a sugerir comidas adecuadas.',
+                style: AppText.nunito(14, 21, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OptionButton(
+                    label: 'Ninguna',
+                    selected: _noConditions,
+                    pill: true,
+                    onTap: _toggleNoConditions,
+                  ),
+                  for (final condition in ChronicCondition.values)
+                    OptionButton(
+                      label: chronicConditionLabel(condition),
+                      selected: _conditions.contains(condition),
+                      pill: true,
+                      onTap: () => _toggleCondition(condition),
                     ),
                 ],
               ),

@@ -1,6 +1,8 @@
-// Prueba la Cloud Function onDeliveryWritten (functions/index.js) contra los
-// emuladores: al quedar una entrega como entregada, sus productos deben
-// aparecer en la despensa de la familia.
+// Prueba las Cloud Functions de functions/index.js contra los emuladores:
+// - onDeliveryWritten: al quedar una entrega como entregada, sus productos
+//   deben aparecer en la despensa de la familia.
+// - syncNextDelivery: families/{familyId}.nextDeliveryDate debe quedar en la
+//   entrega programada más cercana de hoy en adelante, o desaparecer si no hay.
 //
 // Corre en el proyecto real del emulador (bank-storage-bamx) porque el
 // emulador de Functions solo escucha ese proyecto; por eso NO borra la base,
@@ -15,6 +17,7 @@ const _day = Duration(days: 1);
 final _run = 'fn-${DateTime.now().millisecondsSinceEpoch}';
 final _familyId = '$_run-familia';
 final _created = <String>[];
+final _families = <String>[];
 
 Map<String, Object?> _item(
   String productId,
@@ -36,13 +39,15 @@ Future<void> _writeDelivery(
   List<Map<String, Object?>> items, {
   String? deviceId,
   DateTime? localTimestamp,
+  DateTime? deliveryDate,
+  String? familyId,
 }) async {
   _created.add(id);
   await assertAllowed(
     Db.admin().setDoc('deliveries/$id', {
-      'familyId': str(_familyId),
+      'familyId': str(familyId ?? _familyId),
       'familyName': str('Familia Emulador'),
-      'deliveryDate': ts(DateTime.now()),
+      'deliveryDate': ts(deliveryDate ?? DateTime.now()),
       'packages': integer(1),
       'status': str(status),
       'items': arr(items),
@@ -78,6 +83,54 @@ Future<Map<String, Object?>> _stockedMark(String deliveryId) async {
   );
 }
 
+/// Espera a que families/{familyId}.nextDeliveryDate sea [expected], o a que
+/// no exista si [expected] es null.
+Future<void> _expectNextDelivery(String familyId, DateTime? expected) async {
+  final end = DateTime.now().add(const Duration(seconds: 30));
+  Object? last;
+  while (DateTime.now().isBefore(end)) {
+    final family = await adminDoc('families/$familyId');
+    last = fieldValue(family, 'nextDeliveryDate');
+    if (expected == null) {
+      if (last == null) return;
+    } else if (last is String &&
+        DateTime.parse(last).isAtSameMomentAs(expected)) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+  }
+  throw StateError(
+    'families/$familyId.nextDeliveryDate quedó en $last y se esperaba '
+    '$expected. ¿Está corriendo el emulador de Functions?',
+  );
+}
+
+/// Familia nueva solo para una prueba, para que las entregas de otras pruebas
+/// no cambien su próxima entrega.
+Future<String> _newFamily(String name) async {
+  final id = '$_run-$name';
+  _families.add(id);
+  await assertAllowed(
+    Db.admin().setDoc('families/$id', {
+      'name': str('Familia Emulador'),
+      'address': str('Calle 1'),
+      'registrationDate': ts(DateTime.now()),
+      'recoveryQuotaDefault': nul(),
+      'authUid': str(id),
+      'appliances': arr([]),
+    }),
+  );
+  return id;
+}
+
+/// Mediodía de hoy con [offset] días. A mediodía no cae en otro día de
+/// calendario de Guadalajara, y sin milisegundos se compara exacto con la
+/// fecha que regresa la función (JS Date solo guarda milisegundos).
+DateTime _dayAt(int offset) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day + offset, 12);
+}
+
 void main() {
   useProject('bank-storage-bamx');
 
@@ -95,15 +148,19 @@ void main() {
     );
   });
 
+  // Borrar una familia no borra su despensa (subcolección), y los datos del
+  // emulador se guardan al cerrarlo: se borra todo lo que creó la corrida.
   tearDownAll(() async {
     final admin = Db.admin();
-    for (final item in await adminDocs('families/$_familyId/pantryItems')) {
-      await admin.deleteDoc('families/$_familyId/pantryItems/${item.id}');
-    }
     for (final id in _created) {
       await admin.deleteDoc('deliveries/$id');
     }
-    await admin.deleteDoc('families/$_familyId');
+    for (final family in [_familyId, ..._families]) {
+      for (final item in await adminDocs('families/$family/pantryItems')) {
+        await admin.deleteDoc('families/$family/pantryItems/${item.id}');
+      }
+      await admin.deleteDoc('families/$family');
+    }
   });
 
   group('onDeliveryWritten', () {
@@ -260,6 +317,132 @@ void main() {
       final mark = await _stockedMark(id);
       expect(fieldValue(mark, 'pantryItemsSkipped'), 1);
       expect(fieldValue(mark, 'pantryItemsAdded'), 0);
+    });
+  });
+
+  group('syncNextDelivery', () {
+    test(
+      'una entrega programada para mañana pone su fecha en la familia',
+      () async {
+        final familyId = await _newFamily('proxima-programada');
+        final tomorrow = _dayAt(1);
+        await _writeDelivery(
+          '$_run-proxima-programada',
+          'scheduled',
+          [_item('Arroz', 5)],
+          familyId: familyId,
+          deliveryDate: tomorrow,
+        );
+
+        await _expectNextDelivery(familyId, tomorrow);
+      },
+    );
+
+    test('de dos entregas programadas, gana la más cercana', () async {
+      final familyId = await _newFamily('proxima-dos');
+      final tomorrow = _dayAt(1);
+      final inThreeDays = _dayAt(3);
+
+      // La lejana primero: si la función solo tomara la última escritura,
+      // la prueba fallaría.
+      await _writeDelivery(
+        '$_run-proxima-dos-lejana',
+        'scheduled',
+        [_item('Arroz', 5)],
+        familyId: familyId,
+        deliveryDate: inThreeDays,
+      );
+      await _writeDelivery(
+        '$_run-proxima-dos-cercana',
+        'scheduled',
+        [_item('Arroz', 5)],
+        familyId: familyId,
+        deliveryDate: tomorrow,
+      );
+
+      await _expectNextDelivery(familyId, tomorrow);
+    });
+
+    test('al cancelar la más cercana, pasa a la siguiente', () async {
+      final familyId = await _newFamily('proxima-cancelada');
+      final tomorrow = _dayAt(1);
+      final inThreeDays = _dayAt(3);
+      final nearId = '$_run-proxima-cancelada-cercana';
+
+      await _writeDelivery(
+        '$_run-proxima-cancelada-lejana',
+        'scheduled',
+        [_item('Arroz', 5)],
+        familyId: familyId,
+        deliveryDate: inThreeDays,
+      );
+      await _writeDelivery(
+        nearId,
+        'scheduled',
+        [_item('Arroz', 5)],
+        familyId: familyId,
+        deliveryDate: tomorrow,
+      );
+      await _expectNextDelivery(familyId, tomorrow);
+
+      await assertAllowed(
+        Db.admin().updateDoc('deliveries/$nearId', {
+          'status': str('cancelled'),
+        }),
+      );
+      await _expectNextDelivery(familyId, inThreeDays);
+    });
+
+    test('al entregar la última programada, el campo desaparece', () async {
+      final familyId = await _newFamily('proxima-entregada');
+      final tomorrow = _dayAt(1);
+      final id = '$_run-proxima-entregada';
+
+      await _writeDelivery(
+        id,
+        'scheduled',
+        [_item('Arroz', 5)],
+        familyId: familyId,
+        deliveryDate: tomorrow,
+      );
+      await _expectNextDelivery(familyId, tomorrow);
+
+      await assertAllowed(
+        Db.admin().updateDoc('deliveries/$id', {'status': str('delivered')}),
+      );
+      await _expectNextDelivery(familyId, null);
+    });
+
+    // Esperar null de una vez pasaría antes de que la función corra (el campo
+    // nunca existió). Primero se confirma que corrió con la de mañana y la de
+    // ayer no cuenta; al cancelar la de mañana, solo queda la de ayer.
+    test('una programada con fecha pasada no cuenta', () async {
+      final familyId = await _newFamily('proxima-pasada');
+      final tomorrow = _dayAt(1);
+      final tomorrowId = '$_run-proxima-pasada-manana';
+
+      await _writeDelivery(
+        '$_run-proxima-pasada-ayer',
+        'scheduled',
+        [_item('Arroz', 5)],
+        familyId: familyId,
+        deliveryDate: _dayAt(-1),
+      );
+      await _writeDelivery(
+        tomorrowId,
+        'scheduled',
+        [_item('Arroz', 5)],
+        familyId: familyId,
+        deliveryDate: tomorrow,
+      );
+      await _expectNextDelivery(familyId, tomorrow);
+
+      await assertAllowed(
+        Db.admin().updateDoc('deliveries/$tomorrowId', {
+          'status': str('cancelled'),
+        }),
+      );
+      await _expectNextDelivery(familyId, null);
     });
   });
 }

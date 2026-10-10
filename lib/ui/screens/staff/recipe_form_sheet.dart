@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../application/bank_storage_facade.dart';
+import '../../../data/models/family.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../domain/models/recipe.dart';
 import '../../formatting.dart';
@@ -62,6 +63,13 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
   late List<TextEditingController> _steps;
   String _image = '';
 
+  /// Se guardan en el orden de [NutritionalTag.values] y [Appliance.values].
+  /// Los ids que la app no conoce se conservan para no borrarlos al editar.
+  final _nutritionalTags = <NutritionalTag>{};
+  final _equipment = <Appliance>{};
+  List<String> _unknownNutritionalTags = const [];
+  List<String> _unknownEquipment = const [];
+
   /// Solo al dar de alta: publicada la ven las familias; pendiente no.
   bool _publish = true;
 
@@ -85,6 +93,16 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
           ? ''
           : '${recipe.caloriesPerServing}';
       _image = recipe.image;
+      for (final id in recipe.nutritionalTags) {
+        final tag = NutritionalTag.fromId(id);
+        if (tag != null) _nutritionalTags.add(tag);
+      }
+      for (final id in recipe.requiredEquipment) {
+        final appliance = Appliance.fromId(id);
+        if (appliance != null) _equipment.add(appliance);
+      }
+      _unknownNutritionalTags = recipe.unknownNutritionalTags;
+      _unknownEquipment = recipe.unknownEquipment;
     }
     _ingredients = [
       for (final ingredient in recipe?.ingredients ?? const [])
@@ -133,6 +151,18 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
       if (ingredient.isFilled) ingredient.toIngredient(),
   ];
 
+  List<String> get _nutritionalTagIds => [
+    for (final tag in NutritionalTag.values)
+      if (_nutritionalTags.contains(tag)) tag.id,
+    ..._unknownNutritionalTags,
+  ];
+
+  List<String> get _equipmentIds => [
+    for (final appliance in Appliance.values)
+      if (_equipment.contains(appliance)) appliance.id,
+    ..._unknownEquipment,
+  ];
+
   List<String> get _filledSteps => [
     for (final step in _steps)
       if (step.text.trim().isNotEmpty) step.text.trim(),
@@ -178,6 +208,8 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
         steps: _filledSteps,
         prepTimeMinutes: _minuteCount!,
         caloriesPerServing: _calorieCount!,
+        nutritionalTags: _nutritionalTagIds,
+        requiredEquipment: _equipmentIds,
         image: _image,
         servings: _servingCount!,
       );
@@ -188,6 +220,8 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
         steps: _filledSteps,
         prepTimeMinutes: _minuteCount!,
         caloriesPerServing: _calorieCount!,
+        nutritionalTags: _nutritionalTagIds,
+        requiredEquipment: _equipmentIds,
         image: _image,
         servings: _servingCount!,
       );
@@ -199,9 +233,12 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
           steps: _filledSteps,
           prepTimeMinutes: _minuteCount,
           caloriesPerServing: _calorieCount,
+          nutritionalTags: _nutritionalTagIds,
+          requiredEquipment: _equipmentIds,
           image: _image,
           servings: _servingCount,
         ),
+        previous: recipe,
       );
     }
 
@@ -317,6 +354,14 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
       _success = (heading: 'Receta eliminada', message: message);
     });
   }
+
+  void _toggleNutritionalTag(NutritionalTag tag) => setState(() {
+    if (!_nutritionalTags.remove(tag)) _nutritionalTags.add(tag);
+  });
+
+  void _toggleEquipment(Appliance appliance) => setState(() {
+    if (!_equipment.remove(appliance)) _equipment.add(appliance);
+  });
 
   void _addIngredient() =>
       setState(() => _ingredients = [..._ingredients, _IngredientDraft()]);
@@ -559,6 +604,57 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
             label: 'Imagen',
             value: _imageLabel(_image),
             onTap: _pickImage,
+          ),
+        ),
+        const SizedBox(height: 16),
+        LabeledField(
+          label: 'Etiquetas nutricionales',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _HelperText('Toca las que apliquen a una porción.'),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final tag in NutritionalTag.values)
+                    OptionButton(
+                      label: nutritionalTagLabel(tag),
+                      selected: _nutritionalTags.contains(tag),
+                      pill: true,
+                      onTap: () => _toggleNutritionalTag(tag),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        LabeledField(
+          label: 'Electrodomésticos necesarios',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _HelperText(
+                'Toca los que hacen falta para prepararla; déjalos sin marcar '
+                'si no necesita ninguno.',
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final appliance in Appliance.values)
+                    OptionButton(
+                      label: applianceLabel(appliance),
+                      selected: _equipment.contains(appliance),
+                      pill: true,
+                      onTap: () => _toggleEquipment(appliance),
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),

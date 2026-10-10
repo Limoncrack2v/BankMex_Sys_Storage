@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../data/models/member.dart';
 import 'portion_adjuster.dart';
 
@@ -11,8 +13,17 @@ import 'portion_adjuster.dart';
 /// Sin sexo (en la app solo se captura para niñas y niños) se promedian
 /// ambos. Un adulto sin peso usa 70 kg y sin edad el rango de 30 a 59 años.
 /// Una niña o niño sin edad no se puede estimar (null).
+///
+/// Enfermedades crónicas: a un adulto con obesidad se le restan
+/// [obesityDeficitKcal] (sin bajar de [minAdultKcal]), el déficit moderado
+/// que recomiendan las guías para bajar de peso. A niñas y niños no se les
+/// recorta: en su caso la restricción la decide su médico. Las demás
+/// enfermedades cambian qué se come, no cuánta energía se necesita; eso lo
+/// cubre la lista de exclusión (conditionKeywords).
 class EnergyRequirement {
   static const double activityLevel = 1.75;
+  static const int obesityDeficitKcal = 500;
+  static const int minAdultKcal = 1200;
   static const double infantKcalPerKg = 80;
   static const int infantDefaultKcal = 700;
 
@@ -39,6 +50,20 @@ class EnergyRequirement {
 
   /// kcal/día redondeadas a la decena, o null si no hay datos suficientes.
   static int? dailyKcal(Member member) {
+    final kcal = _baseKcal(member);
+    if (kcal == null) return null;
+
+    // Sin edad solo llega aquí un adulto.
+    final adult = (member.age ?? 18) >= 18;
+    final obese =
+        member.chronicConditions?.contains(ChronicCondition.obesity) ?? false;
+    if (adult && obese) {
+      return math.max(kcal - obesityDeficitKcal, minAdultKcal);
+    }
+    return kcal;
+  }
+
+  static int? _baseKcal(Member member) {
     final age = member.age;
     final weight = member.weightKg;
     if (age == null && member.memberType == MemberType.child) return null;
