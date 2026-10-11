@@ -118,6 +118,17 @@ service cloud.firestore {
         && validTrace(data);
     }
 
+    function validMealPlan(data) {
+      return data.keys().hasOnly(['familyId', 'dateRangeStart', 'dateRangeEnd', 'meals'])
+        && data.keys().hasAll(['familyId', 'dateRangeStart', 'dateRangeEnd', 'meals'])
+        && data.familyId is path
+        && data.familyId == /databases/$(database)/documents/families/$(data.familyId[4])
+        && data.dateRangeStart is timestamp
+        && data.dateRangeEnd is timestamp
+        && data.dateRangeEnd >= data.dateRangeStart
+        && data.meals is list && data.meals.size() <= 100;
+    }
+
     match /families/{familyId} {
       // Solo el staff registra familias, junto con su perfil users/{authUid}
       // (mismo batch). El id del hogar es el uid de su cuenta: un hogar por
@@ -244,9 +255,19 @@ service cloud.firestore {
         || (request.auth != null && resource.data.status == 'approved');
       allow create, update, delete: if isStaff();
     }
+
+    // Solo la familia dueña del plan y el staff lo leen y lo escriben. Un plan
+    // no cambia de familia.
     match /mealPlans/{planId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      // Un plan que no existe se lee como vacío (not found), no como error.
+      allow get: if request.auth != null
+        && (resource == null || canAccessFamily(resource.data.familyId[4]));
+      allow list, delete: if canAccessFamily(resource.data.familyId[4]);
+      allow create: if validMealPlan(request.resource.data)
+        && canAccessFamily(request.resource.data.familyId[4]);
+      allow update: if canAccessFamily(resource.data.familyId[4])
+        && validMealPlan(request.resource.data)
+        && request.resource.data.familyId == resource.data.familyId;
     }
   }
 }
