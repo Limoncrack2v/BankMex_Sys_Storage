@@ -259,7 +259,10 @@ service cloud.firestore {
     // Solo la familia dueña del plan y el staff lo leen y lo escriben. Un plan
     // no cambia de familia.
     match /mealPlans/{planId} {
-      allow read, delete: if canAccessFamily(resource.data.familyId[4]);
+      // Un plan que no existe se lee como vacío (not found), no como error.
+      allow get: if request.auth != null
+        && (resource == null || canAccessFamily(resource.data.familyId[4]));
+      allow list, delete: if canAccessFamily(resource.data.familyId[4]);
       allow create: if validMealPlan(request.resource.data)
         && canAccessFamily(request.resource.data.familyId[4]);
       allow update: if canAccessFamily(resource.data.familyId[4])

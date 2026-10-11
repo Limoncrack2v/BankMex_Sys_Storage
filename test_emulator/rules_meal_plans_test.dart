@@ -75,6 +75,14 @@ void main() {
       await assertDenied(fam2().getDoc(p1));
     });
 
+    test('la familia lee un plan que no existe', () async {
+      await assertAllowed(fam1().getDoc('mealPlans/nope'));
+    });
+
+    test('sin sesión no se lee un plan que no existe', () async {
+      await assertDenied(Db.anonymous().getDoc('mealPlans/nope'));
+    });
+
     test('otra familia no lista los planes de famA', () async {
       await assertDenied(
         fam2().listDocs('mealPlans', where: ('familyId', ref('families/famA'))),
