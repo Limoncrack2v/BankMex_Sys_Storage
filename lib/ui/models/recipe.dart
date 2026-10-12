@@ -3,10 +3,13 @@ import 'dart:math' as math;
 import '../../data/models/member.dart';
 import '../../data/models/pantry_item.dart';
 import '../../domain/energy_requirement.dart';
+import '../../domain/exclusion_list.dart';
 import '../../domain/models/child_profile.dart';
 import '../../domain/portion_adjuster.dart';
 import '../formatting.dart';
 import 'expiration_urgency.dart';
+
+export '../../domain/exclusion_list.dart';
 
 // Las recetas siguen siendo un catálogo de ejemplo (aún no hay colección en
 // Firestore), pero se comparan con la despensa real, se ajustan a la edad y el
@@ -372,32 +375,6 @@ double _scaledQuantity(RecipeIngredient ingredient, double factor) {
 // ---------------------------------------------------------------------------
 // Alergias de la familia.
 
-/// Palabras que delatan cada alérgeno en el nombre de un ingrediente, en la
-/// forma de [normalizeName] (sin acentos y en singular).
-const allergenKeywords = <Allergy, List<String>>{
-  Allergy.dairy: ['leche', 'yogurt', 'yogur', 'queso', 'crema', 'mantequilla'],
-  Allergy.gluten: [
-    'pan',
-    'pasta',
-    'harina',
-    'trigo',
-    'avena',
-    'galleta',
-    'cereal',
-  ],
-  Allergy.peanut: ['cacahuate', 'mani'],
-  Allergy.shellfish: [
-    'camaron',
-    'marisco',
-    'pulpo',
-    'calamar',
-    'ostion',
-    'jaiba',
-  ],
-  Allergy.egg: ['huevo'],
-  Allergy.soy: ['soya', 'soja', 'tofu'],
-};
-
 /// Si el nombre de un ingrediente contiene el alérgeno: "Leche entera" y
 /// "Quesos" llevan lácteos. Se compara palabra por palabra, así que
 /// "Lechuga" no cuenta como leche ni "Panela" como pan.
@@ -460,79 +437,10 @@ String allergyWarning(AllergyConflict conflict) {
 // ---------------------------------------------------------------------------
 // Enfermedades crónicas de la familia.
 
-/// Lo que conviene evitar con cada enfermedad, en la forma de
-/// [normalizeName]: azúcares con diabetes, sal y embutidos con hipertensión y
-/// enfermedad renal (también refrescos, por el fósforo), y grasas saturadas
-/// con colesterol alto. Igual que con las alergias, se busca en el nombre del
-/// ingrediente palabra por palabra.
-const conditionKeywords = <ChronicCondition, List<String>>{
-  ChronicCondition.diabetes: [
-    'azucar',
-    'refresco',
-    'jugo',
-    'miel',
-    'dulce',
-    'mermelada',
-    'chocolate',
-    'piloncillo',
-    'cajeta',
-    'jarabe',
-  ],
-  ChronicCondition.hypertension: [
-    'sal',
-    'consome',
-    'jamon',
-    'salchicha',
-    'chorizo',
-    'tocino',
-    'embutido',
-  ],
-  ChronicCondition.obesity: [
-    'azucar',
-    'refresco',
-    'dulce',
-    'manteca',
-    'chicharron',
-    'fritura',
-  ],
-  ChronicCondition.kidneyDisease: [
-    'sal',
-    'consome',
-    'refresco',
-    'jamon',
-    'salchicha',
-    'chorizo',
-    'embutido',
-  ],
-  ChronicCondition.highCholesterol: [
-    'manteca',
-    'mantequilla',
-    'tocino',
-    'chicharron',
-    'chorizo',
-    'crema',
-  ],
-};
-
 /// Si el nombre de un ingrediente lleva algo que conviene evitar con
 /// [condition]: "Sal de mesa" con hipertensión, pero no "Salsa verde".
 bool containsRestricted(String ingredientName, ChronicCondition condition) =>
     _containsKeyword(ingredientName, conditionKeywords[condition]);
-
-/// Lista de exclusión del hogar: las palabras de los alérgenos y de las
-/// enfermedades crónicas de [members], sin repetir y en orden alfabético.
-List<String> exclusionKeywords(List<Member> members) {
-  final keywords = <String>{
-    for (final member in members) ...[
-      for (final allergy in member.allergies ?? const <Allergy>[])
-        ...?allergenKeywords[allergy],
-      for (final condition
-          in member.chronicConditions ?? const <ChronicCondition>[])
-        ...?conditionKeywords[condition],
-    ],
-  };
-  return keywords.toList()..sort();
-}
 
 /// Una enfermedad crónica de la familia que choca con una receta: quiénes la
 /// tienen y qué ingredientes conviene evitar.

@@ -15,6 +15,7 @@ import '../domain/models/family_profile.dart';
 import '../domain/models/pantry_item.dart' as domain;
 import '../domain/models/recipe.dart';
 import '../domain/name_normalizer.dart';
+import '../domain/nutrition_targets.dart';
 import '../domain/pantry_recipe_filter.dart';
 import '../domain/portion_adjuster.dart';
 import '../domain/recipe_catalog.dart';
@@ -218,6 +219,13 @@ class BankStorageFacade {
   }
 
   Future<FamilyProfile> familyProfile(String familyId) => _profile(familyId);
+
+  /// caloricTarget y exclusionList del hogar, para el motor de recetas (sin
+  /// nombres ni datos de salud de los integrantes).
+  Future<NutritionTargets> nutritionTargets(String familyId) async =>
+      NutritionTargets.forHousehold(
+        await members.watchAllMembers(familyId).first,
+      );
 
   Future<Recipe?> getSingleRecipeOnDemand(String familyId) async {
     final profile = await _profile(familyId);
