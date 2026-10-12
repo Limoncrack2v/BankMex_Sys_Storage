@@ -23,7 +23,7 @@ class PantryItem {
   final double quantity;
   final FoodUnit unit;
   /// Días de [localTimestamp] a la caducidad (no cambia con el tiempo; los
-  /// días que quedan hoy se calculan en ui/formatting.dart).
+  /// días que quedan hoy los da [daysLeftOn]).
   final int daysUntilExpiration;
 
   /// Instalación del staff que marcó la entrega (su deviceId), o
@@ -87,6 +87,15 @@ class PantryItem {
     deviceId: deviceId,
     localTimestamp: localTimestamp,
   );
+
+  /// Días que le quedan en [today]: [daysUntilExpiration] menos los días de
+  /// calendario desde [localTimestamp]. Negativo si ya caducó.
+  int daysLeftOn(DateTime today) {
+    DateTime day(DateTime date) =>
+        DateTime.utc(date.year, date.month, date.day);
+    return daysUntilExpiration -
+        day(today).difference(day(localTimestamp)).inDays;
+  }
 
   String? validate() {
     if (productId.trim().isEmpty) return 'El producto es obligatorio';

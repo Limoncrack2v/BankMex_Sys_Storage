@@ -1,13 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../device_identity.dart';
+import '../firestore_paths.dart';
 import '../models/pantry_item.dart';
+
+/// Por qué salió un producto de la despensa (campo `reason` de
+/// consumptionLogs): se consumió, o ya había caducado y se desechó.
+enum ConsumptionReason { consumed, expired }
 
 /// Despensa de una familia. La app no crea productos: los crea la Cloud
 /// Function onDeliveryWritten (functions/index.js) cuando una entrega queda
 /// confirmada, y firestore.rules rechaza cualquier create desde un cliente.
 /// Aquí solo se leen y se registra el consumo.
 class PantryRepository {
+  PantryRepository({DeviceIdentity? device})
+    : _device = device ?? DeviceIdentity.instance;
+
   final _db = FirebaseFirestore.instance;
+  final DeviceIdentity _device;
 
   CollectionReference<Map<String, dynamic>> _pantryItems(String familyId) =>
       _db.collection('families').doc(familyId).collection('pantryItems');
@@ -28,16 +38,28 @@ class PantryRepository {
   ///
   /// El descuento parcial usa FieldValue.increment para que dos dispositivos
   /// de la misma familia no se pisen el consumo (cada uno resta lo suyo).
+  ///
+  /// En el mismo batch deja un documento en consumptionLogs por producto
+  /// ([consumptionLog]), así que sin conexión ambos quedan en la cola de
+  /// Firestore y se sincronizan juntos. Es el único lugar que escribe esos
+  /// registros.
   Future<int> registerConsumption(
     String familyId,
-    List<({PantryItem item, double amount})> consumed,
-  ) async {
+    List<({PantryItem item, double amount})> consumed, {
+    DateTime? now,
+  }) async {
     final entries = consumed.where((c) => c.amount > 0).toList();
     if (entries.isEmpty) {
       throw ArgumentError('Indica cuánto consumiste de al menos un producto');
     }
 
+    final at = now ?? DateTime.now();
+    final deviceId = await _device.id;
     final collection = _pantryItems(familyId);
+    final logs = _db
+        .collection(FirestorePaths.families)
+        .doc(familyId)
+        .collection(FirestorePaths.consumptionLogs);
     final batch = _db.batch();
 
     for (final (:item, :amount) in entries) {
@@ -53,6 +75,10 @@ class PantryRepository {
       } else {
         batch.update(ref, {'quantity': FieldValue.increment(-amount)});
       }
+      batch.set(
+        logs.doc(),
+        consumptionLog(item: item, amount: amount, at: at, deviceId: deviceId),
+      );
     }
 
     await batch.commit();
@@ -60,6 +86,29 @@ class PantryRepository {
   }
 
   static const _epsilon = 1e-9;
+
+  /// Documento de consumptionLogs por sacar [amount] de [item] en [at]. Si
+  /// el producto ya había caducado ese día, cuenta como desperdicio
+  /// ([ConsumptionReason.expired]), igual que las estadísticas cuentan lo
+  /// que caduca en la despensa.
+  static Map<String, dynamic> consumptionLog({
+    required PantryItem item,
+    required double amount,
+    required DateTime at,
+    required String deviceId,
+  }) => {
+    'productId': item.productId,
+    'quantity': amount,
+    'unit': item.unit.name,
+    'category': item.type.name,
+    'at': Timestamp.fromDate(at),
+    'deviceId': deviceId,
+    'reason':
+        (item.daysLeftOn(at) < 0
+                ? ConsumptionReason.expired
+                : ConsumptionReason.consumed)
+            .name,
+  };
 
   /// Cantidad que queda después de consumir [amount], redondeada a 3
   /// decimales para evitar residuos de punto flotante (2 - 0.1 * 3...).
