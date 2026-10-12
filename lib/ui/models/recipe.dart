@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../data/models/member.dart';
 import '../../data/models/pantry_item.dart';
+import '../../domain/energy_requirement.dart';
 import '../../domain/models/child_profile.dart';
 import '../../domain/portion_adjuster.dart';
 import '../formatting.dart';
@@ -331,12 +332,13 @@ Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
   );
 }
 
-/// [recipe] ajustada a lo que come el hogar según la edad y el peso de sus
-/// integrantes ([householdPortions]).
+/// [recipe] ajustada a lo que come el hogar según la edad, el peso y la
+/// salud de sus integrantes ([householdPortions]).
 Recipe scaledForHousehold(Recipe recipe, List<Member> members) =>
     scaledRecipe(recipe, members.length, portions: householdPortions(members));
 
-/// Porciones de adulto que come el hogar: cada adulto cuenta 1 y cada niño
+/// Porciones de adulto que come el hogar: cada adulto cuenta 1 (menos si
+/// tiene obesidad, [EnergyRequirement.adultPortion]) y cada niño
 /// según su edad y peso ([PortionAdjuster.childFactor]); con solo el peso se
 /// usa su proporción del peso de un adulto. Un niño sin edad ni peso cuenta
 /// 1, para no recortar comida sin datos.
@@ -344,7 +346,7 @@ double householdPortions(List<Member> members) {
   var portions = 0.0;
   for (final member in members) {
     portions += switch ((member.memberType, member.age, member.weightKg)) {
-      (MemberType.adult, _, _) => 1.0,
+      (MemberType.adult, _, _) => EnergyRequirement.adultPortion(member),
       (_, final int age, final weight) => PortionAdjuster.childFactor(
         ChildProfile(age: age, weight: weight ?? 0),
       ),
