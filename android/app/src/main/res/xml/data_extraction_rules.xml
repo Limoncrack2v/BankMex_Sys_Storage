@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 12+: nada de la app sale en respaldos ni en transferencias a otro
-     dispositivo. Ver android:dataExtractionRules en AndroidManifest.xml. -->
+     dispositivo. Ver android:dataExtractionRules en AndroidManifest.xml. Se
+     excluyen todos los dominios, también los del almacenamiento protegido del
+     dispositivo (device_*). -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" />
@@ -8,6 +10,10 @@
         <exclude domain="database" />
         <exclude domain="sharedpref" />
         <exclude domain="external" />
+        <exclude domain="device_root" />
+        <exclude domain="device_file" />
+        <exclude domain="device_database" />
+        <exclude domain="device_sharedpref" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="root" />
@@ -15,5 +21,9 @@
         <exclude domain="database" />
         <exclude domain="sharedpref" />
         <exclude domain="external" />
+        <exclude domain="device_root" />
+        <exclude domain="device_file" />
+        <exclude domain="device_database" />
+        <exclude domain="device_sharedpref" />
     </device-transfer>
 </data-extraction-rules>
