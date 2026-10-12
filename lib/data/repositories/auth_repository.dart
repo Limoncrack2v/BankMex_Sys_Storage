@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../firebase_environment.dart';
+import '../firestore_cache.dart';
 import '../models/app_user.dart';
 import '../models/family.dart';
 import '../models/staff_request.dart';
@@ -94,9 +95,9 @@ class AuthRepository {
   }
 
   /// Carga el perfil (users/{uid}) y, si es familia, su hogar. Si la cuenta
-  /// no tiene perfil válido (o no se puede leer) cierra la sesión y lanza
-  /// [AuthException]; si no tiene perfil porque su solicitud de staff sigue
-  /// pendiente o se rechazó, el mensaje lo dice.
+  /// no tiene perfil válido (o no se puede leer) cierra la sesión con
+  /// [signOut] y lanza [AuthException]; si no tiene perfil porque su
+  /// solicitud de staff sigue pendiente o se rechazó, el mensaje lo dice.
   Future<AuthSession> resolveSession(User user) async {
     StaffRequest? staffRequest;
     try {
@@ -113,11 +114,11 @@ class AuthRepository {
         staffRequest = await StaffRequestRepository().getRequest(user.uid);
       }
     } catch (_) {
-      await _auth.signOut();
+      await signOut();
       throw AuthException('No se pudo iniciar sesión. Intenta de nuevo.');
     }
 
-    await _auth.signOut();
+    await signOut();
     throw AuthException(switch (staffRequest?.status) {
       StaffRequestStatus.pending =>
         'Tu solicitud de cuenta de staff está pendiente. Podrás iniciar '
@@ -129,7 +130,10 @@ class AuthRepository {
     });
   }
 
-  Future<void> signOut() => _auth.signOut();
+  /// Cierra la sesión y borra la caché local de Firestore (ver
+  /// signOutAndClearCache).
+  Future<void> signOut() =>
+      signOutAndClearCache(auth: _auth, firestore: FirebaseFirestore.instance);
 
   Future<void> sendPasswordReset(String email) async {
     try {
@@ -210,6 +214,8 @@ class AuthRepository {
         e is TimeoutException ? _offlineMessage : _requestFailedMessage,
       );
     } finally {
+      // Sin borrar la caché (ver signOut): esta cuenta no llegó a entrar a la
+      // app y solo escribió su propia solicitud.
       if (stillSignedIn()) await _auth.signOut();
     }
   }
