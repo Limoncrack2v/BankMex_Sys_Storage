@@ -74,6 +74,17 @@ void main() {
     expect(suggested!.id, expected!.id);
   });
 
+  test('suggests the catalog recipe, not one scaled to the family', () async {
+    final suggested = await planner.suggestRecipe(
+      family: family,
+      pantryItems: items,
+      recipes: recipes,
+      now: now,
+    );
+    // 2 adultos con una receta de 4 porciones: ajustada serían 50 g.
+    expect(suggested!.ingredients.single.quantity, 100);
+  });
+
   test('suggests nothing when the only recipe that fits is pending', () async {
     final pending = RecipeCatalog.submitRecipe(
       id: 'pendiente',

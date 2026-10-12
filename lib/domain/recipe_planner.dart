@@ -11,6 +11,10 @@ import 'recipe_on_demand.dart';
 /// usa; por eso los métodos regresan Future aunque las reglas no esperen nada.
 abstract interface class RecipePlanner {
   /// Una receta para cocinar ahora, o null si ninguna alcanza.
+  ///
+  /// Regresa la receta como está en [recipes], sin ajustar a la familia: quien
+  /// la muestra o la descuenta de la despensa la escala (igual que con
+  /// [planDays], que solo da el id y las porciones).
   Future<Recipe?> suggestRecipe({
     required FamilyProfile family,
     required List<PantryItem> pantryItems,
@@ -18,8 +22,9 @@ abstract interface class RecipePlanner {
     DateTime? now,
   });
 
-  /// Una receta por día durante [days] días desde [startDate] (hoy si no se
-  /// da).
+  /// A lo más una receta por día durante [days] días desde [startDate] (hoy
+  /// si no se da). Un día sin receta que alcance se queda vacío, así que
+  /// filledDays puede ser menor que requestedDays.
   Future<MealPlanGeneration> planDays({
     required FamilyProfile family,
     required List<PantryItem> pantryItems,
@@ -43,12 +48,16 @@ class RuleBasedRecipePlanner implements RecipePlanner {
     required List<Recipe> recipes,
     DateTime? now,
   }) async {
-    return RecipeOnDemand.getSingleRecipeOnDemand(
+    final picked = RecipeOnDemand.getSingleRecipeOnDemand(
       family: family,
       pantryItems: pantryItems,
       recipes: recipes,
       now: now,
     );
+    if (picked == null) return null;
+    // RecipeOnDemand regresa la receta ya ajustada a la familia pero con las
+    // servings del catálogo; quien la volviera a ajustar la reduciría dos veces.
+    return recipes.firstWhere((recipe) => recipe.id == picked.id);
   }
 
   @override
