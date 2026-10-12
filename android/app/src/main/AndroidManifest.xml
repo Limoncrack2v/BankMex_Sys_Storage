@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Sin respaldos (MASVS-STORAGE-2): la caché de Firestore con datos de
+         las familias, la sesión de Firebase y el id del dispositivo no deben
+         ir a Google Drive ni pasar a otro teléfono. allowBackup="false" apaga
+         el respaldo en la nube; desde Android 12 la transferencia entre
+         dispositivos se apaga con dataExtractionRules. -->
     <application
         android:label="bank_storage_app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -35,13 +35,31 @@ class AuthException implements Exception {
 }
 
 class AuthRepository {
+  /// Mínimo de caracteres de cualquier contraseña nueva: la del Registro de
+  /// Staff y la de las cuentas que crea el staff. Firebase solo exige 6.
+  static const minPasswordLength = 8;
+
+  static const _weakPasswordMessage =
+      'La contraseña debe tener al menos $minPasswordLength caracteres.';
+
   static const _noAccessMessage =
       'No se pudo iniciar sesión. Contacta a tu centro de BAMX para más '
       'información.';
   static const _offlineMessage =
       'Sin conexión. Revisa tu internet e intenta de nuevo.';
 
-  final _auth = FirebaseAuth.instance;
+  // late: se toma al usarlo, así las pruebas pueden crear el repositorio sin
+  // Firebase (las validaciones de contraseña fallan antes de tocarlo).
+  late final _auth = FirebaseAuth.instance;
+
+  /// Lanza [AuthException] si [password] es más corta que
+  /// [minPasswordLength]. Las pantallas ya no dejan enviarla; esto cubre a
+  /// cualquier otro llamador, porque Firebase acepta desde 6.
+  static void _checkPasswordLength(String password) {
+    if (password.length < minPasswordLength) {
+      throw AuthException(_weakPasswordMessage);
+    }
+  }
 
   User? get currentUser => _auth.currentUser;
 
@@ -135,6 +153,8 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
+    _checkPasswordLength(password);
+
     final UserCredential credential;
     try {
       credential = await _auth.createUserWithEmailAndPassword(
@@ -146,7 +166,7 @@ class AuthRepository {
         'email-already-in-use' =>
           'Ya existe una cuenta con este correo electrónico.',
         'invalid-email' => 'Ingresa un correo válido.',
-        'weak-password' => 'La contraseña debe tener al menos 8 caracteres.',
+        'weak-password' => _weakPasswordMessage,
         'network-request-failed' => _offlineMessage,
         _ => _requestFailedMessage,
       });
@@ -213,6 +233,8 @@ class AuthRepository {
     String? address,
     List<String> appliances = const [],
   }) async {
+    _checkPasswordLength(password);
+
     final appliancesError = Family.validateAppliances(appliances);
     if (appliancesError != null) throw ArgumentError(appliancesError);
 
@@ -238,7 +260,7 @@ class AuthRepository {
           'email-already-in-use' =>
             'Ya existe una cuenta con este correo electrónico.',
           'invalid-email' => 'Ingresa un correo válido.',
-          'weak-password' => 'La contraseña debe tener al menos 6 caracteres.',
+          'weak-password' => _weakPasswordMessage,
           'network-request-failed' => _offlineMessage,
           _ => 'No se pudo crear la cuenta. Intenta de nuevo.',
         });
