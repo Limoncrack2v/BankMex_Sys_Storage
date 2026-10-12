@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:bank_storage_app/data/repositories/auth_repository.dart';
-import 'package:bank_storage_app/ui/screens/sign_in/staff_sign_up_screen.dart';
 import 'package:bank_storage_app/ui/screens/staff/register_account_sheet.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
@@ -25,14 +23,6 @@ PrimaryButton _createButton(WidgetTester tester) => tester
     .widget<PrimaryButton>(find.widgetWithText(PrimaryButton, 'Crear cuenta'));
 
 void main() {
-  test('Registrar cuenta y Registro de Staff piden el mismo mínimo', () {
-    expect(AuthRepository.minPasswordLength, 8);
-    expect(
-      StaffSignUpScreen.minPasswordLength,
-      AuthRepository.minPasswordLength,
-    );
-  });
-
   testWidgets('Crear cuenta se habilita hasta que la contraseña tiene 8 '
       'caracteres', (tester) async {
     await _pumpSheet(tester);

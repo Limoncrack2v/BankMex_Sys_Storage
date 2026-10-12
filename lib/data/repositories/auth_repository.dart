@@ -48,7 +48,18 @@ class AuthRepository {
   static const _offlineMessage =
       'Sin conexión. Revisa tu internet e intenta de nuevo.';
 
-  final _auth = FirebaseAuth.instance;
+  // late: se toma al usarlo, así las pruebas pueden crear el repositorio sin
+  // Firebase (las validaciones de contraseña fallan antes de tocarlo).
+  late final _auth = FirebaseAuth.instance;
+
+  /// Lanza [AuthException] si [password] es más corta que
+  /// [minPasswordLength]. Las pantallas ya no dejan enviarla; esto cubre a
+  /// cualquier otro llamador, porque Firebase acepta desde 6.
+  static void _checkPasswordLength(String password) {
+    if (password.length < minPasswordLength) {
+      throw AuthException(_weakPasswordMessage);
+    }
+  }
 
   User? get currentUser => _auth.currentUser;
 
@@ -142,6 +153,8 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
+    _checkPasswordLength(password);
+
     final UserCredential credential;
     try {
       credential = await _auth.createUserWithEmailAndPassword(
@@ -220,6 +233,8 @@ class AuthRepository {
     String? address,
     List<String> appliances = const [],
   }) async {
+    _checkPasswordLength(password);
+
     final appliancesError = Family.validateAppliances(appliances);
     if (appliancesError != null) throw ArgumentError(appliancesError);
 
