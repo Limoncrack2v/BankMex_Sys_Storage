@@ -13,9 +13,10 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/pill.dart';
+import 'appliances_section.dart';
 import 'member_form_sheet.dart';
 
-/// Perfil del hogar: resumen de la familia e integrantes.
+/// Perfil del hogar: resumen de la familia, integrantes y electrodomésticos.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.family});
 
@@ -26,14 +27,16 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late final Stream<Family?> _family;
+  late final Stream<({Family? family, bool pendingSync})> _family;
   late Stream<List<Member>> _members;
   bool _signingOut = false;
 
   @override
   void initState() {
     super.initState();
-    _family = FamilyRepository().watchFamily(widget.family.familyId);
+    _family = FamilyRepository().watchFamilyWithSyncStatus(
+      widget.family.familyId,
+    );
     _members = _watchMembers();
   }
 
@@ -69,15 +72,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         const AppHeader(title: 'Perfil'),
         Expanded(
-          child: StreamBuilder<Family?>(
+          child: StreamBuilder<({Family? family, bool pendingSync})>(
             stream: _family,
-            initialData: widget.family,
+            initialData: (family: widget.family, pendingSync: false),
             builder: (context, familySnapshot) {
-              final family = familySnapshot.data ?? widget.family;
+              final data = familySnapshot.data;
               return StreamBuilder<List<Member>>(
                 stream: _members,
-                builder: (context, snapshot) =>
-                    _buildContent(family.displayName, snapshot),
+                builder: (context, snapshot) => _buildContent(
+                  data?.family ?? widget.family,
+                  data?.pendingSync ?? false,
+                  snapshot,
+                ),
               );
             },
           ),
@@ -87,7 +93,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildContent(
-    String familyName,
+    Family family,
+    bool familyPendingSync,
     AsyncSnapshot<List<Member>> snapshot,
   ) {
     final members = snapshot.hasError ? null : snapshot.data;
@@ -99,7 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         _HouseholdSummary(
-          familyName: familyName,
+          familyName: family.displayName,
           adults: adults,
           children: members == null ? null : members.length - adults!,
           energy: members == null || members.isEmpty
@@ -147,6 +154,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           label: 'Agregar integrante',
           icon: AppIcons.plus,
           onPressed: _openMemberForm,
+        ),
+        const SizedBox(height: 24),
+        AppliancesSection(
+          applianceIds: family.appliances,
+          pendingSync: familyPendingSync,
+          onSave: (ids, {keep = const {}}) => FamilyRepository()
+              .updateAppliances(family.familyId, ids, keep: keep),
         ),
         const SizedBox(height: 24),
         Center(
