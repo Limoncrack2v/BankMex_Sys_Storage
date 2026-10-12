@@ -11,6 +11,9 @@
 // Requisitos: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bank_storage_app/data/models/delivery.dart';
+import 'package:bank_storage_app/data/models/standard_basket.dart';
+
 import 'support/emulator.dart';
 
 const _day = Duration(days: 1);
@@ -41,6 +44,7 @@ Future<void> _writeDelivery(
   DateTime? localTimestamp,
   DateTime? deliveryDate,
   String? familyId,
+  int packages = 1,
 }) async {
   _created.add(id);
   await assertAllowed(
@@ -48,7 +52,7 @@ Future<void> _writeDelivery(
       'familyId': str(familyId ?? _familyId),
       'familyName': str('Familia Emulador'),
       'deliveryDate': ts(deliveryDate ?? DateTime.now()),
-      'packages': integer(1),
+      'packages': integer(packages),
       'status': str(status),
       'items': arr(items),
       'createdAt': ts(DateTime.now()),
@@ -66,6 +70,28 @@ Future<List<({String id, Map<String, Object?> fields})>> _pantryOf(
     for (final item in items)
       if (fieldValue(item.fields, 'deliveryId') == deliveryId) item,
   ];
+}
+
+/// Un producto de [StandardBasket.deliveryItemsFor] como lo guarda
+/// DeliveryItem.toMap, en la forma de la API REST.
+Map<String, Object?> _restItem(DeliveryItem item) => mapValue({
+  'productId': str(item.productId),
+  'type': str(item.type.name),
+  'quantity': number(item.quantity),
+  'unit': str(item.unit.name),
+  'expirationDate': ts(item.expirationDate),
+});
+
+/// La despensa estándar [basketId] que carga tool/seed_emulators.mjs.
+Future<StandardBasket> _seededBasket(String basketId) async {
+  final fields = await adminDoc('standardBaskets/$basketId');
+  if (fields == null) {
+    throw StateError(
+      'No existe standardBaskets/$basketId en el emulador. Corre '
+      'node tool/seed_emulators.mjs.',
+    );
+  }
+  return StandardBasket.fromMap(basketId, plainFields(fields));
 }
 
 /// Espera a que la función marque la entrega (pantryStockedAt) y regresa sus
@@ -303,6 +329,58 @@ void main() {
         expect(fieldValue(leche, 'daysUntilExpiration'), 1);
       },
     );
+
+    test('una entrega de N despensas estándar llena la despensa con N veces '
+        'cada producto', () async {
+      const packages = 3;
+      final id = '$_run-despensas';
+      final basica = await _seededBasket('despensa-basica');
+      final frescos = await _seededBasket('frescos');
+      final items = StandardBasket.deliveryItemsFor(
+        [basica, frescos],
+        packages: packages,
+        deliveryDate: DateTime.now(),
+      );
+      await _writeDelivery(
+        id,
+        'delivered',
+        items.map(_restItem).toList(),
+        packages: packages,
+      );
+
+      final mark = await _stockedMark(id);
+      final expected = [...basica.items, ...frescos.items];
+      expect(fieldValue(mark, 'pantryItemsAdded'), expected.length);
+      expect(fieldValue(mark, 'pantryItemsSkipped'), 0);
+
+      final pantry = {
+        for (final item in await _pantryOf(id))
+          fieldValue(item.fields, 'productId'): item.fields,
+      };
+      expect(pantry, hasLength(expected.length));
+      for (final product in expected) {
+        final stocked = pantry[product.productId];
+        expect(stocked, isNotNull, reason: product.productId);
+        expect(
+          fieldValue(stocked, 'quantity'),
+          closeTo(product.quantity * packages, 1e-9),
+          reason: product.productId,
+        );
+        expect(fieldValue(stocked, 'unit'), product.unit.name);
+        expect(
+          fieldValue(stocked, 'daysUntilExpiration'),
+          product.shelfLifeDays,
+          reason: product.productId,
+        );
+      }
+
+      // Una segunda escritura no vuelve a surtir la despensa.
+      await assertAllowed(
+        Db.admin().updateDoc('deliveries/$id', {'notes': str('otra')}),
+      );
+      await Future<void>.delayed(const Duration(seconds: 3));
+      expect(await _pantryOf(id), hasLength(expected.length));
+    });
 
     test('hora no creíble: se usa la del servidor', () async {
       final id = '$_run-reloj-no-creible';

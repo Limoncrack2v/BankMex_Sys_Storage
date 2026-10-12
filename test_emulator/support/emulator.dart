@@ -256,6 +256,33 @@ Object? fieldValue(Map<String, Object?>? fields, String name) {
   };
 }
 
+/// Campos leídos con [adminDoc] como valores de Dart, con mapas y listas
+/// anidados (para pasarlos a un fromMap del modelo).
+Map<String, Object?> plainFields(Map<String, Object?> fields) => {
+  for (final MapEntry(:key, :value) in fields.entries)
+    key: _plainValue(value as Map<String, Object?>),
+};
+
+Object? _plainValue(Map<String, Object?> value) {
+  final MapEntry(:key, value: raw) = value.entries.first;
+  return switch (key) {
+    'integerValue' => int.parse(raw as String),
+    'doubleValue' => (raw as num).toDouble(),
+    'arrayValue' => [
+      for (final item
+          in ((raw as Map<String, Object?>)['values'] as List<Object?>?) ??
+              const [])
+        _plainValue(item as Map<String, Object?>),
+    ],
+    'mapValue' => plainFields(
+      ((raw as Map<String, Object?>)['fields'] as Map<String, Object?>?) ??
+          <String, Object?>{},
+    ),
+    'nullValue' => null,
+    _ => raw,
+  };
+}
+
 Future<Map<String, Object?>?> _adminGet(String url) async {
   final client = HttpClient();
   try {
