@@ -8,6 +8,7 @@ abstract final class FirestorePaths {
   static const recipes = 'recipes';
   static const mealPlans = 'mealPlans';
   static const consumptionLogs = 'consumptionLogs';
+  static const standardBaskets = 'standardBaskets';
 
   static String familyDoc(String familyId) => '$families/$familyId';
 }

@@ -1,5 +1,7 @@
+import '../data/models/family.dart';
 import '../data/models/member.dart';
 import '../data/models/pantry_item.dart';
+import '../domain/models/recipe.dart';
 
 /// Textos y formatos en español compartidos por las pantallas.
 
@@ -93,12 +95,8 @@ int daysUntil(DateTime date, {DateTime? today}) =>
 /// Días que le quedan hoy a un producto. daysUntilExpiration se cuenta desde
 /// localTimestamp (cuando se registró el producto), así que se descuentan los
 /// días que ya pasaron. Puede ser negativo si ya caducó.
-int daysLeft(PantryItem item, {DateTime? today}) {
-  final elapsed = _dateOnlyUtc(
-    today ?? DateTime.now(),
-  ).difference(_dateOnlyUtc(item.localTimestamp)).inDays;
-  return item.daysUntilExpiration - elapsed;
-}
+int daysLeft(PantryItem item, {DateTime? today}) =>
+    item.daysLeftOn(today ?? DateTime.now());
 
 /// Fecha en que caduca un producto de la despensa.
 DateTime expirationDate(PantryItem item) =>
@@ -165,6 +163,33 @@ String allergyLabel(Allergy allergy) => switch (allergy) {
   Allergy.shellfish => 'Mariscos',
   Allergy.egg => 'Huevo',
   Allergy.soy => 'Soya',
+};
+
+String chronicConditionLabel(ChronicCondition condition) => switch (condition) {
+  ChronicCondition.diabetes => 'Diabetes',
+  ChronicCondition.hypertension => 'Hipertensión',
+  ChronicCondition.obesity => 'Obesidad',
+  ChronicCondition.kidneyDisease => 'Enfermedad renal',
+  ChronicCondition.highCholesterol => 'Colesterol alto',
+};
+
+String applianceLabel(Appliance appliance) => switch (appliance) {
+  Appliance.stove => 'Estufa',
+  Appliance.fridge => 'Refrigerador',
+  Appliance.oven => 'Horno',
+  Appliance.microwave => 'Microondas',
+  Appliance.blender => 'Licuadora',
+  Appliance.pressureCooker => 'Olla de presión',
+};
+
+String nutritionalTagLabel(NutritionalTag tag) => switch (tag) {
+  NutritionalTag.lowSodium => 'Bajo en sodio',
+  NutritionalTag.lowSugar => 'Bajo en azúcar',
+  NutritionalTag.lowFat => 'Bajo en grasa',
+  NutritionalTag.highFiber => 'Alto en fibra',
+  NutritionalTag.highProtein => 'Alto en proteína',
+  NutritionalTag.vegetarian => 'Vegetariano',
+  NutritionalTag.diabeticFriendly => 'Apto para diabéticos',
 };
 
 /// "1 año", "38 años".
