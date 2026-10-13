@@ -252,7 +252,7 @@ void main() {
       );
     });
 
-    test('requires between 1 and 100 items', () {
+    test('requires between 1 and maxItems items', () {
       expect(buildDelivery(items: const []).validate(), isNotNull);
       expect(
         buildDelivery(
