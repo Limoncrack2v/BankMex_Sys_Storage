@@ -613,3 +613,118 @@ String _expiresIn(int days) => switch (days) {
   1 => 'caduca mañana',
   _ => 'caduca en $days días',
 };
+
+// ---------------------------------------------------------------------------
+// Lo que sobra después del plan.
+
+/// Qué pasa con un producto de la despensa si se cocina todo el plan.
+enum LeftoverStatus {
+  /// Ninguna receta del plan lo usa.
+  untouched,
+
+  /// El plan usa una parte y todavía queda algo.
+  partlyUsed,
+
+  /// El plan se lo come completo.
+  usedUp,
+}
+
+/// Un producto de la despensa y lo que el plan hace con él.
+class PlanLeftover {
+  const PlanLeftover({
+    required this.item,
+    required this.used,
+    required this.remaining,
+  });
+
+  final PantryItem item;
+
+  /// Lo que usa el plan, en la unidad del producto. Nunca pasa de lo que hay.
+  final double used;
+
+  /// Lo que queda después del plan, en la unidad del producto. Nunca es
+  /// negativo.
+  final double remaining;
+
+  LeftoverStatus get status {
+    if (remaining <= _epsilon) return LeftoverStatus.usedUp;
+    return used <= _epsilon
+        ? LeftoverStatus.untouched
+        : LeftoverStatus.partlyUsed;
+  }
+}
+
+/// Qué queda de cada producto de la despensa después de cocinar las recetas de
+/// [plan] en orden. Los productos caducados o sin cantidad no cuentan (como en
+/// [planConsumption]); los demás van del que caduca primero al que caduca
+/// después.
+///
+/// [buildWeeklyPlan] repite las recetas cuando hay menos de 7 y no descuenta
+/// nada entre un día y otro, así que aquí sí se descuenta día por día: una
+/// receta repetida usa lo que quede cuando le toca, y cuando un ingrediente se
+/// acaba los días siguientes ya no lo usan. Por eso la cantidad que sobra nunca
+/// es negativa, aunque dos días pidan más de lo que hay. Las fechas de los días
+/// no se usan: un producto que caduca a media semana cuenta para todo el plan.
+List<PlanLeftover> planLeftovers(
+  List<MealPlanEntry> plan,
+  List<PantryItem> pantry, {
+  DateTime? today,
+}) {
+  final now = today ?? DateTime.now();
+  final usable = [
+    for (final item in pantry)
+      if (item.quantity > 0 && daysLeft(item, today: now) >= 0) item,
+  ];
+  final remaining = [for (final item in usable) item.quantity];
+  // Lo que ve planConsumption: los mismos productos con lo que va quedando.
+  final working = List<PantryItem>.of(usable);
+  final positions = Map<PantryItem, int>.identity();
+  for (var i = 0; i < working.length; i++) {
+    positions[working[i]] = i;
+  }
+
+  for (final entry in plan) {
+    for (final (:item, :amount) in planConsumption(
+      entry.recipe,
+      working,
+      today: now,
+    )) {
+      final i = positions[item]!;
+      remaining[i] = _round3(math.max(0.0, remaining[i] - amount));
+      working[i] = _withQuantity(usable[i], remaining[i]);
+      positions[working[i]] = i;
+    }
+  }
+
+  return [
+    for (var i = 0; i < usable.length; i++)
+      PlanLeftover(
+        item: usable[i],
+        used: _round3(math.max(0.0, usable[i].quantity - remaining[i])),
+        remaining: remaining[i],
+      ),
+  ]..sort((a, b) {
+    final byDays = daysLeft(
+      a.item,
+      today: now,
+    ).compareTo(daysLeft(b.item, today: now));
+    if (byDays != 0) return byDays;
+    final byName = normalizeName(productDisplayName(a.item.productId))
+        .compareTo(normalizeName(productDisplayName(b.item.productId)));
+    return byName != 0
+        ? byName
+        : a.item.pantryItemId.compareTo(b.item.pantryItemId);
+  });
+}
+
+PantryItem _withQuantity(PantryItem item, double quantity) => PantryItem(
+  pantryItemId: item.pantryItemId,
+  productId: item.productId,
+  deliveryId: item.deliveryId,
+  type: item.type,
+  quantity: quantity,
+  unit: item.unit,
+  daysUntilExpiration: item.daysUntilExpiration,
+  deviceId: item.deviceId,
+  localTimestamp: item.localTimestamp,
+);
