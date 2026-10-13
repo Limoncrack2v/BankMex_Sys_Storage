@@ -121,9 +121,13 @@ service cloud.firestore {
     // índice, y el producto k solo se evalúa si hay más de k (dentro de la
     // guarda del anterior). Cada solicitud tiene un tope de expresiones
     // (1000), y cada producto gasta unas 60: por eso el máximo es 16, igual
-    // que Delivery.maxItems. Súbelo solo si las pruebas de test_emulator/
-    // rules_deliveries_test.dart (máximo con todos los campos opcionales y
-    // reasignación) siguen pasando.
+    // que Delivery.maxItems. El margen es corto: medido en el emulador caben
+    // 11 condiciones triviales más en validDelivery, unos 1.5 productos. No
+    // solo subir el tope: cualquier condición nueva en la creación o en la
+    // reasignación de una entrega obliga a repetir las pruebas del máximo en
+    // test_emulator/rules_deliveries_test.dart (grupo 'cantidad máxima de
+    // productos' y las pruebas 'se reasigna una entrega con el máximo de
+    // productos' y 'se reasigna el máximo con cuota y justificación').
     function validDeliveryItems(items) {
       let n = items.size();
       return items is list && n >= 1 && n <= 16
