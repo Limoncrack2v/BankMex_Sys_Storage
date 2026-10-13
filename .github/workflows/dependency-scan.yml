@@ -1,0 +1,106 @@
+# Escaneo de avisos de seguridad de las dependencias, con fecha.
+#
+# Corre cada lunes, a mano (Actions > Dependency scan > Run workflow) y en los
+# PR que cambian las dependencias. Guarda la salida de npm audit, flutter pub
+# outdated y osv-scanner como artefacto de la corrida, para el reporte de
+# seguridad, y falla si hay un aviso sin revisar.
+name: Dependency scan
+
+on:
+  schedule:
+    - cron: "0 14 * * 1" # lunes 8:00 en Guadalajara
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - pubspec.yaml
+      - pubspec.lock
+      - functions/package.json
+      - functions/package-lock.json
+      - osv-scanner.toml
+      - .github/workflows/dependency-scan.yml
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.5
+  # Binario de https://github.com/google/osv-scanner/releases, con su suma de
+  # osv-scanner_SHA256SUMS. Al subir la versión hay que cambiar las dos.
+  OSV_SCANNER_VERSION: 2.7.0
+  OSV_SCANNER_SHA256: 160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+
+jobs:
+  scan:
+    name: npm audit, pub outdated y osv-scanner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Instalar osv-scanner
+        run: |
+          curl --silent --show-error --fail --location \
+            --output "$RUNNER_TEMP/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  $RUNNER_TEMP/osv-scanner" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+
+      # Cada escaneo guarda su salida y su código de salida; el último paso
+      # decide si la corrida falla, para que el reporte salga completo.
+      - name: Escanear
+        run: |
+          mkdir scan-report
+          date --utc +"%Y-%m-%dT%H:%M:%SZ" | tee scan-report/date.txt
+          git rev-parse HEAD | tee scan-report/commit.txt
+
+          # Solo cuenta high y critical; los demás quedan en el reporte.
+          npm audit --prefix functions --audit-level=high \
+            > scan-report/npm-audit.txt 2>&1 \
+            && echo 0 > scan-report/npm-audit.exit || echo $? > scan-report/npm-audit.exit
+
+          flutter pub get --enforce-lockfile
+          flutter pub outdated > scan-report/pub-outdated.txt 2>&1 || true
+
+          "$RUNNER_TEMP/osv-scanner" scan source \
+            --config=osv-scanner.toml \
+            --lockfile=pubspec.lock \
+            --lockfile=functions/package-lock.json \
+            > scan-report/osv-scanner.txt 2>&1 \
+            && echo 0 > scan-report/osv-scanner.exit || echo $? > scan-report/osv-scanner.exit
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Dependency scan $(cat scan-report/date.txt)"
+            echo "Commit \`$(cat scan-report/commit.txt)\`"
+            for report in npm-audit pub-outdated osv-scanner; do
+              echo "### $report"
+              echo '```'
+              cat "scan-report/$report.txt"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar el reporte
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-scan-${{ github.run_id }}
+          path: scan-report/
+          retention-days: 90
+
+      - name: Fallar si hay avisos sin revisar
+        run: |
+          npm_audit=$(cat scan-report/npm-audit.exit)
+          osv_scanner=$(cat scan-report/osv-scanner.exit)
+          echo "npm audit: $npm_audit, osv-scanner: $osv_scanner"
+          test "$npm_audit" = 0 && test "$osv_scanner" = 0
