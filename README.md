@@ -90,6 +90,7 @@ Cuentas de prueba del seed (contraseña `bamx1234`):
 
 - Staff: `staff@bamx.test`
 - Familia: `familia.ramirez@bamx.test`
+- Nutriólogo: `nutriologo@bamx.test`
 - Solicitud de staff pendiente de aprobar: `solicitud.staff@bamx.test`
 
 En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `northamerica-south1`:
@@ -109,9 +110,27 @@ Ningún cliente, incluido el staff, crea productos en `families/{familyId}/pantr
 2. La Cloud Function `onDeliveryWritten` (`functions/index.js`) detecta que la entrega quedó como entregada. En una transacción crea un `PantryItem` por producto, menos los que ya caducaron, y marca la entrega con `pantryStockedAt`. La marca evita que un reintento duplique productos.
 3. La familia ve los productos en su despensa. Al registrar consumo solo puede bajar la cantidad de un producto, o borrarlo cuando se acaba.
 
+### Despensas estándar
+
+El contenido fijo de cada despensa del banco está en `standardBaskets/{basketId}`: nombre, descripción y productos (`productId`, `type`, `quantity`, `unit` y `shelfLifeDays`, los días que dura desde la entrega). `StandardBasket.toDeliveryItems(fecha)` los convierte en los productos de una entrega.
+
+- La única fuente es `tool/standard_baskets.mjs`. `node tool/seed_emulators.mjs` las carga en los emuladores y `./scripts/seed_standard_baskets.sh` en el proyecto real (pide confirmación).
+- Solo el staff las lee; ningún cliente las escribe.
+
 Una entrega **programada** también se puede **reasignar** a otra familia. En un solo batch, la original queda como `reassigned` (con `reassignedTo`) y se crea una entrega nueva programada para la otra familia (con `reassignedFrom`), con la misma fecha, despensas y productos.
 
 Los integrantes de la familia se guardan en la subcolección `families/{familyId}/members`, con `MemberRepository` y sus propias reglas (`validMember`).
+
+### Datos de salud de los integrantes
+
+Cada integrante puede tener edad, peso, sexo, alergias y enfermedades crónicas: son datos de salud (MASVS-PRIVACY-1, OWASP Mobile M6).
+
+- **Quién los lee y los escribe:** en la app, solo la familia dueña del hogar. El staff no los lee ni los escribe, ni con el SDK: ninguna pantalla de staff los usa. El staff sigue registrando el hogar (`families/{id}`); los integrantes los agrega la familia desde su perfil.
+- **Retención:** cuando una familia deja el programa, sus integrantes se borran a más tardar 6 meses después. Al borrar `families/{familyId}` desde la app **no** se borran sus subcolecciones, así que los integrantes se eliminan aparte:
+
+  ```sh
+  firebase firestore:delete --recursive "families/<familyId>" --project bank-storage-bamx
+  ```
 
 ## Cuentas
 
@@ -136,6 +155,15 @@ Para guardar capturas de la prueba de punta a punta en `build/e2e_screenshots`:
 ```sh
 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/app_flow_test.dart -d <emulador> --dart-define=E2E_SCREENSHOTS=true
 ```
+
+### CI y dependencias
+
+GitHub Actions corre lo mismo en cada PR (`.github/workflows/ci.yml`): `flutter analyze`, `flutter test` y `flutter test test_emulator` con los emuladores. Como `lib/firebase_options.dart` y `firebase.json` están en `.gitignore`, CI usa los de `.github/ci/`, que no son de ningún proyecto y solo sirven para los emuladores.
+
+- La versión de Flutter de CI está en `FLUTTER_VERSION`, en los dos workflows. Si subes Flutter en tu computadora y CI falla por eso, súbela ahí en su propio PR.
+- `.github/workflows/dependency-scan.yml` corre cada lunes, a mano desde la pestaña Actions y en los PR que cambian dependencias. Guarda como artefacto la salida de `npm audit`, `flutter pub outdated` y [osv-scanner](https://google.github.io/osv-scanner/) con su fecha, y falla si hay un aviso sin revisar.
+- Un aviso que ya se revisó y no aplica se anota en `osv-scanner.toml`, con el motivo y la fecha en que se vuelve a revisar.
+- Dependabot (`.github/dependabot.yml`) abre cada lunes los PR de actualización de `pub`, de `npm` en `functions/` y de las acciones de los workflows.
 
 ## Cómo está organizado
 

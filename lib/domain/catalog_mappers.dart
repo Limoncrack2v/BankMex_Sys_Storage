@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../data/models/member.dart' as data;
 import '../data/models/pantry_item.dart' as data;
 import '../ui/models/recipe.dart' as ui;
@@ -31,6 +33,38 @@ abstract final class CatalogMappers {
     );
   }
 
+  /// Un documento de families/{id}/consumptionLogs para las estadísticas.
+  /// Con `reason: 'expired'` es desperdicio: cuenta como lo que caducó en la
+  /// despensa, con la fecha en que se desechó. Sin `reason` (registros
+  /// anteriores) o con 'consumed' es consumo.
+  static domain.PantryItem consumptionLogToDomain(
+    String logId,
+    Map<String, dynamic> log, {
+    required String familyId,
+    DateTime? now,
+  }) {
+    final productId = log['productId'] as String? ?? '';
+    final quantity = (log['quantity'] as num?)?.toDouble() ?? 0;
+    final at = (log['at'] as Timestamp?)?.toDate() ?? now ?? DateTime.now();
+    final wasted = log['reason'] == 'expired';
+    return domain.PantryItem(
+      id: logId,
+      familyId: familyId,
+      productId: productId,
+      name: productId,
+      quantity: wasted ? quantity : 0,
+      unit: log['unit'] as String? ?? 'g',
+      expirationDate: at,
+      category: log['category'] as String? ?? '',
+      originalQuantity: quantity,
+      consumedQuantity: wasted ? 0 : quantity,
+      status: wasted
+          ? domain.PantryItemStatus.expiredUnused
+          : domain.PantryItemStatus.consumed,
+      consumedAt: wasted ? null : at,
+    );
+  }
+
   static FamilyProfile familyProfile({
     required String familyId,
     required String authUid,
@@ -52,11 +86,14 @@ abstract final class CatalogMappers {
       authUid: authUid,
       adults: members.isEmpty ? 1 : adults,
       children: children,
-      dietaryRestrictions: members
-          .expand((m) => m.allergies ?? const <data.Allergy>[])
-          .map((a) => a.name)
-          .toSet()
-          .toList(),
+      dietaryRestrictions: {
+        for (final m in members) ...[
+          for (final a in m.allergies ?? const <data.Allergy>[]) a.name,
+          for (final c
+              in m.chronicConditions ?? const <data.ChronicCondition>[])
+            c.name,
+        ],
+      }.toList(),
     );
   }
 

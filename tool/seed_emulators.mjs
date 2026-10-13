@@ -14,8 +14,11 @@
 //
 // Cuentas que deja listas:
 //   Staff:   staff@bamx.test / bamx1234
+//   Nutriólogo: nutriologo@bamx.test / bamx1234
 //   Familia: familia.ramirez@bamx.test / bamx1234
 //   Solicitud de staff pendiente de aprobar: solicitud.staff@bamx.test / bamx1234
+
+import { STANDARD_BASKETS, basketFields } from './standard_baskets.mjs';
 
 const PROJECT_ID = 'bank-storage-bamx';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099';
@@ -30,9 +33,12 @@ const FAMILY_ID = 'seed-familia-ramirez';
 const FAMILY_NAME = 'Familia Ramírez';
 const DEVICE_ID = 'seed';
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Igual que Family.standardRecoveryQuota (lib/data/models/family.dart), en MXN.
+const STANDARD_RECOVERY_QUOTA = 250;
 
 const STAFF = { email: 'staff@bamx.test', name: 'Staff BAMX' };
 const STAFF_REQUEST = { email: 'solicitud.staff@bamx.test', name: 'Laura Méndez' };
+const NUTRITIONIST = { email: 'nutriologo@bamx.test', name: 'Nutriólogo BAMX' };
 const FAMILY = {
   email: 'familia.ramirez@bamx.test',
   name: FAMILY_NAME,
@@ -40,10 +46,10 @@ const FAMILY = {
 };
 
 const MEMBERS = [
-  { name: 'María', memberType: 'adult', age: 38, weightKg: 68, allergies: ['dairy'] },
-  { name: 'José', memberType: 'adult', age: 41, weightKg: 79, allergies: [] },
-  { name: 'Lucía', memberType: 'child', age: 9, weightKg: 28, sex: 'female', allergies: ['gluten'] },
-  { name: 'Diego', memberType: 'child', age: 5, weightKg: 19, sex: 'male', allergies: ['peanut', 'egg'] },
+  { name: 'María', memberType: 'adult', age: 38, weightKg: 68, allergies: ['dairy'], chronicConditions: [] },
+  { name: 'José', memberType: 'adult', age: 41, weightKg: 79, allergies: [], chronicConditions: ['hypertension'] },
+  { name: 'Lucía', memberType: 'child', age: 9, weightKg: 28, sex: 'female', allergies: ['gluten'], chronicConditions: [] },
+  { name: 'Diego', memberType: 'child', age: 5, weightKg: 19, sex: 'male', allergies: ['peanut', 'egg'], chronicConditions: [] },
 ];
 
 // [producto, tipo, cantidad, unidad, días para caducar]
@@ -66,15 +72,13 @@ const PANTRY = [
   ['Atún en lata', 'canned', 3, 'can', 300],
 ];
 
-class SeedError extends Error {}
+class SeedError extends Error { }
 
 // Valores tipados de la API REST de Firestore.
 const str = (value) => ({ stringValue: value });
 const int = (value) => ({ integerValue: String(value) });
 const dbl = (value) => ({ doubleValue: value });
-const bool = (value) => ({ booleanValue: value });
 const ts = (date) => ({ timestampValue: date.toISOString() });
-const nul = () => ({ nullValue: null });
 const arr = (values) => ({ arrayValue: values.length ? { values } : {} });
 const map = (fields) => ({ mapValue: { fields } });
 
@@ -128,7 +132,7 @@ async function checkEmulators() {
   if (missing.length) {
     throw new SeedError(
       `No se encontraron los emuladores de Firebase: ${missing.join(', ')}.\n` +
-        'Inícialos primero con: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
+      'Inícialos primero con: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
     );
   }
 }
@@ -268,6 +272,7 @@ function memberFields(member, createdAt) {
     weightKg: dbl(member.weightKg),
     ...(member.sex ? { sex: str(member.sex) } : {}),
     allergies: arr(member.allergies.map(str)),
+    chronicConditions: arr(member.chronicConditions.map(str)),
   };
 }
 
@@ -307,6 +312,7 @@ async function seed() {
 
   const staff = await ensureAuthUser(STAFF);
   const family = await ensureAuthUser(FAMILY);
+  const nutritionist = await ensureAuthUser(NUTRITIONIST);
 
   await setDocument(`users/${staff.uid}`, {
     name: str(STAFF.name),
@@ -320,12 +326,18 @@ async function seed() {
     role: str('family'),
     createdAt: ts(registeredAt),
   });
+  await setDocument(`users/${nutritionist.uid}`, {
+    name: str(NUTRITIONIST.name),
+    email: str(NUTRITIONIST.email),
+    role: str('nutritionist'),
+    createdAt: ts(registeredAt),
+  });
 
   await setDocument(`families/${FAMILY_ID}`, {
     name: str(FAMILY.name),
     address: str(FAMILY.address),
     registrationDate: ts(registeredAt),
-    recoveryQuotaDefault: nul(),
+    recoveryQuotaDefault: dbl(STANDARD_RECOVERY_QUOTA),
     authUid: str(family.uid),
     appliances: arr([str('refrigerador'), str('estufa')]),
   });
@@ -391,6 +403,10 @@ async function seed() {
     localTimestamp: ts(now),
   });
 
+  for (const basket of STANDARD_BASKETS) {
+    await setDocument(`standardBaskets/${basket.id}`, basketFields(basket, now));
+  }
+
   // Solicitud de "Registro de Staff" pendiente. Si una corrida anterior la
   // aprobó, se borra el perfil para que vuelva a quedar pendiente.
   const requester = await ensureAuthUser(STAFF_REQUEST);
@@ -410,11 +426,13 @@ async function seed() {
   console.log('');
   console.log(`  Staff:   ${STAFF.email} / ${PASSWORD}  (cuenta ${accountState(staff)})`);
   console.log(`  Familia: ${FAMILY.email} / ${PASSWORD}  (cuenta ${accountState(family)})`);
+  console.log(`  Nutriólogo: ${NUTRITIONIST.email} / ${PASSWORD}  (cuenta ${accountState(nutritionist)})`);
   console.log(`  Solicitud de staff pendiente: ${STAFF_REQUEST.email} / ${PASSWORD}`);
   console.log('');
   console.log(`  families/${FAMILY_ID}: ${FAMILY.name}, ${FAMILY.address}`);
   console.log(`  ${MEMBERS.length} integrantes, ${PANTRY.length} productos en la despensa, 2 entregas`);
   console.log('  (1 entregada hace 2 días y 1 programada en 5 días con cuota de $25).');
+  console.log(`  ${STANDARD_BASKETS.length} despensas estándar (${STANDARD_BASKETS.map((b) => b.name).join(', ')}).`);
   if (removedItems) {
     console.log(
       `  Se quitaron de la despensa ${removedItems} producto(s) de una entrega anterior de seed-delivery-2.`,
@@ -424,16 +442,16 @@ async function seed() {
     console.warn('');
     console.warn(
       `Aviso: no se encontró el emulador de Functions (${FUNCTIONS_HOST}). Sin él, las entregas no ` +
-        'agregan productos a la despensa. Inicia los emuladores con: ' +
-        'firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
+      'agregan productos a la despensa. Inicia los emuladores con: ' +
+      'firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
     );
   }
   if (duplicates.length) {
     console.warn('');
     console.warn(
       `Aviso: la cuenta de la familia también está ligada a families/${duplicates.join(', families/')}. ` +
-        'Bórralas desde la UI de los emuladores (http://127.0.0.1:4000/firestore) para que la app abra ' +
-        `families/${FAMILY_ID}.`,
+      'Bórralas desde la UI de los emuladores (http://127.0.0.1:4000/firestore) para que la app abra ' +
+      `families/${FAMILY_ID}.`,
     );
   }
 }

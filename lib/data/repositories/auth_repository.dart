@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -33,15 +35,39 @@ class AuthException implements Exception {
 }
 
 class AuthRepository {
+  /// Mínimo de caracteres de cualquier contraseña nueva: la del Registro de
+  /// Staff y la de las cuentas que crea el staff. Firebase solo exige 6.
+  static const minPasswordLength = 8;
+
+  static const _weakPasswordMessage =
+      'La contraseña debe tener al menos $minPasswordLength caracteres.';
+
   static const _noAccessMessage =
       'No se pudo iniciar sesión. Contacta a tu centro de BAMX para más '
       'información.';
   static const _offlineMessage =
       'Sin conexión. Revisa tu internet e intenta de nuevo.';
 
-  final _auth = FirebaseAuth.instance;
+  // late: se toma al usarlo, así las pruebas pueden crear el repositorio sin
+  // Firebase (las validaciones de contraseña fallan antes de tocarlo).
+  late final _auth = FirebaseAuth.instance;
+
+  /// Lanza [AuthException] si [password] es más corta que
+  /// [minPasswordLength]. Las pantallas ya no dejan enviarla; esto cubre a
+  /// cualquier otro llamador, porque Firebase acepta desde 6.
+  static void _checkPasswordLength(String password) {
+    if (password.length < minPasswordLength) {
+      throw AuthException(_weakPasswordMessage);
+    }
+  }
 
   User? get currentUser => _auth.currentUser;
+
+  /// Usuario de la sesión guardada. En web Firebase la carga de forma
+  /// asíncrona, así que currentUser puede ser null justo al abrir la app
+  /// aunque haya sesión; el primer evento de authStateChanges llega cuando
+  /// ya terminó de cargarla.
+  Future<User?> restoredUser() => _auth.authStateChanges().first;
 
   Future<AuthSession> signIn(String email, String password) async {
     final UserCredential credential;
@@ -66,7 +92,8 @@ class AuthRepository {
     return resolveSession(credential.user!);
   }
 
-  /// Carga el perfil (users/{uid}) y, si es familia, su hogar. Si la cuenta
+  /// Carga el perfil (users/{uid}) y, si es familia, su hogar.
+  /// El staff y el nutriólogo son roles válidos sin hogar. Si la cuenta
   /// no tiene perfil válido (o no se puede leer) cierra la sesión y lanza
   /// [AuthException]; si no tiene perfil porque su solicitud de staff sigue
   /// pendiente o se rechazó, el mensaje lo dice.
@@ -75,7 +102,8 @@ class AuthRepository {
     try {
       final profile = await UserRepository().getUserProfile(user.uid);
 
-      if (profile?.role == AppUser.roleStaff) {
+      if (profile?.role == AppUser.roleStaff ||
+          profile?.role == AppUser.roleNutritionist) {
         return AuthSession(user: profile!);
       }
       if (profile?.role == AppUser.roleFamily) {
@@ -126,6 +154,8 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
+    _checkPasswordLength(password);
+
     final UserCredential credential;
     try {
       credential = await _auth.createUserWithEmailAndPassword(
@@ -137,7 +167,7 @@ class AuthRepository {
         'email-already-in-use' =>
           'Ya existe una cuenta con este correo electrónico.',
         'invalid-email' => 'Ingresa un correo válido.',
-        'weak-password' => 'La contraseña debe tener al menos 8 caracteres.',
+        'weak-password' => _weakPasswordMessage,
         'network-request-failed' => _offlineMessage,
         _ => _requestFailedMessage,
       });
@@ -194,13 +224,21 @@ class AuthRepository {
   ///   no cerrar la sesión del staff.
   /// - El perfil y el hogar los escribe el staff en un solo batch, así nunca
   ///   queda uno sin el otro. Si el batch falla se borra la cuenta de Auth.
+  ///
+  /// [appliances] son ids de [Appliance]; solo se usan para familias.
   Future<Family?> registerAccount({
     required String role,
     required String name,
     required String email,
     required String password,
     String? address,
+    List<String> appliances = const [],
   }) async {
+    _checkPasswordLength(password);
+
+    final appliancesError = Family.validateAppliances(appliances);
+    if (appliancesError != null) throw ArgumentError(appliancesError);
+
     final app = await Firebase.initializeApp(
       name: 'registro-${DateTime.now().microsecondsSinceEpoch}',
       options: Firebase.app().options,
@@ -209,6 +247,8 @@ class AuthRepository {
 
     try {
       await connectToEmulatorsIfDebug(auth: auth);
+
+      if (kIsWeb) await auth.setPersistence(Persistence.NONE);
 
       final UserCredential credential;
       try {
@@ -221,7 +261,7 @@ class AuthRepository {
           'email-already-in-use' =>
             'Ya existe una cuenta con este correo electrónico.',
           'invalid-email' => 'Ingresa un correo válido.',
-          'weak-password' => 'La contraseña debe tener al menos 6 caracteres.',
+          'weak-password' => _weakPasswordMessage,
           'network-request-failed' => _offlineMessage,
           _ => 'No se pudo crear la cuenta. Intenta de nuevo.',
         });
@@ -250,8 +290,9 @@ class AuthRepository {
           name: name.trim(),
           address: (address ?? '').trim(),
           registrationDate: now,
+          recoveryQuotaDefault: Family.standardRecoveryQuota,
           authUid: newUser.uid,
-          appliances: const [],
+          appliances: appliances,
         );
         batch.set(
           db.collection('families').doc(newUser.uid),

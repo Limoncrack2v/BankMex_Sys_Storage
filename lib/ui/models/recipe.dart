@@ -2,11 +2,15 @@ import 'dart:math' as math;
 
 import '../../data/models/member.dart';
 import '../../data/models/pantry_item.dart';
+import '../../domain/energy_requirement.dart';
+import '../../domain/exclusion_list.dart';
 import '../../domain/meal_plan_length.dart';
 import '../../domain/models/child_profile.dart';
 import '../../domain/portion_adjuster.dart';
 import '../formatting.dart';
 import 'expiration_urgency.dart';
+
+export '../../domain/exclusion_list.dart';
 
 // Las recetas siguen siendo un catálogo de ejemplo (aún no hay colección en
 // Firestore), pero se comparan con la despensa real, se ajustan a la edad y el
@@ -337,12 +341,13 @@ Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
   );
 }
 
-/// [recipe] ajustada a lo que come el hogar según la edad y el peso de sus
-/// integrantes ([householdPortions]).
+/// [recipe] ajustada a lo que come el hogar según la edad, el peso y la
+/// salud de sus integrantes ([householdPortions]).
 Recipe scaledForHousehold(Recipe recipe, List<Member> members) =>
     scaledRecipe(recipe, members.length, portions: householdPortions(members));
 
-/// Porciones de adulto que come el hogar: cada adulto cuenta 1 y cada niño
+/// Porciones de adulto que come el hogar: cada adulto cuenta 1 (menos si
+/// tiene obesidad, [EnergyRequirement.adultPortion]) y cada niño
 /// según su edad y peso ([PortionAdjuster.childFactor]); con solo el peso se
 /// usa su proporción del peso de un adulto. Un niño sin edad ni peso cuenta
 /// 1, para no recortar comida sin datos.
@@ -350,7 +355,7 @@ double householdPortions(List<Member> members) {
   var portions = 0.0;
   for (final member in members) {
     portions += switch ((member.memberType, member.age, member.weightKg)) {
-      (MemberType.adult, _, _) => 1.0,
+      (MemberType.adult, _, _) => EnergyRequirement.adultPortion(member),
       (_, final int age, final weight) => PortionAdjuster.childFactor(
         ChildProfile(age: age, weight: weight ?? 0),
       ),
@@ -376,43 +381,19 @@ double _scaledQuantity(RecipeIngredient ingredient, double factor) {
 // ---------------------------------------------------------------------------
 // Alergias de la familia.
 
-/// Palabras que delatan cada alérgeno en el nombre de un ingrediente, en la
-/// forma de [normalizeName] (sin acentos y en singular).
-const allergenKeywords = <Allergy, List<String>>{
-  Allergy.dairy: ['leche', 'yogurt', 'yogur', 'queso', 'crema', 'mantequilla'],
-  Allergy.gluten: [
-    'pan',
-    'pasta',
-    'harina',
-    'trigo',
-    'avena',
-    'galleta',
-    'cereal',
-  ],
-  Allergy.peanut: ['cacahuate', 'mani'],
-  Allergy.shellfish: [
-    'camaron',
-    'marisco',
-    'pulpo',
-    'calamar',
-    'ostion',
-    'jaiba',
-  ],
-  Allergy.egg: ['huevo'],
-  Allergy.soy: ['soya', 'soja', 'tofu'],
-};
-
 /// Si el nombre de un ingrediente contiene el alérgeno: "Leche entera" y
 /// "Quesos" llevan lácteos. Se compara palabra por palabra, así que
 /// "Lechuga" no cuenta como leche ni "Panela" como pan.
-bool containsAllergen(String ingredientName, Allergy allergy) {
-  final keywords = [
-    for (final keyword in allergenKeywords[allergy] ?? const <String>[])
-      normalizeName(keyword),
+bool containsAllergen(String ingredientName, Allergy allergy) =>
+    _containsKeyword(ingredientName, allergenKeywords[allergy]);
+
+bool _containsKeyword(String ingredientName, List<String>? keywords) {
+  final normalized = [
+    for (final keyword in keywords ?? const <String>[]) normalizeName(keyword),
   ];
   return normalizeName(ingredientName)
       .split(' ')
-      .any((word) => keywords.any((keyword) => _sameWord(word, keyword)));
+      .any((word) => normalized.any((keyword) => _sameWord(word, keyword)));
 }
 
 /// Una alergia de la familia que choca con una receta: quiénes la tienen y
@@ -457,6 +438,60 @@ String allergyWarning(AllergyConflict conflict) {
   return 'Atención: esta receta contiene '
       '${allergyLabel(allergy).toLowerCase()} (${joinWithAnd(ingredients)}), '
       'y ${joinWithAnd(members)} $verb.';
+}
+
+// ---------------------------------------------------------------------------
+// Enfermedades crónicas de la familia.
+
+/// Si el nombre de un ingrediente lleva algo que conviene evitar con
+/// [condition]: "Sal de mesa" con hipertensión, pero no "Salsa verde".
+bool containsRestricted(String ingredientName, ChronicCondition condition) =>
+    _containsKeyword(ingredientName, conditionKeywords[condition]);
+
+/// Una enfermedad crónica de la familia que choca con una receta: quiénes la
+/// tienen y qué ingredientes conviene evitar.
+typedef ConditionConflict = ({
+  ChronicCondition condition,
+  List<String> members,
+  List<String> ingredients,
+});
+
+/// Enfermedades de [members] con las que choca [recipe], en el orden de
+/// [ChronicCondition].
+List<ConditionConflict> conditionConflicts(
+  Recipe recipe,
+  List<Member> members,
+) {
+  final conflicts = <ConditionConflict>[];
+  for (final condition in ChronicCondition.values) {
+    final affected = [
+      for (final member in members)
+        if (member.chronicConditions?.contains(condition) ?? false)
+          member.name.trim(),
+    ];
+    if (affected.isEmpty) continue;
+    final ingredients = [
+      for (final ingredient in recipe.ingredients)
+        if (containsRestricted(ingredient.name, condition)) ingredient.name,
+    ];
+    if (ingredients.isEmpty) continue;
+    conflicts.add((
+      condition: condition,
+      members: affected,
+      ingredients: ingredients,
+    ));
+  }
+  return conflicts;
+}
+
+/// "Cuidado: esta receta lleva Sal y Jamón, que conviene evitar con
+/// hipertensión (José)."
+String conditionWarning(ConditionConflict conflict) {
+  final (:condition, :members, :ingredients) = conflict;
+  return 'Cuidado: esta receta lleva ${joinWithAnd(ingredients)}, que '
+      'conviene evitar con '
+      '${chronicConditionLabel(condition).toLowerCase()} '
+      '(${joinWithAnd(members)}).';
 }
 
 /// "A", "A y B", "A, B y C". Antes de un sonido "i" se usa "e" ("María e

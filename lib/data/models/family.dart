@@ -1,14 +1,27 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../domain/models/appliance.dart';
+
+export '../../domain/models/appliance.dart';
+
 class Family {
+  /// Cuota de recuperación estándar de BAMX en MXN: la que recibe por defecto
+  /// una familia nueva.
+  static const double standardRecoveryQuota = 250;
+
   final String familyId;
 
   /// Nombre del hogar, p. ej. "Familia Ramírez".
   final String? name;
   final String address;
   final DateTime registrationDate;
+
+  /// Cuota de recuperación por defecto de sus entregas en MXN (el formulario
+  /// de entregas la propone); null si la familia está exenta.
   final double? recoveryQuotaDefault;
   final String authUid;
+
+  /// Ids de [Appliance], sin repetir.
   final List<String> appliances;
 
   /// Solo la Cloud Function syncNextDelivery la escribe; la app solo la lee
@@ -46,6 +59,9 @@ class Family {
     final trimmed = name?.trim() ?? '';
     return trimmed.isNotEmpty ? trimmed : address;
   }
+
+  static String? validateAppliances(List<String> appliances) =>
+      Appliance.validateIds(appliances);
 
   Map<String, dynamic> toFirestore() => {
     if (name != null) 'name': name!.trim(),

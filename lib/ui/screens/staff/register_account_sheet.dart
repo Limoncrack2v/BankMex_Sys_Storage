@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/app_user.dart';
+import '../../../data/models/family.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../formatting.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -14,9 +16,10 @@ import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
 
-/// Alta de cuentas por el staff: familias (con su hogar) o staff. Después de
-/// crearla, el mismo sheet muestra la confirmación. No se puede cerrar
-/// mientras se crea la cuenta (sin arrastre y con [AppSheet.busy]).
+/// Alta de cuentas por el staff: familias (con su hogar), staff o nutriólogos.
+/// Después de crearla, el mismo sheet muestra la confirmación.
+/// No se puede cerrar mientras se crea la cuenta
+/// (sin arrastre y con [AppSheet.busy]).
 Future<void> showRegisterAccountSheet(BuildContext context) {
   return showAppBottomSheet<void>(
     context,
@@ -25,7 +28,7 @@ Future<void> showRegisterAccountSheet(BuildContext context) {
   );
 }
 
-enum _AccountKind { family, staff }
+enum _AccountKind { family, staff, nutritionist }
 
 class RegisterAccountSheet extends StatefulWidget {
   const RegisterAccountSheet({super.key});
@@ -35,7 +38,7 @@ class RegisterAccountSheet extends StatefulWidget {
 }
 
 class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
-  static const _minPasswordLength = 6;
+  static const _minPasswordLength = AuthRepository.minPasswordLength;
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
   /// Si el alta tarda más que esto (p. ej. Firestore sin conexión después de
@@ -48,6 +51,7 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
   final _staffName = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _appliances = <Appliance>{};
   _AccountKind _kind = _AccountKind.family;
   bool _obscurePassword = true;
   bool _saving = false;
@@ -83,6 +87,11 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
 
   void _onChanged(String _) => setState(() => _error = null);
 
+  void _toggleAppliance(Appliance appliance) => setState(() {
+    _error = null;
+    if (!_appliances.remove(appliance)) _appliances.add(appliance);
+  });
+
   void _selectKind(_AccountKind kind) => setState(() {
     _kind = kind;
     _error = null;
@@ -94,11 +103,20 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
 
     final messenger = ScaffoldMessenger.of(context);
     final isFamily = _isFamily;
+    final role = switch (_kind) {
+      _AccountKind.family => AppUser.roleFamily,
+      _AccountKind.staff => AppUser.roleStaff,
+      _AccountKind.nutritionist => AppUser.roleNutritionist,
+    };
     final name = _name.text.trim();
     final email = _email.text.trim();
-    final successMessage = isFamily
-        ? '$name ya puede iniciar sesión con $email.'
-        : '$name ya puede iniciar sesión como staff con $email.';
+    final successMessage = switch (_kind) {
+      _AccountKind.family => '$name ya puede iniciar sesión con $email.',
+      _AccountKind.staff =>
+        '$name ya puede iniciar sesión como staff con $email.',
+      _AccountKind.nutritionist =>
+        '$name ya puede iniciar sesión como nutriólogo con $email.',
+    };
     setState(() {
       _saving = true;
       _slow = false;
@@ -111,11 +129,17 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
     String? error;
     try {
       await AuthRepository().registerAccount(
-        role: isFamily ? AppUser.roleFamily : AppUser.roleStaff,
+        role: role,
         name: name,
         email: email,
         password: _password.text,
         address: isFamily ? _address.text.trim() : null,
+        appliances: isFamily
+            ? [
+                for (final appliance in Appliance.values)
+                  if (_appliances.contains(appliance)) appliance.id,
+              ]
+            : const [],
       );
     } on AuthException catch (e) {
       error = e.message;
@@ -195,7 +219,10 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
             const SizedBox(height: 12),
           ],
           Text(
-            'Todos los campos son obligatorios.',
+            _isFamily
+                ? 'Los electrodomésticos son opcionales; los demás campos son '
+                      'obligatorios.'
+                : 'Todos los campos son obligatorios.',
             style: AppText.nunito(14, 21, color: AppColors.textMuted),
           ),
           const SizedBox(height: 8),
@@ -232,8 +259,16 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
               Expanded(
                 child: OptionButton(
                   label: 'Staff',
-                  selected: !_isFamily,
+                  selected: _kind == _AccountKind.staff,
                   onTap: () => _selectKind(_AccountKind.staff),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OptionButton(
+                  label: 'Nutriólogo',
+                  selected: _kind == _AccountKind.nutritionist,
+                  onTap: () => _selectKind(_AccountKind.nutritionist),
                 ),
               ),
             ],
@@ -266,6 +301,34 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
               keyboardType: TextInputType.streetAddress,
               maxLength: 200,
               onChanged: _onChanged,
+            ),
+          ),
+          const SizedBox(height: 16),
+          LabeledField(
+            label: 'Electrodomésticos',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Toca los que tiene el hogar. Sirven para sugerir recetas '
+                  'que pueda preparar.',
+                  style: AppText.nunito(14, 21, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final appliance in Appliance.values)
+                      OptionButton(
+                        label: applianceLabel(appliance),
+                        selected: _appliances.contains(appliance),
+                        pill: true,
+                        onTap: () => _toggleAppliance(appliance),
+                      ),
+                  ],
+                ),
+              ],
             ),
           ),
         ] else
@@ -320,7 +383,7 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
           ),
         ),
         const SizedBox(height: 6),
-        // «Mínimo 6 caracteres.» se pone en rojo mientras es más corta.
+        // «Mínimo N caracteres.» se pone en rojo mientras es más corta.
         Text.rich(
           TextSpan(
             children: [
