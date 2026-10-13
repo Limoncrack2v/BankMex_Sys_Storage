@@ -17,10 +17,12 @@ const EMAIL = 'familia@prueba.com';
 const PASSWORD = 'Prueba1234';
 const NAME = 'Familia Prueba';
 const ADDRESS = 'Dirección de prueba, Guadalajara';
+// Igual que Family.standardRecoveryQuota (lib/data/models/family.dart), en MXN.
+const STANDARD_RECOVERY_QUOTA = 250;
 
 const str = (value) => ({ stringValue: value });
+const dbl = (value) => ({ doubleValue: value });
 const ts = (date) => ({ timestampValue: date.toISOString() });
-const nul = () => ({ nullValue: null });
 const arr = (values) => ({ arrayValue: values.length ? { values } : {} });
 
 async function identityRequest(path, body) {
@@ -96,7 +98,7 @@ async function main() {
     name: str(NAME),
     address: str(ADDRESS),
     registrationDate: ts(now),
-    recoveryQuotaDefault: nul(),
+    recoveryQuotaDefault: dbl(STANDARD_RECOVERY_QUOTA),
     authUid: str(uid),
     appliances: arr([]),
   });

@@ -25,7 +25,12 @@ class ConsumptionStatsCalculator {
         consumed.add(item);
       }
 
-      final leftoverExpired = item.quantity > 0 && item.isExpired(clock);
+      // Un log de desperdicio cuenta desde que se escribe, sin depender de la
+      // hora ni de cómo isExpired compare el día de caducidad.
+      final leftoverExpired =
+          item.quantity > 0 &&
+          (item.status == PantryItemStatus.expiredUnused ||
+              item.isExpired(clock));
       if (leftoverExpired && _inRange(item.expirationDate, dateRange)) {
         wasted.add(item);
       }

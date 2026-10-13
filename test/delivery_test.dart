@@ -236,7 +236,13 @@ void main() {
   group('Delivery.validate', () {
     test('accepts a valid delivery', () {
       expect(buildDelivery().validate(), isNull);
-      expect(buildDelivery(recoveryFee: 25).validate(), isNull);
+      expect(
+        buildDelivery(
+          recoveryFee: 25,
+          justification: 'Nivel de ingreso',
+        ).validate(),
+        isNull,
+      );
     });
 
     test('requires a family', () {
@@ -277,10 +283,54 @@ void main() {
     });
 
     test('rejects negative, NaN and excessive recovery fees', () {
-      expect(buildDelivery(recoveryFee: -1).validate(), isNotNull);
-      expect(buildDelivery(recoveryFee: double.nan).validate(), isNotNull);
-      expect(buildDelivery(recoveryFee: 100001).validate(), isNotNull);
-      expect(buildDelivery(recoveryFee: 0).validate(), isNull);
+      Delivery withFee(double fee) =>
+          buildDelivery(recoveryFee: fee, justification: 'Nivel de ingreso');
+
+      expect(withFee(-1).validate(), isNotNull);
+      expect(withFee(double.nan).validate(), isNotNull);
+      expect(withFee(100001).validate(), isNotNull);
+      expect(withFee(0).validate(), isNull);
+    });
+
+    test('requires a justification when there is a recovery fee', () {
+      expect(buildDelivery(recoveryFee: 250).validate(), isNotNull);
+      expect(
+        buildDelivery(recoveryFee: 250, justification: '   ').validate(),
+        isNotNull,
+      );
+      expect(
+        buildDelivery(
+          recoveryFee: 250,
+          justification: 'Cuota estándar',
+        ).validate(),
+        isNull,
+      );
+      // Exenta: no hace falta justificación.
+      expect(buildDelivery().validate(), isNull);
+    });
+  });
+
+  group('Delivery.missingJustification', () {
+    test('is true for a fee with no justification or a blank one', () {
+      expect(buildDelivery(recoveryFee: 250).missingJustification, isTrue);
+      expect(
+        buildDelivery(
+          recoveryFee: 250,
+          justification: '   ',
+        ).missingJustification,
+        isTrue,
+      );
+    });
+
+    test('is false for a justified fee and for an exempt delivery', () {
+      expect(
+        buildDelivery(
+          recoveryFee: 250,
+          justification: 'Cuota estándar',
+        ).missingJustification,
+        isFalse,
+      );
+      expect(buildDelivery().missingJustification, isFalse);
     });
   });
 }

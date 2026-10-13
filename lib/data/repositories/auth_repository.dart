@@ -290,6 +290,7 @@ class AuthRepository {
           name: name.trim(),
           address: (address ?? '').trim(),
           registrationDate: now,
+          recoveryQuotaDefault: Family.standardRecoveryQuota,
           authUid: newUser.uid,
           appliances: appliances,
         );

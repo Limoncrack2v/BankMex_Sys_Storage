@@ -82,4 +82,57 @@ class StandardBasket {
   /// Los productos de esta despensa para una entrega en [deliveryDate].
   List<DeliveryItem> toDeliveryItems(DateTime deliveryDate) =>
       items.map((item) => item.toDeliveryItem(deliveryDate)).toList();
+
+  /// Los productos de una entrega de [packages] despensas de cada una de
+  /// [baskets] (p. ej. básica + frescos) en [deliveryDate]. Cada cantidad se
+  /// multiplica por [packages], porque onDeliveryWritten copia
+  /// `item.quantity` tal cual a la despensa. Un producto que viene igual en
+  /// dos despensas (mismo nombre, tipo, unidad y caducidad) queda en una sola
+  /// línea con la suma.
+  ///
+  /// Lanza [ArgumentError] si [packages] no está entre 1 y
+  /// [Delivery.maxPackages], o si salen más de [Delivery.maxItems] productos
+  /// (el límite de validDelivery).
+  static List<DeliveryItem> deliveryItemsFor(
+    List<StandardBasket> baskets, {
+    required int packages,
+    required DateTime deliveryDate,
+  }) {
+    if (packages < 1 || packages > Delivery.maxPackages) {
+      throw ArgumentError(
+        'El número de despensas debe estar entre 1 y ${Delivery.maxPackages}',
+      );
+    }
+    final merged = <String, DeliveryItem>{};
+    for (final basket in baskets) {
+      for (final item in basket.toDeliveryItems(deliveryDate)) {
+        final key = [
+          item.productId.trim().toLowerCase(),
+          item.type.name,
+          item.unit.name,
+          item.expirationDate.toIso8601String(),
+        ].join('|');
+        final previous = merged[key];
+        merged[key] = DeliveryItem(
+          productId: previous?.productId ?? item.productId.trim(),
+          type: item.type,
+          quantity: _round3(
+            (previous?.quantity ?? 0) + item.quantity * packages,
+          ),
+          unit: item.unit,
+          expirationDate: item.expirationDate,
+        );
+      }
+    }
+    if (merged.length > Delivery.maxItems) {
+      throw ArgumentError(
+        'Las despensas suman ${merged.length} productos; una entrega acepta '
+        'hasta ${Delivery.maxItems}',
+      );
+    }
+    return merged.values.toList();
+  }
+
+  /// Evita residuos de punto flotante (0.4 * 3 = 1.2000000000000002).
+  static double _round3(double value) => (value * 1000).round() / 1000;
 }
