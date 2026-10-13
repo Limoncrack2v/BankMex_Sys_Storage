@@ -8,6 +8,8 @@ Member member(
   MemberType type, {
   int? age,
   double? weightKg,
+  List<Allergy>? allergies,
+  List<ChronicCondition>? conditions,
 }) => Member(
       memberId: name,
       name: name,
@@ -15,6 +17,8 @@ Member member(
       createdAt: DateTime(2026, 9, 21),
       age: age,
       weightKg: weightKg,
+      allergies: allergies,
+      chronicConditions: conditions,
     );
 
 void main() {
@@ -33,6 +37,28 @@ void main() {
     expect(profile.children, hasLength(1));
     expect(profile.children.single.age, 9);
     expect(profile.children.single.weight, 28);
+  });
+
+  test('familyProfile restrictions include allergies and conditions', () {
+    final profile = CatalogMappers.familyProfile(
+      familyId: 'fam',
+      authUid: 'uid',
+      members: [
+        member(
+          'María',
+          MemberType.adult,
+          allergies: const [Allergy.dairy],
+          conditions: const [ChronicCondition.diabetes],
+        ),
+        member(
+          'José',
+          MemberType.adult,
+          conditions: const [ChronicCondition.diabetes],
+        ),
+      ],
+    );
+
+    expect(profile.dietaryRestrictions, ['dairy', 'diabetes']);
   });
 
   test('recipeToUi keeps the catalog servings so the UI can scale them', () {

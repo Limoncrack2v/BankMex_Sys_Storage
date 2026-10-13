@@ -17,6 +17,8 @@
 //   Familia: familia.ramirez@bamx.test / bamx1234
 //   Solicitud de staff pendiente de aprobar: solicitud.staff@bamx.test / bamx1234
 
+import { STANDARD_BASKETS, basketFields } from './standard_baskets.mjs';
+
 const PROJECT_ID = 'bank-storage-bamx';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099';
 const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080';
@@ -40,10 +42,10 @@ const FAMILY = {
 };
 
 const MEMBERS = [
-  { name: 'María', memberType: 'adult', age: 38, weightKg: 68, allergies: ['dairy'] },
-  { name: 'José', memberType: 'adult', age: 41, weightKg: 79, allergies: [] },
-  { name: 'Lucía', memberType: 'child', age: 9, weightKg: 28, sex: 'female', allergies: ['gluten'] },
-  { name: 'Diego', memberType: 'child', age: 5, weightKg: 19, sex: 'male', allergies: ['peanut', 'egg'] },
+  { name: 'María', memberType: 'adult', age: 38, weightKg: 68, allergies: ['dairy'], chronicConditions: [] },
+  { name: 'José', memberType: 'adult', age: 41, weightKg: 79, allergies: [], chronicConditions: ['hypertension'] },
+  { name: 'Lucía', memberType: 'child', age: 9, weightKg: 28, sex: 'female', allergies: ['gluten'], chronicConditions: [] },
+  { name: 'Diego', memberType: 'child', age: 5, weightKg: 19, sex: 'male', allergies: ['peanut', 'egg'], chronicConditions: [] },
 ];
 
 // [producto, tipo, cantidad, unidad, días para caducar]
@@ -268,6 +270,7 @@ function memberFields(member, createdAt) {
     weightKg: dbl(member.weightKg),
     ...(member.sex ? { sex: str(member.sex) } : {}),
     allergies: arr(member.allergies.map(str)),
+    chronicConditions: arr(member.chronicConditions.map(str)),
   };
 }
 
@@ -391,6 +394,10 @@ async function seed() {
     localTimestamp: ts(now),
   });
 
+  for (const basket of STANDARD_BASKETS) {
+    await setDocument(`standardBaskets/${basket.id}`, basketFields(basket, now));
+  }
+
   // Solicitud de "Registro de Staff" pendiente. Si una corrida anterior la
   // aprobó, se borra el perfil para que vuelva a quedar pendiente.
   const requester = await ensureAuthUser(STAFF_REQUEST);
@@ -415,6 +422,7 @@ async function seed() {
   console.log(`  families/${FAMILY_ID}: ${FAMILY.name}, ${FAMILY.address}`);
   console.log(`  ${MEMBERS.length} integrantes, ${PANTRY.length} productos en la despensa, 2 entregas`);
   console.log('  (1 entregada hace 2 días y 1 programada en 5 días con cuota de $25).');
+  console.log(`  ${STANDARD_BASKETS.length} despensas estándar (${STANDARD_BASKETS.map((b) => b.name).join(', ')}).`);
   if (removedItems) {
     console.log(
       `  Se quitaron de la despensa ${removedItems} producto(s) de una entrega anterior de seed-delivery-2.`,

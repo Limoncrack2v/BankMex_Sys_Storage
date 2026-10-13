@@ -10,6 +10,7 @@ Member buildMember({
   double? weightKg,
   MemberSex? sex,
   List<Allergy>? allergies,
+  List<ChronicCondition>? chronicConditions,
 }) => Member(
   memberId: '',
   name: name,
@@ -19,6 +20,7 @@ Member buildMember({
   weightKg: weightKg,
   sex: sex,
   allergies: allergies,
+  chronicConditions: chronicConditions,
 );
 
 void main() {
@@ -69,6 +71,28 @@ void main() {
         isNotNull,
       );
     });
+
+    test('rejects duplicate chronic conditions, accepts none', () {
+      expect(buildMember(chronicConditions: const []).validate(), isNull);
+      expect(
+        buildMember(
+          chronicConditions: const [
+            ChronicCondition.diabetes,
+            ChronicCondition.hypertension,
+          ],
+        ).validate(),
+        isNull,
+      );
+      expect(
+        buildMember(
+          chronicConditions: const [
+            ChronicCondition.obesity,
+            ChronicCondition.obesity,
+          ],
+        ).validate(),
+        isNotNull,
+      );
+    });
   });
 
   group('Member.toFirestore', () {
@@ -90,6 +114,7 @@ void main() {
         weightKg: 28,
         sex: MemberSex.female,
         allergies: const [Allergy.gluten, Allergy.peanut],
+        chronicConditions: const [ChronicCondition.kidneyDisease],
       ).toFirestore();
 
       expect(data.keys.toSet(), {
@@ -100,11 +125,13 @@ void main() {
         'weightKg',
         'sex',
         'allergies',
+        'chronicConditions',
       });
       expect(data['age'], 9);
       expect(data['weightKg'], 28.0);
       expect(data['sex'], 'female');
       expect(data['allergies'], ['gluten', 'peanut']);
+      expect(data['chronicConditions'], ['kidneyDisease']);
     });
 
     test('writes an empty allergy list as "Ninguna"', () {
@@ -113,6 +140,13 @@ void main() {
       expect(data.containsKey('allergies'), isTrue);
       expect(data['allergies'], isEmpty);
       expect(data.containsKey('sex'), isFalse);
+      expect(data.containsKey('chronicConditions'), isFalse);
+    });
+
+    test('writes an empty chronic condition list as "Ninguna"', () {
+      final data = buildMember(chronicConditions: const []).toFirestore();
+
+      expect(data['chronicConditions'], isEmpty);
     });
 
     test('values match the formats the rules and fromFirestore expect', () {
@@ -153,6 +187,13 @@ void main() {
         'egg',
         'soy',
       ]);
+      expect(ChronicCondition.values.map((e) => e.name), [
+        'diabetes',
+        'hypertension',
+        'obesity',
+        'kidneyDisease',
+        'highCholesterol',
+      ]);
     });
   });
 
@@ -162,6 +203,7 @@ void main() {
         age: 38,
         weightKg: 68,
         allergies: const [Allergy.dairy],
+        chronicConditions: const [ChronicCondition.diabetes],
       );
       final copy = original.copyWith(memberId: 'm1');
 
@@ -170,6 +212,7 @@ void main() {
       expect(copy.age, original.age);
       expect(copy.weightKg, original.weightKg);
       expect(copy.allergies, original.allergies);
+      expect(copy.chronicConditions, original.chronicConditions);
       expect(copy.createdAt, original.createdAt);
     });
   });

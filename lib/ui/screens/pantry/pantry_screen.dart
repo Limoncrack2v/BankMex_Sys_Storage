@@ -13,6 +13,7 @@ import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/next_delivery_banner.dart';
+import '../../widgets/pantry_category_filter.dart';
 import '../../widgets/pill.dart';
 import 'consumption_sheet.dart';
 
@@ -34,6 +35,9 @@ class _PantryScreenState extends State<PantryScreen> {
   // El hogar trae nextDeliveryDate (lo escribe syncNextDelivery): al ser un
   // stream, el aviso cambia en vivo si el staff programa o cancela una entrega.
   late Stream<Family?> _family;
+
+  /// Categoría elegida en el filtro; null = «Todas».
+  FoodType? _category;
 
   @override
   void initState() {
@@ -92,6 +96,9 @@ class _PantryScreenState extends State<PantryScreen> {
                   return _PantryList(
                     entries: _sortedEntries(rows),
                     nextDelivery: nextDelivery,
+                    category: _category,
+                    onCategorySelected: (category) =>
+                        setState(() => _category = category),
                     onRegisterConsumption: (items) => showConsumptionSheet(
                       context,
                       familyId: widget.familyId,
@@ -139,6 +146,8 @@ class _PantryList extends StatelessWidget {
   const _PantryList({
     required this.entries,
     required this.nextDelivery,
+    required this.category,
+    required this.onCategorySelected,
     required this.onRegisterConsumption,
   });
 
@@ -146,10 +155,22 @@ class _PantryList extends StatelessWidget {
 
   /// families/{familyId}.nextDeliveryDate (lo escribe syncNextDelivery).
   final DateTime? nextDelivery;
+
+  /// Solo filtra la lista de productos: los avisos de caducidad y «Registrar
+  /// consumo» siguen contando toda la despensa.
+  final FoodType? category;
+  final ValueChanged<FoodType?> onCategorySelected;
   final ValueChanged<List<PantryItem>> onRegisterConsumption;
 
   @override
   Widget build(BuildContext context) {
+    final categories = pantryCategories(entries.map((e) => e.item));
+    // Si se acabaron los productos de la categoría elegida, se ven todos.
+    final selected = categories.contains(category) ? category : null;
+    final visible = selected == null
+        ? entries
+        : entries.where((e) => e.item.type == selected).toList();
+
     // Los caducados (días < 0) van en su propio aviso: no se debe invitar a
     // "usarlos primero".
     final expired = entries.where((e) => e.days < 0).length;
@@ -202,7 +223,16 @@ class _PantryList extends StatelessWidget {
               style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
             ),
           ),
-        for (final entry in entries) ...[
+        // Con una sola categoría el filtro no ayuda.
+        if (categories.length > 1) ...[
+          const SizedBox(height: 16),
+          PantryCategoryFilter(
+            categories: categories,
+            selected: selected,
+            onSelected: onCategorySelected,
+          ),
+        ],
+        for (final entry in visible) ...[
           const SizedBox(height: 12),
           _ProductCard(entry),
         ],

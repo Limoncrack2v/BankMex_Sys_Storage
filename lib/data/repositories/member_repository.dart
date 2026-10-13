@@ -61,7 +61,13 @@ class MemberRepository {
     }
 
     final changes = member.toFirestore()..remove('createdAt');
-    for (final field in const ['age', 'weightKg', 'sex', 'allergies']) {
+    for (final field in const [
+      'age',
+      'weightKg',
+      'sex',
+      'allergies',
+      'chronicConditions',
+    ]) {
       changes.putIfAbsent(field, () => FieldValue.delete());
     }
     await _members(familyId).doc(member.memberId).update(changes);
