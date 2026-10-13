@@ -19,7 +19,7 @@ import '../domain/nutrition_targets.dart';
 import '../domain/pantry_recipe_filter.dart';
 import '../domain/portion_adjuster.dart';
 import '../domain/recipe_catalog.dart';
-import '../domain/recipe_on_demand.dart';
+import '../domain/recipe_planner.dart';
 import '../domain/unit_converter.dart';
 
 /// Orquesta el catálogo y el plan sobre los repos del equipo.
@@ -36,10 +36,12 @@ class BankStorageFacade {
     RecipeRepository? recipes,
     MealPlanRepository? mealPlans,
     FirebaseFirestore? firestore,
-  })  : families = families ?? FamilyRepository(),
-        pantry = pantry ?? PantryRepository(),
-        members = members ?? MemberRepository(),
-        _db = firestore ?? FirebaseFirestore.instance {
+    RecipePlanner? planner,
+  }) : families = families ?? FamilyRepository(),
+       planner = planner ?? const RuleBasedRecipePlanner(),
+       pantry = pantry ?? PantryRepository(),
+       members = members ?? MemberRepository(),
+       _db = firestore ?? FirebaseFirestore.instance {
     this.recipes = recipes ?? RecipeRepository(_db);
     this.mealPlans = mealPlans ?? MealPlanRepository(_db);
   }
@@ -47,6 +49,7 @@ class BankStorageFacade {
   final FamilyRepository families;
   final PantryRepository pantry;
   final MemberRepository members;
+  final RecipePlanner planner;
   late final RecipeRepository recipes;
   late final MealPlanRepository mealPlans;
   final FirebaseFirestore _db;
@@ -222,7 +225,7 @@ class BankStorageFacade {
     final profile = await _profile(familyId);
     final items = await _domainPantry(familyId);
     final catalog = await recipes.listByStatus(RecipeStatus.approved);
-    return RecipeOnDemand.getSingleRecipeOnDemand(
+    return planner.suggestRecipe(
       family: profile,
       pantryItems: items,
       recipes: catalog,
@@ -236,7 +239,7 @@ class BankStorageFacade {
     final profile = await _profile(familyId);
     final items = await _domainPantry(familyId);
     final catalog = await recipes.listByStatus(RecipeStatus.approved);
-    final generated = MealPlanGenerator.generateMealPlan(
+    final generated = await planner.planDays(
       family: profile,
       pantryItems: items,
       recipes: catalog,
@@ -265,11 +268,16 @@ class BankStorageFacade {
 
     for (final ingredient in adjusted.ingredients) {
       var needed = UnitConverter.toBase(ingredient.quantity, ingredient.unit);
-      final matches = current.where((item) {
-        return NameNormalizer.matches(item.productId, ingredient.productName) &&
-            UnitConverter.compatible(item.unit.name, ingredient.unit);
-      }).toList()
-        ..sort((a, b) => a.daysUntilExpiration.compareTo(b.daysUntilExpiration));
+      final matches =
+          current.where((item) {
+            return NameNormalizer.matches(
+                  item.productId,
+                  ingredient.productName,
+                ) &&
+                UnitConverter.compatible(item.unit.name, ingredient.unit);
+          }).toList()..sort(
+            (a, b) => a.daysUntilExpiration.compareTo(b.daysUntilExpiration),
+          );
 
       for (final item in matches) {
         if (needed <= 0) break;
