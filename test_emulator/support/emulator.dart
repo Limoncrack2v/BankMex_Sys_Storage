@@ -80,8 +80,12 @@ class Db {
   factory Db.admin() => Db._('Bearer owner');
 
   /// Sesión iniciada con ese uid. El emulador no verifica la firma del token.
-  factory Db.user(String uid, {String? email}) =>
-      Db._('Bearer ${_token(uid, email: email)}');
+  /// [signedInAgo] es hace cuánto inició sesión (el auth_time del token).
+  factory Db.user(
+    String uid, {
+    String? email,
+    Duration signedInAgo = Duration.zero,
+  }) => Db._('Bearer ${_token(uid, email: email, signedInAgo: signedInAgo)}');
 
   /// Sin sesión.
   factory Db.anonymous() => Db._(null);
@@ -362,7 +366,11 @@ File _rulesFile() {
 }
 
 /// Token sin firmar con ese uid; el emulador lo acepta tal cual.
-String _token(String uid, {String? email}) {
+String _token(
+  String uid, {
+  String? email,
+  Duration signedInAgo = Duration.zero,
+}) {
   final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
   final header = {'alg': 'none', 'kid': '', 'typ': 'JWT'};
   final payload = {
@@ -370,7 +378,7 @@ String _token(String uid, {String? email}) {
     'aud': _project,
     'iat': now,
     'exp': now + 3600,
-    'auth_time': now,
+    'auth_time': now - signedInAgo.inSeconds,
     'sub': uid,
     'user_id': uid,
     'email': ?email,
