@@ -14,8 +14,9 @@ PantryItem item(
   double quantity,
   FoodUnit unit, {
   int days = 30,
+  String? id,
 }) => PantryItem(
-  pantryItemId: 'item-$productId',
+  pantryItemId: id ?? 'item-$productId',
   productId: productId,
   deliveryId: 'entrega-001',
   type: FoodType.other,
@@ -147,6 +148,107 @@ void main() {
     ]);
 
     expect(find.textContaining('no usa ningún producto'), findsNothing);
+  });
+
+  // Una entrega por línea: el arroz de dos entregas son dos productos "Arroz".
+  group('a product that is in the pantry more than once', () {
+    PantryItem rice(double quantity, {String? id, String name = 'Arroz'}) =>
+        item(name, quantity, FoodUnit.kg, id: id);
+
+    testWidgets('names a product the plan uses up once, not once per item', (
+      tester,
+    ) async {
+      await pumpSection(tester, [
+        leftover(rice(1, id: 'a'), used: 1),
+        leftover(rice(2, id: 'b'), used: 2),
+        leftover(item('Frijol', 1, FoodUnit.kg)),
+      ]);
+
+      expect(find.text('El plan usa por completo: Arroz.'), findsOneWidget);
+      expect(find.textContaining('Arroz y Arroz'), findsNothing);
+    });
+
+    testWidgets('does not say the plan uses up a product that still has some '
+        'left in another item', (tester) async {
+      await pumpSection(tester, [
+        leftover(rice(1, id: 'a'), used: 1),
+        leftover(rice(2, id: 'b'), used: 0.5),
+      ]);
+
+      expect(find.text('Arroz'), findsOneWidget);
+      expect(find.text('Quedan 1.5 kg'), findsOneWidget);
+      expect(find.textContaining('El plan usa por completo'), findsNothing);
+    });
+
+    testWidgets('still names the other products the plan uses up', (
+      tester,
+    ) async {
+      await pumpSection(tester, [
+        leftover(rice(1, id: 'a'), used: 1),
+        leftover(rice(2, id: 'b'), used: 0.5),
+        leftover(item('Frijol', 1, FoodUnit.kg), used: 1),
+        leftover(item('Lenteja', 1, FoodUnit.kg), used: 1),
+        leftover(item('Lenteja', 1, FoodUnit.kg, id: 'otra'), used: 1),
+      ]);
+
+      expect(
+        find.text('El plan usa por completo: Frijol y Lenteja.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('treats names that differ only in case or spaces as one '
+        'product', (tester) async {
+      await pumpSection(tester, [
+        leftover(rice(1, id: 'a', name: 'arroz'), used: 1),
+        leftover(rice(1, id: 'b', name: ' Arroz '), used: 1),
+        leftover(item('Frijol', 1, FoodUnit.kg)),
+      ]);
+
+      expect(find.text('El plan usa por completo: Arroz.'), findsOneWidget);
+    });
+
+    testWidgets('does not say a product is used up when the item with the '
+        'same name in other case still has some left', (tester) async {
+      await pumpSection(tester, [
+        leftover(rice(1, id: 'a', name: 'arroz'), used: 1),
+        leftover(rice(2, id: 'b', name: 'Arroz'), used: 1),
+      ]);
+
+      expect(find.text('Queda 1 kg'), findsOneWidget);
+      expect(find.textContaining('El plan usa por completo'), findsNothing);
+    });
+
+    testWidgets('when the plan uses every item it says so and lists nothing', (
+      tester,
+    ) async {
+      await pumpSection(tester, [
+        leftover(rice(1, id: 'a'), used: 1),
+        leftover(rice(2, id: 'b'), used: 2),
+      ]);
+
+      expect(
+        find.text('Tu plan usa todo lo que hay en tu despensa.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Quedan'), findsNothing);
+      expect(find.textContaining('El plan usa por completo'), findsNothing);
+    });
+
+    testWidgets('when the plan uses none of them it says so and shows each '
+        'item', (tester) async {
+      await pumpSection(tester, [
+        leftover(rice(1, id: 'a')),
+        leftover(rice(2, id: 'b')),
+      ]);
+
+      expect(
+        find.text('Tu plan no usa ningún producto de tu despensa.'),
+        findsOneWidget,
+      );
+      expect(find.text('Arroz'), findsNWidgets(2));
+      expect(find.text('Tu plan no lo usa'), findsNWidgets(2));
+    });
   });
 
   testWidgets('shows nothing for an empty pantry', (tester) async {

@@ -30,11 +30,22 @@ class LeftoverIngredientsSection extends StatelessWidget {
       for (final leftover in leftovers)
         if (leftover.status != LeftoverStatus.usedUp) leftover,
     ];
-    final usedUp = [
-      for (final leftover in leftovers)
-        if (leftover.status == LeftoverStatus.usedUp)
-          productDisplayName(leftover.item.productId),
-    ];
+    // Una entrega por línea: el mismo producto puede estar en la despensa varias
+    // veces. Se nombra una sola vez y solo si no le queda nada en ningún lote.
+    final stillThere = {
+      for (final leftover in remaining) _productKey(leftover.item.productId),
+    };
+    final usedUp = <String, String>{};
+    for (final leftover in leftovers) {
+      final key = _productKey(leftover.item.productId);
+      if (leftover.status == LeftoverStatus.usedUp &&
+          !stillThere.contains(key)) {
+        usedUp.putIfAbsent(
+          key,
+          () => productDisplayName(leftover.item.productId),
+        );
+      }
+    }
     final touchesNothing = leftovers.every(
       (leftover) => leftover.status == LeftoverStatus.untouched,
     );
@@ -74,7 +85,7 @@ class LeftoverIngredientsSection extends StatelessWidget {
         if (usedUp.isNotEmpty && remaining.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
-            'El plan usa por completo: ${joinWithAnd(usedUp)}.',
+            'El plan usa por completo: ${joinWithAnd(usedUp.values.toList())}.',
             style: AppText.nunito(14, 21, color: AppColors.textMuted),
           ),
         ],
@@ -82,6 +93,11 @@ class LeftoverIngredientsSection extends StatelessWidget {
     );
   }
 }
+
+/// Cuándo dos productos de la despensa son el mismo: igual nombre sin contar
+/// mayúsculas ni espacios de las orillas, como en
+/// [StandardBasket.deliveryItemsFor].
+String _productKey(String productId) => productId.trim().toLowerCase();
 
 class _LeftoverCard extends StatelessWidget {
   const _LeftoverCard({required this.leftover, required this.today});
