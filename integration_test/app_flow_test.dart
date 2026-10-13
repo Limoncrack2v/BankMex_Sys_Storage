@@ -380,6 +380,13 @@ void main() {
       await _signIn(tester, newStaffEmail, _newPassword);
       await _waitFor(tester, _primaryButton('Registrar entrega'));
 
+      // 10b. Estadísticas: ya cuentan el arroz que la familia consumió hoy.
+      await _tap(tester, find.text('Estadísticas'));
+      await _waitFor(tester, find.text('Kg aprovechados'));
+      await _waitFor(tester, find.textContaining('kg consumidos'));
+      expect(find.text('0 kg consumidos'), findsNothing);
+      await shot('17b_estadisticas');
+
       // 11. Catálogo de recetas: alta, edición y borrado. Se borra al final
       // para que el catálogo quede como estaba.
       final recipeName = 'Ensalada E2E $stamp';
