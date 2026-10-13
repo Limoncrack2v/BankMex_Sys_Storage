@@ -154,5 +154,22 @@ void main() {
       expect(stats.wastedItemCount, 1);
       expect(stats.wastedByCategory['dairy'], 2);
     });
+
+    test('a waste log from today counts as waste today', () {
+      final at = DateTime(2026, 9, 25);
+      final stats = ConsumptionStatsCalculator.getConsumptionWasteStats(
+        pantryItems: [
+          CatalogMappers.consumptionLogToDomain(
+            'c',
+            log('expired', quantity: 2),
+            familyId: 'fam',
+          ),
+        ],
+        now: at,
+      );
+
+      expect(stats.wastedItemCount, 1);
+      expect(stats.wastedByCategory['dairy'], 2);
+    });
   });
 }
