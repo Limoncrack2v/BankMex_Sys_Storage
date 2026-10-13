@@ -7,6 +7,8 @@
     "node": "24"
   },
   "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "test:emulator": "node --test \"test/emulator/*.test.js\"",
     "deploy": "firebase deploy --only functions"
   },
   "dependencies": {
