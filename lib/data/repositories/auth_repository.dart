@@ -131,6 +131,57 @@ class AuthRepository {
 
   Future<void> signOut() => _auth.signOut();
 
+  /// Antigüedad máxima del inicio de sesión para hacer una acción sensible
+  /// sin volver a pedir la contraseña. La regla (recentlySignedIn en
+  /// firestore.rules) permite 5 minutos; el minuto de diferencia cubre el
+  /// desfase del reloj del dispositivo y lo que tarda la escritura.
+  static const stepUpWindow = Duration(minutes: 4);
+
+  /// Si [authTime] (el inicio de sesión) está dentro de [stepUpWindow]. Una
+  /// diferencia negativa (reloj del dispositivo atrasado) cuenta como
+  /// reciente: la regla decide con la hora del servidor.
+  static bool isRecentSignIn(DateTime? authTime, {required DateTime now}) =>
+      authTime != null && now.difference(authTime) < stepUpWindow;
+
+  /// Si la sesión actual es lo bastante reciente para una acción sensible.
+  /// Lee el token que ya se tiene, sin forzar que se renueve (renovarlo no
+  /// cambia auth_time).
+  Future<bool> hasRecentSignIn() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+      final token = await user.getIdTokenResult();
+      return isRecentSignIn(token.authTime, now: DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Confirma la identidad de quien tiene la sesión con su contraseña; el
+  /// token nuevo trae un auth_time reciente. Lanza [AuthException].
+  Future<void> reauthenticate(String password) async {
+    const failed = 'No se pudo confirmar tu identidad. Intenta de nuevo.';
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) throw AuthException(failed);
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(switch (e.code) {
+        'wrong-password' ||
+        'invalid-credential' => 'Contraseña incorrecta. Intenta de nuevo.',
+        'too-many-requests' =>
+          'Demasiados intentos. Espera un momento e intenta de nuevo.',
+        'network-request-failed' => _offlineMessage,
+        _ => failed,
+      });
+    }
+    // Da tiempo a que Firestore tome el token nuevo (nunca getIdToken(true)).
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+
   Future<void> sendPasswordReset(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
