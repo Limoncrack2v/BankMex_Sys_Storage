@@ -27,4 +27,10 @@ abstract final class AppColors {
   // de los verdes y naranjas de estado.
   static const slate = Color(0xFF6B7F99);
   static const slateSoft = Color(0x296B7F99);
+
+  // Series de la gráfica de Estadísticas: distintas de los colores de estado
+  // y entre sí también con daltonismo (el teal y la pizarra del Make se
+  // confunden). Revisadas con el validador de paletas sobre fondo claro.
+  static const chartConsumed = Color(0xFF2A78D6);
+  static const chartWasted = Color(0xFFD55181);
 }
