@@ -13,6 +13,7 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/pill.dart';
+import '../session/step_up_sheet.dart';
 
 /// Sin conexión el commit no termina hasta sincronizar; pasado este tiempo
 /// se da por guardado (igual que en Entregas).
@@ -84,6 +85,8 @@ class _StaffRequestsSheetState extends State<_StaffRequestsSheet> {
   Future<void> _confirm() async {
     final request = _selected;
     if (request == null || _saving || _alreadyReviewed) return;
+    // Aprobar y rechazar piden una sesión reciente (no se pueden deshacer).
+    if (!await ensureRecentSignIn(context) || !mounted) return;
     final approve = _review == _Review.approve;
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
