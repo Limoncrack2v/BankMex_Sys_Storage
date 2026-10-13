@@ -14,6 +14,7 @@
 //
 // Cuentas que deja listas:
 //   Staff:   staff@bamx.test / bamx1234
+//   Nutriólogo: nutriologo@bamx.test / bamx1234
 //   Familia: familia.ramirez@bamx.test / bamx1234
 //   Solicitud de staff pendiente de aprobar: solicitud.staff@bamx.test / bamx1234
 
@@ -37,6 +38,7 @@ const STANDARD_RECOVERY_QUOTA = 250;
 
 const STAFF = { email: 'staff@bamx.test', name: 'Staff BAMX' };
 const STAFF_REQUEST = { email: 'solicitud.staff@bamx.test', name: 'Laura Méndez' };
+const NUTRITIONIST = { email: 'nutriologo@bamx.test', name: 'Nutriólogo BAMX' };
 const FAMILY = {
   email: 'familia.ramirez@bamx.test',
   name: FAMILY_NAME,
@@ -70,7 +72,7 @@ const PANTRY = [
   ['Atún en lata', 'canned', 3, 'can', 300],
 ];
 
-class SeedError extends Error {}
+class SeedError extends Error { }
 
 // Valores tipados de la API REST de Firestore.
 const str = (value) => ({ stringValue: value });
@@ -130,7 +132,7 @@ async function checkEmulators() {
   if (missing.length) {
     throw new SeedError(
       `No se encontraron los emuladores de Firebase: ${missing.join(', ')}.\n` +
-        'Inícialos primero con: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
+      'Inícialos primero con: firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
     );
   }
 }
@@ -310,6 +312,7 @@ async function seed() {
 
   const staff = await ensureAuthUser(STAFF);
   const family = await ensureAuthUser(FAMILY);
+  const nutritionist = await ensureAuthUser(NUTRITIONIST);
 
   await setDocument(`users/${staff.uid}`, {
     name: str(STAFF.name),
@@ -321,6 +324,12 @@ async function seed() {
     name: str(FAMILY.name),
     email: str(FAMILY.email),
     role: str('family'),
+    createdAt: ts(registeredAt),
+  });
+  await setDocument(`users/${nutritionist.uid}`, {
+    name: str(NUTRITIONIST.name),
+    email: str(NUTRITIONIST.email),
+    role: str('nutritionist'),
     createdAt: ts(registeredAt),
   });
 
@@ -417,6 +426,7 @@ async function seed() {
   console.log('');
   console.log(`  Staff:   ${STAFF.email} / ${PASSWORD}  (cuenta ${accountState(staff)})`);
   console.log(`  Familia: ${FAMILY.email} / ${PASSWORD}  (cuenta ${accountState(family)})`);
+  console.log(`  Nutriólogo: ${NUTRITIONIST.email} / ${PASSWORD}  (cuenta ${accountState(nutritionist)})`);
   console.log(`  Solicitud de staff pendiente: ${STAFF_REQUEST.email} / ${PASSWORD}`);
   console.log('');
   console.log(`  families/${FAMILY_ID}: ${FAMILY.name}, ${FAMILY.address}`);
@@ -432,16 +442,16 @@ async function seed() {
     console.warn('');
     console.warn(
       `Aviso: no se encontró el emulador de Functions (${FUNCTIONS_HOST}). Sin él, las entregas no ` +
-        'agregan productos a la despensa. Inicia los emuladores con: ' +
-        'firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
+      'agregan productos a la despensa. Inicia los emuladores con: ' +
+      'firebase emulators:start --only auth,firestore,functions --import=exported-dev-data --export-on-exit=exported-dev-data',
     );
   }
   if (duplicates.length) {
     console.warn('');
     console.warn(
       `Aviso: la cuenta de la familia también está ligada a families/${duplicates.join(', families/')}. ` +
-        'Bórralas desde la UI de los emuladores (http://127.0.0.1:4000/firestore) para que la app abra ' +
-        `families/${FAMILY_ID}.`,
+      'Bórralas desde la UI de los emuladores (http://127.0.0.1:4000/firestore) para que la app abra ' +
+      `families/${FAMILY_ID}.`,
     );
   }
 }
