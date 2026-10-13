@@ -90,6 +90,7 @@ Cuentas de prueba del seed (contraseña `bamx1234`):
 
 - Staff: `staff@bamx.test`
 - Familia: `familia.ramirez@bamx.test`
+- Nutriólogo: `nutriologo@bamx.test`
 - Solicitud de staff pendiente de aprobar: `solicitud.staff@bamx.test`
 
 En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `northamerica-south1`:
