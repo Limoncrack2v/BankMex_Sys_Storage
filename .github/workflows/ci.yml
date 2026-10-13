@@ -20,6 +20,11 @@ env:
   # subirla también en dependency-scan.yml.
   FLUTTER_VERSION: 3.47.5
   FIREBASE_TOOLS_VERSION: 15.33.0
+  # La app arma las fechas de caducidad con la hora local del dispositivo y
+  # la Cloud Function cuenta los días en esta zona (TIME_ZONE en
+  # functions/pantry.js). En UTC, que es la zona del runner, las pruebas de
+  # test_emulator que comparan las dos salen con un día de menos.
+  TZ: America/Mexico_City
 
 jobs:
   analyze-and-test:
