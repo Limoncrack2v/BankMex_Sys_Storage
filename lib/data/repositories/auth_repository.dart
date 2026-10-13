@@ -69,7 +69,6 @@ class AuthRepository {
   /// ya terminó de cargarla.
   Future<User?> restoredUser() => _auth.authStateChanges().first;
 
-
   Future<AuthSession> signIn(String email, String password) async {
     final UserCredential credential;
     try {
@@ -93,7 +92,8 @@ class AuthRepository {
     return resolveSession(credential.user!);
   }
 
-  /// Carga el perfil (users/{uid}) y, si es familia, su hogar. Si la cuenta
+  /// Carga el perfil (users/{uid}) y, si es familia, su hogar.
+  /// El staff y el nutriólogo son roles válidos sin hogar. Si la cuenta
   /// no tiene perfil válido (o no se puede leer) cierra la sesión y lanza
   /// [AuthException]; si no tiene perfil porque su solicitud de staff sigue
   /// pendiente o se rechazó, el mensaje lo dice.
@@ -102,7 +102,8 @@ class AuthRepository {
     try {
       final profile = await UserRepository().getUserProfile(user.uid);
 
-      if (profile?.role == AppUser.roleStaff) {
+      if (profile?.role == AppUser.roleStaff ||
+          profile?.role == AppUser.roleNutritionist) {
         return AuthSession(user: profile!);
       }
       if (profile?.role == AppUser.roleFamily) {
@@ -340,6 +341,7 @@ class AuthRepository {
           name: name.trim(),
           address: (address ?? '').trim(),
           registrationDate: now,
+          recoveryQuotaDefault: Family.standardRecoveryQuota,
           authUid: newUser.uid,
           appliances: appliances,
         );

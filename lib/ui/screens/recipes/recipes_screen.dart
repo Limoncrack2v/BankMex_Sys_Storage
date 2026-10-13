@@ -120,7 +120,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
     final visible = <_VisibleRecipe>[];
     if (!needsPantry) {
       for (final recipe in recipes) {
-        // Porciones para los integrantes del hogar, según su edad y peso.
+        // Porciones para los integrantes del hogar, según su edad, peso y salud.
         final scaled = scaledForHousehold(recipe, members);
         final missing = pantry == null
             ? null

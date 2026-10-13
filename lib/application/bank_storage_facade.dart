@@ -15,10 +15,11 @@ import '../domain/models/family_profile.dart';
 import '../domain/models/pantry_item.dart' as domain;
 import '../domain/models/recipe.dart';
 import '../domain/name_normalizer.dart';
+import '../domain/nutrition_targets.dart';
 import '../domain/pantry_recipe_filter.dart';
 import '../domain/portion_adjuster.dart';
 import '../domain/recipe_catalog.dart';
-import '../domain/recipe_on_demand.dart';
+import '../domain/recipe_planner.dart';
 import '../domain/unit_converter.dart';
 
 /// Orquesta el catálogo y el plan sobre los repos del equipo.
@@ -35,10 +36,12 @@ class BankStorageFacade {
     RecipeRepository? recipes,
     MealPlanRepository? mealPlans,
     FirebaseFirestore? firestore,
-  })  : families = families ?? FamilyRepository(),
-        pantry = pantry ?? PantryRepository(),
-        members = members ?? MemberRepository(),
-        _db = firestore ?? FirebaseFirestore.instance {
+    RecipePlanner? planner,
+  }) : families = families ?? FamilyRepository(),
+       planner = planner ?? const RuleBasedRecipePlanner(),
+       pantry = pantry ?? PantryRepository(),
+       members = members ?? MemberRepository(),
+       _db = firestore ?? FirebaseFirestore.instance {
     this.recipes = recipes ?? RecipeRepository(_db);
     this.mealPlans = mealPlans ?? MealPlanRepository(_db);
   }
@@ -46,6 +49,7 @@ class BankStorageFacade {
   final FamilyRepository families;
   final PantryRepository pantry;
   final MemberRepository members;
+  final RecipePlanner planner;
   late final RecipeRepository recipes;
   late final MealPlanRepository mealPlans;
   final FirebaseFirestore _db;
@@ -187,21 +191,11 @@ class BankStorageFacade {
           .collection(FirestorePaths.consumptionLogs)
           .get();
       for (final doc in logs.docs) {
-        final data = doc.data();
         items.add(
-          domain.PantryItem(
-            id: doc.id,
+          CatalogMappers.consumptionLogToDomain(
+            doc.id,
+            doc.data(),
             familyId: id,
-            productId: data['productId'] as String? ?? '',
-            name: data['productId'] as String? ?? '',
-            quantity: 0,
-            unit: data['unit'] as String? ?? 'g',
-            expirationDate: DateTime.now(),
-            category: data['category'] as String? ?? '',
-            originalQuantity: (data['quantity'] as num?)?.toDouble() ?? 0,
-            consumedQuantity: (data['quantity'] as num?)?.toDouble() ?? 0,
-            status: domain.PantryItemStatus.consumed,
-            consumedAt: (data['at'] as Timestamp?)?.toDate() ?? DateTime.now(),
           ),
         );
       }
@@ -219,11 +213,19 @@ class BankStorageFacade {
 
   Future<FamilyProfile> familyProfile(String familyId) => _profile(familyId);
 
+  /// caloricTarget y exclusionList del hogar, para el motor de recetas. No
+  /// lleva nombres, edades ni pesos, pero exclusionList sale de las alergias
+  /// y enfermedades del hogar (ver [NutritionTargets]).
+  Future<NutritionTargets> nutritionTargets(String familyId) async =>
+      NutritionTargets.forHousehold(
+        await members.watchAllMembers(familyId).first,
+      );
+
   Future<Recipe?> getSingleRecipeOnDemand(String familyId) async {
     final profile = await _profile(familyId);
     final items = await _domainPantry(familyId);
     final catalog = await recipes.listByStatus(RecipeStatus.approved);
-    return RecipeOnDemand.getSingleRecipeOnDemand(
+    return planner.suggestRecipe(
       family: profile,
       pantryItems: items,
       recipes: catalog,
@@ -237,7 +239,7 @@ class BankStorageFacade {
     final profile = await _profile(familyId);
     final items = await _domainPantry(familyId);
     final catalog = await recipes.listByStatus(RecipeStatus.approved);
-    final generated = MealPlanGenerator.generateMealPlan(
+    final generated = await planner.planDays(
       family: profile,
       pantryItems: items,
       recipes: catalog,
@@ -253,7 +255,8 @@ class BankStorageFacade {
   }
 
   /// Descuenta ingredientes con [PantryRepository.registerConsumption]
-  /// (las rules no permiten create en pantryItems).
+  /// (las rules no permiten create en pantryItems), que también deja los
+  /// registros de consumptionLogs.
   Future<void> completeRecipe({
     required String familyId,
     required Recipe recipe,
@@ -261,16 +264,20 @@ class BankStorageFacade {
     final profile = await _profile(familyId);
     final adjusted = PortionAdjuster.adjustPortions(recipe, profile);
     final current = await pantry.watchAllPantryItems(familyId).first;
-    final now = DateTime.now();
     final consumed = <({PantryItem item, double amount})>[];
 
     for (final ingredient in adjusted.ingredients) {
       var needed = UnitConverter.toBase(ingredient.quantity, ingredient.unit);
-      final matches = current.where((item) {
-        return NameNormalizer.matches(item.productId, ingredient.productName) &&
-            UnitConverter.compatible(item.unit.name, ingredient.unit);
-      }).toList()
-        ..sort((a, b) => a.daysUntilExpiration.compareTo(b.daysUntilExpiration));
+      final matches =
+          current.where((item) {
+            return NameNormalizer.matches(
+                  item.productId,
+                  ingredient.productName,
+                ) &&
+                UnitConverter.compatible(item.unit.name, ingredient.unit);
+          }).toList()..sort(
+            (a, b) => a.daysUntilExpiration.compareTo(b.daysUntilExpiration),
+          );
 
       for (final item in matches) {
         if (needed <= 0) break;
@@ -280,17 +287,6 @@ class BankStorageFacade {
         if (takeInUnit <= 0) continue;
         consumed.add((item: item, amount: takeInUnit));
         needed -= take;
-        await _db
-            .collection(FirestorePaths.families)
-            .doc(familyId)
-            .collection(FirestorePaths.consumptionLogs)
-            .add({
-          'productId': item.productId,
-          'quantity': takeInUnit,
-          'unit': item.unit.name,
-          'category': item.type.name,
-          'at': Timestamp.fromDate(now),
-        });
       }
     }
 

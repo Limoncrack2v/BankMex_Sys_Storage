@@ -44,6 +44,7 @@ Map<String, Object?> arr(List<Map<String, Object?>> values) => {
 Map<String, Object?> mapValue(Map<String, Map<String, Object?>> fields) => {
   'mapValue': {'fields': fields},
 };
+Map<String, Object?> ref(String path) => {'referenceValue': _name(path)};
 
 /// Marca un campo para borrarlo en un update (va en la máscara, no en los
 /// campos), como FieldValue.delete().
@@ -243,7 +244,8 @@ Future<List<({String id, Map<String, Object?> fields})>> adminDocs(
       (
         id: (document['name'] as String).split('/').last,
         fields:
-            (document['fields'] as Map<String, Object?>?) ?? <String, Object?>{},
+            (document['fields'] as Map<String, Object?>?) ??
+            <String, Object?>{},
       ),
   ];
 }
@@ -257,6 +259,33 @@ Object? fieldValue(Map<String, Object?>? fields, String name) {
     'integerValue' => int.parse(entry.value as String),
     'doubleValue' => (entry.value as num).toDouble(),
     _ => entry.value,
+  };
+}
+
+/// Campos leídos con [adminDoc] como valores de Dart, con mapas y listas
+/// anidados (para pasarlos a un fromMap del modelo).
+Map<String, Object?> plainFields(Map<String, Object?> fields) => {
+  for (final MapEntry(:key, :value) in fields.entries)
+    key: _plainValue(value as Map<String, Object?>),
+};
+
+Object? _plainValue(Map<String, Object?> value) {
+  final MapEntry(:key, value: raw) = value.entries.first;
+  return switch (key) {
+    'integerValue' => int.parse(raw as String),
+    'doubleValue' => (raw as num).toDouble(),
+    'arrayValue' => [
+      for (final item
+          in ((raw as Map<String, Object?>)['values'] as List<Object?>?) ??
+              const [])
+        _plainValue(item as Map<String, Object?>),
+    ],
+    'mapValue' => plainFields(
+      ((raw as Map<String, Object?>)['fields'] as Map<String, Object?>?) ??
+          <String, Object?>{},
+    ),
+    'nullValue' => null,
+    _ => raw,
   };
 }
 
@@ -356,7 +385,9 @@ Future<void> _loadRules() async {
 File _rulesFile() {
   var directory = Directory.current;
   for (var i = 0; i < 5; i++) {
-    final file = File('${directory.path}${Platform.pathSeparator}firestore.rules');
+    final file = File(
+      '${directory.path}${Platform.pathSeparator}firestore.rules',
+    );
     if (file.existsSync()) return file;
     final parent = directory.parent;
     if (parent.path == directory.path) break;

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class AppUser {
   static const roleStaff = 'staff';
   static const roleFamily = 'family';
+  static const roleNutritionist = 'nutritionist';
 
   final String userId;
   final String name;
@@ -15,17 +16,17 @@ class AppUser {
     required this.name,
     required this.email,
     required this.role,
-    required this.createdAt
+    required this.createdAt,
   });
 
   factory AppUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
     return AppUser(
-      userId: doc.id, 
-      name: data['name'] as String, 
-      email: data['email'] as String, 
-      role: data['role'] as String, 
-      createdAt: (data['createdAt'] as Timestamp).toDate()
+      userId: doc.id,
+      name: data['name'] as String,
+      email: data['email'] as String,
+      role: data['role'] as String,
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
     );
   }
 
@@ -33,6 +34,6 @@ class AppUser {
     'name': name,
     'email': email,
     'role': role,
-    'createdAt': Timestamp.fromDate(createdAt)
+    'createdAt': Timestamp.fromDate(createdAt),
   };
 }

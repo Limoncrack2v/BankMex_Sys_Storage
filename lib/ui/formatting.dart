@@ -95,12 +95,8 @@ int daysUntil(DateTime date, {DateTime? today}) =>
 /// Días que le quedan hoy a un producto. daysUntilExpiration se cuenta desde
 /// localTimestamp (cuando se registró el producto), así que se descuentan los
 /// días que ya pasaron. Puede ser negativo si ya caducó.
-int daysLeft(PantryItem item, {DateTime? today}) {
-  final elapsed = _dateOnlyUtc(
-    today ?? DateTime.now(),
-  ).difference(_dateOnlyUtc(item.localTimestamp)).inDays;
-  return item.daysUntilExpiration - elapsed;
-}
+int daysLeft(PantryItem item, {DateTime? today}) =>
+    item.daysLeftOn(today ?? DateTime.now());
 
 /// Fecha en que caduca un producto de la despensa.
 DateTime expirationDate(PantryItem item) =>

@@ -17,7 +17,8 @@ import 'portion_adjuster.dart';
 /// Enfermedades crónicas: a un adulto con obesidad se le restan
 /// [obesityDeficitKcal] (sin bajar de [minAdultKcal]), el déficit moderado
 /// que recomiendan las guías para bajar de peso. A niñas y niños no se les
-/// recorta: en su caso la restricción la decide su médico. Las demás
+/// recorta: en su caso la restricción la decide su médico. Las porciones de
+/// las recetas siguen el mismo recorte ([adultPortion]). Las demás
 /// enfermedades cambian qué se come, no cuánta energía se necesita; eso lo
 /// cubre la lista de exclusión (conditionKeywords).
 class EnergyRequirement {
@@ -92,6 +93,16 @@ class EnergyRequirement {
       kcal = bmr * activityLevel;
     }
     return (kcal / 10).round() * 10;
+  }
+
+  /// Parte de una porción de adulto que come [member]: 1, salvo un adulto
+  /// con obesidad, cuya porción baja en la misma proporción que su energía
+  /// ([dailyKcal] entre la que tendría sin el déficit).
+  static double adultPortion(Member member) {
+    final base = _baseKcal(member);
+    final kcal = dailyKcal(member);
+    if (base == null || kcal == null || base <= 0) return 1;
+    return math.min(1.0, kcal / base);
   }
 
   /// Suma del hogar y cuántos integrantes no se pudieron estimar.

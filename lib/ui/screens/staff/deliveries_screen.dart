@@ -21,6 +21,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
+import '../../models/quota_proposal.dart';
 import '../session/step_up_sheet.dart';
 
 /// Sin conexión, Firestore guarda el cambio en el dispositivo pero el commit
@@ -29,6 +30,10 @@ import '../session/step_up_sheet.dart';
 const _saveTimeout = Duration(seconds: 4);
 const _maxRecoveryFee = 100000.0;
 const _pendingSyncNote = 'Se sincronizará cuando haya conexión.';
+const _missingJustificationNote =
+    'Esta entrega tiene cuota de recuperación sin justificación, así que no '
+    'se puede reasignar. Cancélala y registra una nueva para la familia que '
+    'la recibirá.';
 
 /// Contenido de la pestaña Entregas del staff: registro de una entrega por
 /// familia (con sus productos y caducidades) y tabla de entregas recientes.
@@ -49,7 +54,6 @@ class DeliveriesScreen extends StatefulWidget {
 class _DeliveriesScreenState extends State<DeliveriesScreen> {
   late final Stream<List<Family>> _families;
   late final Stream<List<DeliveryWithSync>> _deliveries;
-
 
   @override
   void initState() {
@@ -124,6 +128,16 @@ class _DeliveryFormState extends State<_DeliveryForm> {
   Family? _family;
   DateTime? _date;
   bool _exempt = true;
+
+  /// Familia para la que se propuso la cuota por última vez (quotaOnSelect).
+  String? _quotaFamilyId;
+
+  /// El staff tocó la cuota, Exenta o la justificación desde esa propuesta.
+  bool _quotaEdited = false;
+
+  /// Aviso de que elegir otra familia reemplazó lo que el staff escribió.
+  String? _quotaNotice;
+
   DeliveryStatus _status = DeliveryStatus.scheduled;
   List<_ProductDraft> _products = [_ProductDraft()];
   bool _saving = false;
@@ -206,9 +220,49 @@ class _DeliveryFormState extends State<_DeliveryForm> {
 
   void _onEdited(String _) => setState(() {});
 
+  void _onQuotaEdited(String _) => setState(() {
+    _quotaEdited = true;
+    _quotaNotice = null;
+  });
+
+  String _quotaResetNotice(Family family) {
+    final quota = family.recoveryQuotaDefault;
+    final label = quota == null ? 'Exenta' : '\$ ${formatNumber(quota)}';
+    return 'La cuota se cambió a la de ${family.displayName} ($label) y se '
+        'borró lo que habías escrito. Revísala antes de registrar.';
+  }
+
+  /// Al elegir una familia distinta se propone su cuota por defecto (Exenta
+  /// si no tiene) y se borra la justificación; si eso reemplaza algo que el
+  /// staff escribió, se avisa. Volver a elegir la misma no cambia nada.
+  void _selectFamily(Family? family) {
+    setState(() {
+      _family = family;
+      if (family == null) return;
+      final action = quotaOnSelect(
+        proposedFor: _quotaFamilyId,
+        selected: family.familyId,
+        edited: _quotaEdited,
+      );
+      if (action == QuotaOnSelect.keep) return;
+      final quota = family.recoveryQuotaDefault;
+      _exempt = quota == null;
+      _fee.text = quota == null ? '' : formatNumber(quota);
+      _justification.clear();
+      _quotaFamilyId = family.familyId;
+      _quotaEdited = false;
+      _quotaNotice = action == QuotaOnSelect.proposeAndWarn
+          ? _quotaResetNotice(family)
+          : null;
+    });
+  }
+
   void _toggleExempt() {
     setState(() {
       _exempt = !_exempt;
+      _quotaEdited = true;
+      _quotaNotice = null;
+
       if (_exempt) {
         _fee.clear();
         _justification.clear();
@@ -299,6 +353,9 @@ class _DeliveryFormState extends State<_DeliveryForm> {
       _packages.text = '1';
       _fee.clear();
       _exempt = true;
+      _quotaFamilyId = null;
+      _quotaEdited = false;
+      _quotaNotice = null;
       _justification.clear();
       _status = DeliveryStatus.scheduled;
       _notes.clear();
@@ -438,7 +495,7 @@ class _DeliveryFormState extends State<_DeliveryForm> {
             families: widget.families,
             controller: _familyText,
             selected: _family,
-            onSelected: (family) => setState(() => _family = family),
+            onSelected: _selectFamily,
           ),
         ),
         const SizedBox(height: 16),
@@ -490,7 +547,7 @@ class _DeliveryFormState extends State<_DeliveryForm> {
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                   ],
                   maxLength: 9,
-                  onChanged: _onEdited,
+                  onChanged: _onQuotaEdited,
                 ),
               ),
               const SizedBox(width: 8),
@@ -517,10 +574,22 @@ class _DeliveryFormState extends State<_DeliveryForm> {
               minLines: 2,
               maxLines: 3,
               maxLength: 500,
-              onChanged: _onEdited,
+              onChanged: _onQuotaEdited,
             ),
           ),
         ],
+        if (_quotaNotice != null) ...[
+          const SizedBox(height: 12),
+          Semantics(
+            liveRegion: true,
+            child: InfoBanner(
+              message: _quotaNotice!,
+              background: AppColors.warningSoft,
+              foreground: AppColors.warningText,
+            ),
+          ),
+        ],
+
         const SizedBox(height: 16),
         LabeledField(
           label: 'Estado',
@@ -1398,11 +1467,8 @@ class _DeliveriesTable extends StatelessWidget {
     final delivery = row.delivery;
     final body = AppText.nunito(15, 22.5);
 
-    void open(_DeliveryAction action) => _showDeliveryActionSheet(
-      context,
-      delivery: delivery,
-      action: action,
-    );
+    void open(_DeliveryAction action) =>
+        _showDeliveryActionSheet(context, delivery: delivery, action: action);
 
     void reassign() => showAppBottomSheet<void>(
       context,
@@ -1549,12 +1615,11 @@ class _LinkButton extends StatelessWidget {
         child: Text(
           label,
           textAlign: TextAlign.center,
-          style: AppText.nunito(
-            15,
-            22.5,
-            weight: FontWeight.w700,
-            color: color,
-          ).copyWith(decoration: TextDecoration.underline, decorationColor: color),
+          style: AppText.nunito(15, 22.5, weight: FontWeight.w700, color: color)
+              .copyWith(
+                decoration: TextDecoration.underline,
+                decorationColor: color,
+              ),
         ),
       ),
     );
@@ -1576,8 +1641,7 @@ Future<void> _showDeliveryActionSheet(
     context,
     // Arrastrar para cerrar ignoraría AppSheet.busy mientras se guarda.
     enableDrag: false,
-    builder: (_) =>
-        _DeliveryActionSheet(delivery: delivery, action: action),
+    builder: (_) => _DeliveryActionSheet(delivery: delivery, action: action),
   );
 }
 
@@ -1825,6 +1889,9 @@ class _ReassignSheetState extends State<_ReassignSheet> {
   bool _alreadyChanged = false;
   String? _successMessage;
 
+  /// Tiene cuota sin justificación: las reglas rechazarían la entrega nueva.
+  bool get _blocked => widget.delivery.missingJustification;
+
   @override
   void initState() {
     super.initState();
@@ -1838,7 +1905,7 @@ class _ReassignSheetState extends State<_ReassignSheet> {
   }
 
   Future<void> _confirm() async {
-    if (_saving || _alreadyChanged) return;
+    if (_saving || _alreadyChanged || _blocked) return;
     final receiver = _receiver;
     if (receiver == null) {
       setState(() => _attempted = true);
@@ -1905,6 +1972,8 @@ class _ReassignSheetState extends State<_ReassignSheet> {
     }
 
     final missingReceiver = _attempted && _receiver == null;
+    final error = _blocked ? _missingJustificationNote : _error;
+
     return AppSheet(
       title: 'Reasignar entrega',
       busy: _saving,
@@ -1919,24 +1988,26 @@ class _ReassignSheetState extends State<_ReassignSheet> {
               'para la familia que la reciba.',
               style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
             ),
-            const SizedBox(height: 16),
-            LabeledField(
-              label: 'Familia',
-              required: true,
-              child: _FamilyCombobox(
-                families: _families,
-                controller: _familyText,
-                selected: _receiver,
-                excludeFamilyId: widget.delivery.familyId,
-                onSelected: (family) => setState(() => _receiver = family),
+            if (!_blocked) ...[
+              const SizedBox(height: 16),
+              LabeledField(
+                label: 'Familia',
+                required: true,
+                child: _FamilyCombobox(
+                  families: _families,
+                  controller: _familyText,
+                  selected: _receiver,
+                  excludeFamilyId: widget.delivery.familyId,
+                  onSelected: (family) => setState(() => _receiver = family),
+                ),
               ),
-            ),
-            if (missingReceiver) ...[
-              const SizedBox(height: 6),
-              const _HelperText(
-                'Selecciona la familia receptora',
-                color: AppColors.dangerText,
-              ),
+              if (missingReceiver) ...[
+                const SizedBox(height: 6),
+                const _HelperText(
+                  'Selecciona la familia receptora',
+                  color: AppColors.dangerText,
+                ),
+              ],
             ],
           ],
         ),
@@ -1945,11 +2016,11 @@ class _ReassignSheetState extends State<_ReassignSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_error != null) ...[
+          if (error != null) ...[
             Semantics(
               liveRegion: true,
               child: InfoBanner(
-                message: _error!,
+                message: error,
                 background: AppColors.dangerSoft,
                 foreground: AppColors.dangerText,
               ),
@@ -1960,14 +2031,14 @@ class _ReassignSheetState extends State<_ReassignSheet> {
             label: 'Confirmar reasignación',
             icon: AppIcons.check,
             loading: _saving,
-            onPressed: _alreadyChanged ? null : _confirm,
+            onPressed: _alreadyChanged || _blocked ? null : _confirm,
           ),
           const SizedBox(height: 8),
           Center(
             child: Opacity(
               opacity: _saving ? 0.4 : 1,
               child: TextLinkButton(
-                label: _alreadyChanged ? 'Cerrar' : 'Volver',
+                label: _alreadyChanged || _blocked ? 'Cerrar' : 'Volver',
                 onPressed: _close,
               ),
             ),
