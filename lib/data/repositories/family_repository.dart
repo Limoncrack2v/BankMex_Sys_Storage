@@ -82,6 +82,13 @@ class FamilyRepository {
         ),
   );
 
+  /// Todas las familias registradas, leídas una vez (sin orden). Solo staff.
+  /// Un documento que no se pueda leer se omite.
+  Future<List<Family>> getAllFamilies() async {
+    final snapshot = await _families.get();
+    return [for (final doc in snapshot.docs) ?_tryParse(doc)];
+  }
+
   Family? _tryParse(DocumentSnapshot<Map<String, dynamic>> doc) {
     try {
       return Family.fromFirestore(doc);

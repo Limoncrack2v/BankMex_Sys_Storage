@@ -158,6 +158,19 @@ class DeliveryRepository {
     });
   }
 
+  /// Las entregas con fecha de entrega desde [since], leídas una vez (para las
+  /// estadísticas). Se filtra solo por fecha para no necesitar un índice
+  /// compuesto; el estado lo revisa quien las use.
+  Future<List<Delivery>> getDeliveriesSince(DateTime since) async {
+    final snapshot = await _deliveries
+        .where(
+          'deliveryDate',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(since),
+        )
+        .get();
+    return snapshot.docs.map(_parseOrThrow).toList();
+  }
+
   /// Emite los últimos valores de ambos streams cuando los dos ya emitieron.
   static Stream<List<QuerySnapshot<Map<String, dynamic>>>> _combine(
     Stream<QuerySnapshot<Map<String, dynamic>>> first,
