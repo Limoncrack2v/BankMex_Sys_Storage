@@ -191,6 +191,20 @@ void main() {
       await assertAllowed(fam1().updateDoc(p1, {'meals': arr([])}));
     });
 
+    test('la familia no deja su plan inválido al editarlo', () async {
+      await assertDenied(fam1().updateDoc(p1, {'foo': integer(1)}));
+      await assertDenied(
+        fam1().updateDoc(p1, {
+          'meals': arr(
+            List.generate(101, (_) => mapValue({'recipeId': str('r1')})),
+          ),
+        }),
+      );
+      await assertDenied(
+        fam1().updateDoc(p1, {'dateRangeEnd': ts(DateTime.utc(2026, 10, 1))}),
+      );
+    });
+
     test('otra familia no edita el plan', () async {
       await assertDenied(fam2().updateDoc(p1, {'meals': arr([])}));
     });
