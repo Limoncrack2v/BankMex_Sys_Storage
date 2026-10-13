@@ -21,6 +21,7 @@ final _run = 'fn-${DateTime.now().millisecondsSinceEpoch}';
 final _familyId = '$_run-familia';
 final _created = <String>[];
 final _families = <String>[];
+final _baskets = <String>[];
 
 Map<String, Object?> _item(
   String productId,
@@ -82,16 +83,35 @@ Map<String, Object?> _restItem(DeliveryItem item) => mapValue({
   'expirationDate': ts(item.expirationDate),
 });
 
-/// La despensa estándar [basketId] que carga tool/seed_emulators.mjs.
-Future<StandardBasket> _seededBasket(String basketId) async {
+/// Escribe la despensa estándar standardBaskets/[basketId] con [items]
+/// ([producto, tipo, cantidad, unidad, días que dura], como en
+/// tool/standard_baskets.mjs) y la regresa leída del emulador. Así la prueba
+/// no depende del seed.
+Future<StandardBasket> _writeBasket(
+  String basketId,
+  String name,
+  List<(String, String, num, String, int)> items,
+) async {
+  _baskets.add(basketId);
+  await assertAllowed(
+    Db.admin().setDoc('standardBaskets/$basketId', {
+      'name': str(name),
+      'description': str('Despensa de prueba'),
+      'items': arr([
+        for (final (productId, type, quantity, unit, shelfLifeDays) in items)
+          mapValue({
+            'productId': str(productId),
+            'type': str(type),
+            'quantity': number(quantity),
+            'unit': str(unit),
+            'shelfLifeDays': integer(shelfLifeDays),
+          }),
+      ]),
+      'updatedAt': ts(DateTime.now()),
+    }),
+  );
   final fields = await adminDoc('standardBaskets/$basketId');
-  if (fields == null) {
-    throw StateError(
-      'No existe standardBaskets/$basketId en el emulador. Corre '
-      'node tool/seed_emulators.mjs.',
-    );
-  }
-  return StandardBasket.fromMap(basketId, plainFields(fields));
+  return StandardBasket.fromMap(basketId, plainFields(fields!));
 }
 
 /// Espera a que la función marque la entrega (pantryStockedAt) y regresa sus
@@ -180,6 +200,9 @@ void main() {
     final admin = Db.admin();
     for (final id in _created) {
       await admin.deleteDoc('deliveries/$id');
+    }
+    for (final id in _baskets) {
+      await admin.deleteDoc('standardBaskets/$id');
     }
     for (final family in [_familyId, ..._families]) {
       for (final item in await adminDocs('families/$family/pantryItems')) {
@@ -334,8 +357,17 @@ void main() {
         'cada producto', () async {
       const packages = 3;
       final id = '$_run-despensas';
-      final basica = await _seededBasket('despensa-basica');
-      final frescos = await _seededBasket('frescos');
+      final basica = await _writeBasket('$_run-basica', 'Despensa básica', [
+        ('Arroz', 'grain', 1, 'kg', 365),
+        ('Lenteja', 'legume', 0.5, 'kg', 365),
+        ('Atún en lata', 'canned', 2, 'can', 730),
+        ('Leche entera', 'dairy', 2, 'l', 90),
+      ]);
+      final frescos = await _writeBasket('$_run-frescos', 'Frescos', [
+        ('Jitomate', 'produce', 1, 'kg', 7),
+        ('Plátano', 'produce', 6, 'piece', 5),
+        ('Huevo', 'protein', 12, 'piece', 21),
+      ]);
       final items = StandardBasket.deliveryItemsFor(
         [basica, frescos],
         packages: packages,
