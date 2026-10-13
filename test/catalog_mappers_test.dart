@@ -1,4 +1,5 @@
 import 'package:bank_storage_app/data/models/member.dart';
+import 'package:bank_storage_app/data/models/pantry_item.dart';
 import 'package:bank_storage_app/domain/catalog_mappers.dart';
 import 'package:bank_storage_app/domain/models/recipe.dart' as domain;
 import 'package:flutter_test/flutter_test.dart';
@@ -21,7 +22,49 @@ Member member(
       chronicConditions: conditions,
     );
 
+PantryItem pantryItem({
+  required DateTime received,
+  required int shelfLifeDays,
+}) => PantryItem(
+      pantryItemId: 'item',
+      productId: 'Leche',
+      deliveryId: 'delivery',
+      type: FoodType.dairy,
+      quantity: 2,
+      unit: FoodUnit.l,
+      daysUntilExpiration: shelfLifeDays,
+      deviceId: 'device',
+      localTimestamp: received,
+    );
+
 void main() {
+  group('pantryToDomain', () {
+    final now = DateTime(2026, 10, 10, 18);
+
+    test('counts the expiration from the day the item was received', () {
+      final item = CatalogMappers.pantryToDomain(
+        pantryItem(received: DateTime(2026, 9, 30, 9), shelfLifeDays: 30),
+        familyId: 'fam',
+      );
+
+      final expiration = item.expirationDate;
+      expect(
+        DateTime(expiration.year, expiration.month, expiration.day),
+        DateTime(2026, 10, 30),
+      );
+      expect(item.isUsable(now), isTrue);
+    });
+
+    test('an item past its shelf life is not usable', () {
+      final item = CatalogMappers.pantryToDomain(
+        pantryItem(received: DateTime(2026, 8, 31, 9), shelfLifeDays: 30),
+        familyId: 'fam',
+      );
+
+      expect(item.isUsable(now), isFalse);
+    });
+  });
+
   test('familyProfile uses stored age and weight for children', () {
     final profile = CatalogMappers.familyProfile(
       familyId: 'fam',
