@@ -99,6 +99,48 @@ service cloud.firestore {
         && (data.localTimestamp is timestamp && data.localTimestamp <= request.time + duration.value(5, 'm'));
     }
 
+    // Un producto de una entrega (DeliveryItem.toMap), con los mismos límites
+    // que DeliveryItem.validate y invalidReason (functions/pantry.js). Si falta
+    // un campo o no tiene el tipo esperado, la evaluación falla y la escritura
+    // se rechaza. type y unit son los valores de FoodType y FoodUnit
+    // (lib/data/models/pantry_item.dart) y de FOOD_TYPES y FOOD_UNITS
+    // (functions/pantry.js); se revisan juntos como "tipo/unidad" para gastar
+    // menos expresiones.
+    function validDeliveryItem(item) {
+      return item.productId.matches('(?s).{1,100}')
+        && (item.type + '/' + item.unit).matches('(grain|legume|canned|dairy|produce|protein|beverage|other)/(kg|g|l|ml|piece|can|pack)')
+        && item.quantity > 0 && item.quantity <= 1000000
+        && item.expirationDate is timestamp;
+    }
+
+    // Las reglas no tienen ciclos ni recursión: cada producto se revisa por su
+    // índice, y el producto k solo se evalúa si hay más de k (dentro de la
+    // guarda del anterior). Cada solicitud tiene un tope de expresiones
+    // (1000), y cada producto gasta unas 60: por eso el máximo es 16, igual
+    // que Delivery.maxItems. Súbelo solo si las pruebas de test_emulator/
+    // rules_deliveries_test.dart (máximo con todos los campos opcionales y
+    // reasignación) siguen pasando.
+    function validDeliveryItems(items) {
+      let n = items.size();
+      return items is list && n >= 1 && n <= 16
+        && validDeliveryItem(items[0])
+        && (n <= 1 || validDeliveryItem(items[1])
+          && (n <= 2 || validDeliveryItem(items[2])
+            && (n <= 3 || validDeliveryItem(items[3])
+              && (n <= 4 || validDeliveryItem(items[4])
+                && (n <= 5 || validDeliveryItem(items[5])
+                  && (n <= 6 || validDeliveryItem(items[6])
+                    && (n <= 7 || validDeliveryItem(items[7])
+                      && (n <= 8 || validDeliveryItem(items[8])
+                        && (n <= 9 || validDeliveryItem(items[9])
+                          && (n <= 10 || validDeliveryItem(items[10])
+                            && (n <= 11 || validDeliveryItem(items[11])
+                              && (n <= 12 || validDeliveryItem(items[12])
+                                && (n <= 13 || validDeliveryItem(items[13])
+                                  && (n <= 14 || validDeliveryItem(items[14])
+                                    && (n <= 15 || validDeliveryItem(items[15]))))))))))))))));
+    }
+
     function validDelivery(data) {
       return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom', 'deviceId', 'localTimestamp'])
         && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt', 'deviceId', 'localTimestamp'])
@@ -111,7 +153,7 @@ service cloud.firestore {
         && (!('justification' in data) || (data.justification is string && data.justification.size() <= 500))
         && data.status in ['scheduled', 'delivered', 'cancelled']
         && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
-        && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
+        && validDeliveryItems(data.items)
         && data.createdAt is timestamp
         && (!('reassignedFrom' in data) || (data.reassignedFrom is string
           && data.reassignedFrom.size() > 0 && data.reassignedFrom.size() <= 128))
