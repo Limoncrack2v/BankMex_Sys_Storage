@@ -69,9 +69,20 @@ List<double> quantities(Recipe recipe) =>
 
 void main() {
   group('householdPortions', () {
-    test('adults count 1 regardless of age or weight', () {
+    test('adults without obesity count 1 regardless of age or weight', () {
       expect(householdPortions([member('Ana'), member('Luis')]), 2);
       expect(householdPortions(const []), 0);
+    });
+
+    test('an adult with obesity counts their share of the kcal deficit', () {
+      // 2200 de 2700 kcal (sin edad ni peso).
+      expect(
+        householdPortions([
+          member('Ana'),
+          member('Luis', conditions: const [ChronicCondition.obesity]),
+        ]),
+        closeTo(1 + 2200 / 2700, 1e-9),
+      );
     });
 
     test('children count by age, and weight when known', () {

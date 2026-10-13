@@ -123,6 +123,59 @@ void main() {
     });
   });
 
+  group('EnergyRequirement.adultPortion', () {
+    test('is 1 without obesity', () {
+      expect(EnergyRequirement.adultPortion(person(MemberType.adult)), 1);
+      expect(
+        EnergyRequirement.adultPortion(
+          person(
+            MemberType.adult,
+            conditions: const [ChronicCondition.diabetes],
+          ),
+        ),
+        1,
+      );
+    });
+
+    test('an adult with obesity eats in proportion to the deficit', () {
+      // 2200 de 2700 kcal.
+      expect(
+        EnergyRequirement.adultPortion(
+          person(
+            MemberType.adult,
+            conditions: const [ChronicCondition.obesity],
+          ),
+        ),
+        closeTo(2200 / 2700, 1e-9),
+      );
+      // 1200 de 1640 kcal: el mínimo también limita el recorte.
+      expect(
+        EnergyRequirement.adultPortion(
+          person(
+            MemberType.adult,
+            age: 70,
+            weightKg: 30,
+            conditions: const [ChronicCondition.obesity],
+          ),
+        ),
+        closeTo(1200 / 1640, 1e-9),
+      );
+    });
+
+    test('a child with obesity is not cut down', () {
+      expect(
+        EnergyRequirement.adultPortion(
+          person(
+            MemberType.child,
+            age: 8,
+            conditions: const [ChronicCondition.obesity],
+          ),
+        ),
+        1,
+      );
+    });
+  });
+
   test('household adds up members and counts the missing ones', () {
     final result = EnergyRequirement.household([
       person(MemberType.adult),

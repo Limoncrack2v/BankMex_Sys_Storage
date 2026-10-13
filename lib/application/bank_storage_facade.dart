@@ -15,6 +15,7 @@ import '../domain/models/family_profile.dart';
 import '../domain/models/pantry_item.dart' as domain;
 import '../domain/models/recipe.dart';
 import '../domain/name_normalizer.dart';
+import '../domain/nutrition_targets.dart';
 import '../domain/pantry_recipe_filter.dart';
 import '../domain/portion_adjuster.dart';
 import '../domain/recipe_catalog.dart';
@@ -187,21 +188,11 @@ class BankStorageFacade {
           .collection(FirestorePaths.consumptionLogs)
           .get();
       for (final doc in logs.docs) {
-        final data = doc.data();
         items.add(
-          domain.PantryItem(
-            id: doc.id,
+          CatalogMappers.consumptionLogToDomain(
+            doc.id,
+            doc.data(),
             familyId: id,
-            productId: data['productId'] as String? ?? '',
-            name: data['productId'] as String? ?? '',
-            quantity: 0,
-            unit: data['unit'] as String? ?? 'g',
-            expirationDate: DateTime.now(),
-            category: data['category'] as String? ?? '',
-            originalQuantity: (data['quantity'] as num?)?.toDouble() ?? 0,
-            consumedQuantity: (data['quantity'] as num?)?.toDouble() ?? 0,
-            status: domain.PantryItemStatus.consumed,
-            consumedAt: (data['at'] as Timestamp?)?.toDate() ?? DateTime.now(),
           ),
         );
       }
@@ -218,6 +209,14 @@ class BankStorageFacade {
   }
 
   Future<FamilyProfile> familyProfile(String familyId) => _profile(familyId);
+
+  /// caloricTarget y exclusionList del hogar, para el motor de recetas. No
+  /// lleva nombres, edades ni pesos, pero exclusionList sale de las alergias
+  /// y enfermedades del hogar (ver [NutritionTargets]).
+  Future<NutritionTargets> nutritionTargets(String familyId) async =>
+      NutritionTargets.forHousehold(
+        await members.watchAllMembers(familyId).first,
+      );
 
   Future<Recipe?> getSingleRecipeOnDemand(String familyId) async {
     final profile = await _profile(familyId);
@@ -253,7 +252,8 @@ class BankStorageFacade {
   }
 
   /// Descuenta ingredientes con [PantryRepository.registerConsumption]
-  /// (las rules no permiten create en pantryItems).
+  /// (las rules no permiten create en pantryItems), que también deja los
+  /// registros de consumptionLogs.
   Future<void> completeRecipe({
     required String familyId,
     required Recipe recipe,
@@ -261,7 +261,6 @@ class BankStorageFacade {
     final profile = await _profile(familyId);
     final adjusted = PortionAdjuster.adjustPortions(recipe, profile);
     final current = await pantry.watchAllPantryItems(familyId).first;
-    final now = DateTime.now();
     final consumed = <({PantryItem item, double amount})>[];
 
     for (final ingredient in adjusted.ingredients) {
@@ -280,17 +279,6 @@ class BankStorageFacade {
         if (takeInUnit <= 0) continue;
         consumed.add((item: item, amount: takeInUnit));
         needed -= take;
-        await _db
-            .collection(FirestorePaths.families)
-            .doc(familyId)
-            .collection(FirestorePaths.consumptionLogs)
-            .add({
-          'productId': item.productId,
-          'quantity': takeInUnit,
-          'unit': item.unit.name,
-          'category': item.type.name,
-          'at': Timestamp.fromDate(now),
-        });
       }
     }
 

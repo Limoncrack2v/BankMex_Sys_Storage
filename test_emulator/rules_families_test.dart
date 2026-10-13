@@ -161,6 +161,18 @@ void main() {
       );
     });
 
+    test(
+      'la familia no cambia otro campo junto con sus electrodomésticos',
+      () async {
+        await assertDenied(
+          fam1().updateDoc('families/famA', {
+            'appliances': arr([str('horno')]),
+            'address': str('Calle 10'),
+          }),
+        );
+      },
+    );
+
     test('staff registra un hogar con electrodomésticos', () async {
       await assertAllowed(
         staff().commit([
