@@ -100,16 +100,20 @@ service cloud.firestore {
     }
 
     // Un producto de una entrega (DeliveryItem.toMap), con los mismos límites
-    // que DeliveryItem.validate y invalidReason (functions/pantry.js). Si falta
-    // un campo o no tiene el tipo esperado, la evaluación falla y la escritura
-    // se rechaza. type y unit son los valores de FoodType y FoodUnit
-    // (lib/data/models/pantry_item.dart) y de FOOD_TYPES y FOOD_UNITS
-    // (functions/pantry.js); se revisan juntos como "tipo/unidad" para gastar
-    // menos expresiones.
+    // que DeliveryItem.validate y invalidReason (functions/pantry.js), salvo
+    // el tope de la cantidad (PantryItem.maxQuantity): no cabe en el
+    // presupuesto de expresiones de una reasignación con cuota y
+    // justificación, y lo siguen aplicando DeliveryItem.validate e
+    // invalidReason, que no deja pasar a la despensa un producto que lo
+    // exceda. Si falta un campo o no tiene el tipo esperado, la evaluación
+    // falla y la escritura se rechaza. type y unit son los valores de
+    // FoodType y FoodUnit (lib/data/models/pantry_item.dart) y de FOOD_TYPES y
+    // FOOD_UNITS (functions/pantry.js); se revisan juntos como "tipo/unidad"
+    // para gastar menos expresiones.
     function validDeliveryItem(item) {
       return item.productId.matches('(?s).{1,100}')
         && (item.type + '/' + item.unit).matches('(grain|legume|canned|dairy|produce|protein|beverage|other)/(kg|g|l|ml|piece|can|pack)')
-        && item.quantity > 0 && item.quantity <= 1000000
+        && item.quantity > 0
         && item.expirationDate is timestamp;
     }
 

@@ -452,9 +452,14 @@ void main() {
       await denied(withItem({'quantity': number(-0.5)}));
     });
 
-    test('cantidad mayor a 1,000,000 rechazada', () async {
-      await denied(withItem({'quantity': integer(1000001)}));
-      await denied(withItem({'quantity': number(1000000.5)}));
+    // El tope de la cantidad no cabe en el presupuesto de expresiones de las
+    // reglas (ver validDeliveryItem): lo aplican DeliveryItem.validate y
+    // invalidReason en functions/pantry.js, que no agrega el producto a la
+    // despensa.
+    test('cantidad mayor a 1,000,000 aceptada: el tope no está en las reglas', () async {
+      await assertAllowed(
+        staff().setDoc('deliveries/new', withItem({'quantity': integer(1000001)})),
+      );
     });
 
     test('cantidad que no es número o falta rechazada', () async {
@@ -539,7 +544,7 @@ void main() {
 
       test('el último producto de $maxItems se revisa por cada campo', () async {
         final last = maxItems - 1;
-        await denied(withBadItemAt(last, {'quantity': integer(1000001)}));
+        await denied(withBadItemAt(last, {'quantity': integer(0)}));
         await denied(withBadItemAt(last, {'productId': str('a' * 101)}));
         await denied(withBadItemAt(last, {'expirationDate': str('x')}));
       });
@@ -718,6 +723,16 @@ void main() {
 
     test('se reasigna una entrega con el máximo de productos', () async {
       final items = itemsOf(Delivery.maxItems);
+      await Db.admin().setDoc('deliveries/del1', delivery(items));
+      await assertAllowed(reassign(staff(), next: items));
+    });
+
+    test('se reasigna el máximo con cuota y justificación', () async {
+      final items = {
+        ...itemsOf(Delivery.maxItems),
+        'recoveryFee': integer(250),
+        'justification': str('Nivel de ingreso'),
+      };
       await Db.admin().setDoc('deliveries/del1', delivery(items));
       await assertAllowed(reassign(staff(), next: items));
     });

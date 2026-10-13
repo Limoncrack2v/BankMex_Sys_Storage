@@ -55,14 +55,6 @@ void main() {
       expect(int.parse(match!.group(1)!), DeliveryItem.maxNameLength);
     });
 
-    test('the quantity ceiling is PantryItem.maxQuantity', () {
-      final match = RegExp(
-        r'item\.quantity > 0 && item\.quantity <= (\d+)',
-      ).firstMatch(rules);
-
-      expect(int.parse(match!.group(1)!), PantryItem.maxQuantity);
-    });
-
     test('the item cap is Delivery.maxItems', () {
       final cap = RegExp(r'n >= 1 && n <= (\d+)').firstMatch(rules);
 
@@ -97,6 +89,15 @@ void main() {
   });
 
   group('delivery item limits in functions/pantry.js', () {
+    // The rules do not check the ceiling (it does not fit in the expression
+    // budget of a reassignment with a fee), so the Dart model and the function
+    // are the only two places that enforce it.
+    test('MAX_QUANTITY is PantryItem.maxQuantity', () {
+      final match = RegExp(r'const MAX_QUANTITY = (\d+);').firstMatch(pantryJs);
+
+      expect(int.parse(match!.group(1)!), PantryItem.maxQuantity);
+    });
+
     test('FOOD_TYPES are the FoodType values', () {
       expect(
         jsList('FOOD_TYPES'),
