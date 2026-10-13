@@ -63,6 +63,16 @@ void main() {
 
       expect(item.isUsable(now), isFalse);
     });
+
+    test('an item is usable for its whole expiration day', () {
+      final item = CatalogMappers.pantryToDomain(
+        pantryItem(received: DateTime(2026, 10, 10, 9), shelfLifeDays: 0),
+        familyId: 'fam',
+      );
+
+      expect(item.isUsable(now), isTrue);
+      expect(item.isUsable(DateTime(2026, 10, 11, 0, 30)), isFalse);
+    });
   });
 
   test('familyProfile uses stored age and weight for children', () {
