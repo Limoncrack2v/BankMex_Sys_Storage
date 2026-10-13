@@ -4,8 +4,12 @@ import 'exclusion_list.dart';
 
 /// Lo único que el motor de recetas (reglas hoy, IA después) recibe de un
 /// hogar: cuántas calorías necesita al día y qué ingredientes evitar. Se
-/// deriva de los integrantes, pero no lleva nombres, edades, pesos ni
-/// enfermedades (MASVS-PRIVACY-1): solo los números y las palabras.
+/// deriva de los integrantes y no lleva nombres, edades ni pesos
+/// (MASVS-PRIVACY-1). Sigue siendo información de salud del hogar:
+/// [exclusionList] sale de sus alergias y enfermedades, y algunas palabras
+/// solo aparecen con una de ellas (p. ej. piloncillo con diabetes, huevo con
+/// la alergia al huevo). Cuando se mande a un servicio de IA tiene que salir
+/// por el backend, no desde la app.
 class NutritionTargets {
   const NutritionTargets({
     required this.caloricTarget,

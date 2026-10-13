@@ -210,8 +210,9 @@ class BankStorageFacade {
 
   Future<FamilyProfile> familyProfile(String familyId) => _profile(familyId);
 
-  /// caloricTarget y exclusionList del hogar, para el motor de recetas (sin
-  /// nombres ni datos de salud de los integrantes).
+  /// caloricTarget y exclusionList del hogar, para el motor de recetas. No
+  /// lleva nombres, edades ni pesos, pero exclusionList sale de las alergias
+  /// y enfermedades del hogar (ver [NutritionTargets]).
   Future<NutritionTargets> nutritionTargets(String familyId) async =>
       NutritionTargets.forHousehold(
         await members.watchAllMembers(familyId).first,
