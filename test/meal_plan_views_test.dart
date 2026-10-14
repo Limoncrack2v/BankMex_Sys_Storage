@@ -135,6 +135,8 @@ Future<List<Recipe>> pumpSaved(
       today: now ?? today,
       catalogFailed: catalogFailed,
       onOpenRecipe: opened.add,
+      onSaveMeals: (_) async {},
+      onDelete: () async {},
     ),
   );
   return opened;
@@ -154,7 +156,10 @@ void main() {
       expect(find.text('MIÉ'), findsOneWidget);
       expect(find.textContaining('Usa Leche entera'), findsWidgets);
       expect(
-        find.text('Al guardarlo, las recetas de cada día ya no cambian.'),
+        find.text(
+          'Al guardarlo, las recetas de cada día ya no cambian y puedes '
+          'cambiarlas tú.',
+        ),
         findsOneWidget,
       );
     });

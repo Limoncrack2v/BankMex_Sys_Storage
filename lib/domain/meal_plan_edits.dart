@@ -98,6 +98,49 @@ abstract final class MealPlanEdits {
     return null;
   }
 
+  /// [plan] con [recipeId] en [date]: reemplaza la comida de ese día o llena
+  /// un día libre; los demás días no cambian. Lanza ArgumentError si [date]
+  /// no es un día del plan o si la comida no se puede guardar ([problem]).
+  static MealPlan withRecipe(
+    MealPlan plan,
+    DateTime date, {
+    required String recipeId,
+    required double servings,
+  }) {
+    final day = dateOnly(date);
+    if (day.isBefore(dateOnly(plan.dateRangeStart)) ||
+        !day.isBefore(dateOnly(plan.dateRangeEnd))) {
+      throw ArgumentError.value(date, 'date', 'El día no es parte del plan');
+    }
+    final updated = _withMeals(
+      plan,
+      [
+        for (final meal in plan.meals)
+          if (!sameDay(meal.date, day)) meal,
+        MealPlanMeal(date: day, recipeId: recipeId, servings: servings),
+      ]..sort((a, b) => a.date.compareTo(b.date)),
+    );
+    _check(updated);
+    return updated;
+  }
+
+  /// [plan] sin la comida de [date]: el día queda libre y los demás no
+  /// cambian. Si ese día ya estaba libre, las comidas quedan igual.
+  static MealPlan withoutMeal(MealPlan plan, DateTime date) =>
+      _withMeals(plan, [
+        for (final meal in plan.meals)
+          if (!sameDay(meal.date, date)) meal,
+      ]);
+
+  static MealPlan _withMeals(MealPlan plan, List<MealPlanMeal> meals) =>
+      MealPlan(
+        id: plan.id,
+        familyId: plan.familyId,
+        dateRangeStart: plan.dateRangeStart,
+        dateRangeEnd: plan.dateRangeEnd,
+        meals: meals,
+      );
+
   /// Null si [plan] se puede guardar; si no, el motivo. El rango va en orden
   /// y tiene a lo más [maxMeals] comidas, cada una dentro del rango, con el id
   /// de una receta (de 1 a [maxRecipeIdLength] caracteres, sin "/") y

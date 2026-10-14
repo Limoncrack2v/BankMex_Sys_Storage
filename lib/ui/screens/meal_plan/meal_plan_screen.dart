@@ -108,6 +108,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                       plans: plans,
                       sampleRecipes: widget.recipes,
                       onSave: MealPlanRepository().create,
+                      onSaveMeals: MealPlanRepository().updateMeals,
+                      onDelete: MealPlanRepository().delete,
                     ),
                   ),
                 ),
@@ -152,6 +154,8 @@ class MealPlanView extends StatelessWidget {
     required this.pantry,
     required this.plans,
     required this.onSave,
+    required this.onSaveMeals,
+    required this.onDelete,
     this.sampleRecipes = SampleData.recipes,
     this.clock = DateTime.now,
   });
@@ -167,6 +171,12 @@ class MealPlanView extends StatelessWidget {
 
   /// Guarda un plan nuevo.
   final Future<void> Function(MealPlan plan) onSave;
+
+  /// Guarda las comidas de un plan después de cambiar un día.
+  final Future<void> Function(MealPlan plan) onSaveMeals;
+
+  /// Elimina el plan con ese id.
+  final Future<void> Function(String planId) onDelete;
 
   /// Las que se muestran si el catálogo está vacío o no se pudo leer.
   final List<Recipe> sampleRecipes;
@@ -209,7 +219,7 @@ class MealPlanView extends StatelessWidget {
       if (catalog.hasError) _catalogWarning,
     ];
     // Un plan guardado apunta a recipes/{id}: las de ejemplo no se guardan.
-    final canSave = warnings.isEmpty && approved.isNotEmpty;
+    final canWrite = warnings.isEmpty && approved.isNotEmpty;
 
     final saved = plans.data ?? const [];
     final current = MealPlanEdits.current(
@@ -226,8 +236,12 @@ class MealPlanView extends StatelessWidget {
         members: household,
         pantry: items,
         today: today,
+        warnings: warnings,
         catalogFailed: catalog.hasError,
+        appliances: family.data?.appliances ?? const [],
         onOpenRecipe: open,
+        onSaveMeals: canWrite ? onSaveMeals : null,
+        onDelete: () => onDelete(current.id),
       );
     }
     return SuggestedPlanView(
@@ -239,7 +253,7 @@ class MealPlanView extends StatelessWidget {
       warnings: [if (plans.hasError) _plansWarning, ...warnings],
       onOpenRecipe: open,
       // Sin los planes guardados no se ofrece guardar: ya podría haber uno.
-      onSave: canSave && !plans.hasError ? onSave : null,
+      onSave: canWrite && !plans.hasError ? onSave : null,
       clock: clock,
     );
   }
@@ -433,7 +447,8 @@ class _SuggestedPlanViewState extends State<SuggestedPlanView> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Al guardarlo, las recetas de cada día ya no cambian.',
+          'Al guardarlo, las recetas de cada día ya no cambian y puedes '
+          'cambiarlas tú.',
           textAlign: TextAlign.center,
           style: note,
         ),

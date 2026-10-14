@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../domain/meal_plan_edits.dart';
 import '../../domain/models/meal_plan.dart';
 import '../firestore_paths.dart';
 
@@ -59,4 +60,19 @@ class MealPlanRepository {
           ],
         );
   }
+
+  /// Guarda las comidas de [plan]; el resto del documento no cambia (las
+  /// reglas no dejan cambiar la familia y el rango no se edita). Lanza
+  /// ArgumentError, sin escribir nada, si el plan no tiene id o si sus
+  /// comidas no se pueden guardar ([MealPlanEdits.problem]).
+  Future<void> updateMeals(MealPlan plan) async {
+    if (plan.id.isEmpty) throw ArgumentError('El plan no tiene id');
+    final error = MealPlanEdits.problem(plan);
+    if (error != null) throw ArgumentError(error);
+    await _col.doc(plan.id).update({
+      'meals': [for (final meal in plan.meals) meal.toMap()],
+    });
+  }
+
+  Future<void> delete(String planId) => _col.doc(planId).delete();
 }

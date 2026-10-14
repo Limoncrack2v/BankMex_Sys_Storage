@@ -1001,3 +1001,20 @@ MealPlanEntry planEntryFor(
 
 /// Abreviatura del día de [date], como en las tarjetas del plan ("Mié").
 String planDayLabel(DateTime date) => _weekdays[date.weekday - 1];
+
+/// [recipes] para elegir la de [date] en un plan guardado, en el orden de
+/// [buildMealPlan] y, como en él, con lo que caduca contado desde hoy.
+List<MealPlanEntry> planOptionsFor(
+  List<Recipe> recipes,
+  List<PantryItem> pantry,
+  DateTime date, {
+  DateTime? today,
+}) {
+  final day = DateTime(date.year, date.month, date.day);
+  final now = today ?? DateTime.now();
+  final ranked = [
+    for (var i = 0; i < recipes.length; i++)
+      _rankRecipe(recipes[i], i, pantry, now),
+  ]..sort(_compareRanked);
+  return [for (final recipe in ranked) _planEntry(recipe, day)];
+}

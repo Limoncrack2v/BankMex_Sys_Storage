@@ -5,10 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bank_storage_app/data/models/family.dart';
 import 'package:bank_storage_app/data/models/member.dart';
 import 'package:bank_storage_app/data/models/pantry_item.dart';
+import 'package:bank_storage_app/domain/meal_plan_edits.dart';
 import 'package:bank_storage_app/domain/models/meal_plan.dart';
 import 'package:bank_storage_app/ui/models/recipe.dart';
 import 'package:bank_storage_app/ui/sample_data.dart';
+import 'package:bank_storage_app/ui/screens/meal_plan/edit_plan_day_sheet.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/meal_plan_screen.dart';
+import 'package:bank_storage_app/ui/screens/profile/appliances_section.dart';
 import 'package:bank_storage_app/ui/theme/app_colors.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/pill.dart';
@@ -62,8 +65,13 @@ AsyncSnapshot<T> failed<T>() => AsyncSnapshot<T>.withError(
   FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
 );
 
-/// Un plan de lunes 12 a domingo 18 de octubre.
-SavedPlans savedPlans({required DateTime end}) => [
+/// Un plan que empieza el lunes 12 de octubre, con [recipeId] el miércoles
+/// 14 y los demás días libres.
+SavedPlans savedPlans({
+  required DateTime end,
+  String recipeId = 'rec_publicada',
+  bool pendingSync = false,
+}) => [
   (
     plan: MealPlan(
       id: 'plan1',
@@ -73,16 +81,22 @@ SavedPlans savedPlans({required DateTime end}) => [
       meals: [
         MealPlanMeal(
           date: DateTime(2026, 10, 14),
-          recipeId: 'rec_publicada',
+          recipeId: recipeId,
           servings: 2,
         ),
       ],
     ),
-    pendingSync: false,
+    pendingSync: pendingSync,
   ),
 ];
 
-/// Lo que se mandó guardar.
+/// Un plan guardado de lunes 12 a domingo 18 de octubre: abarca hoy.
+final currentPlan = loaded(
+  savedPlans(end: DateTime(2026, 10, 19), recipeId: 'rec_avena_fruta'),
+);
+
+/// Los planes nuevos que se mandaron guardar. Los cambios a un plan
+/// guardado van a [changed] y los planes eliminados a [deleted].
 Future<List<MealPlan>> pumpTab(
   WidgetTester tester, {
   AsyncSnapshot<List<Recipe>>? catalog,
@@ -91,6 +105,8 @@ Future<List<MealPlan>> pumpTab(
   AsyncSnapshot<List<PantryItem>>? pantry,
   AsyncSnapshot<SavedPlans>? plans,
   DateTime Function()? clock,
+  List<MealPlan>? changed,
+  List<String>? deleted,
 }) async {
   final saved = <MealPlan>[];
   await tester.pumpWidget(
@@ -105,6 +121,8 @@ Future<List<MealPlan>> pumpTab(
           pantry: pantry ?? loaded(items),
           plans: plans ?? loaded<SavedPlans>(const []),
           onSave: (plan) async => saved.add(plan),
+          onSaveMeals: (plan) async => changed?.add(plan),
+          onDelete: (planId) async => deleted?.add(planId),
           clock: clock ?? () => today,
         ),
       ),
@@ -292,5 +310,112 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Receta no disponible'), findsNothing);
+  });
+
+  testWidgets('a plan that covers today is shown with its sync state', (
+    tester,
+  ) async {
+    await pumpTab(
+      tester,
+      plans: loaded(
+        savedPlans(
+          end: DateTime(2026, 10, 19),
+          recipeId: 'rec_avena_fruta',
+          pendingSync: true,
+        ),
+      ),
+    );
+
+    expect(
+      find.text('Tu plan guardado: del 12 al 18 de octubre'),
+      findsOneWidget,
+    );
+    expect(find.text(pendingSyncLabel), findsOneWidget);
+    expect(find.text('Avena con fruta'), findsOneWidget);
+    expect(find.text('Guardar este plan'), findsNothing);
+  });
+
+  testWidgets('a saved day is changed through onSaveMeals', (tester) async {
+    final changed = <MealPlan>[];
+    await pumpTab(tester, plans: currentPlan, changed: changed);
+
+    await tester.tap(find.text('Cambiar'));
+    await tester.pumpAndSettle();
+    final rice = find.descendant(
+      of: find.byType(EditPlanDaySheet),
+      matching: find.text('Arroz con atún'),
+    );
+    await tester.ensureVisible(rice);
+    await tester.pumpAndSettle();
+    await tester.tap(rice);
+    await tester.pumpAndSettle();
+    expect(
+      MealPlanEdits.mealOn(changed.single, DateTime(2026, 10, 14))?.recipeId,
+      'rec_arroz_atun',
+    );
+  });
+
+  testWidgets('the saved plan is deleted by its id', (tester) async {
+    final deleted = <String>[];
+    await pumpTab(tester, plans: currentPlan, deleted: deleted);
+
+    await tester.scrollUntilVisible(find.text('Eliminar plan'), 300);
+    await tester.ensureVisible(find.text('Eliminar plan'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eliminar plan'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eliminar'));
+    await tester.pumpAndSettle();
+    expect(deleted, ['plan1']);
+  });
+
+  testWidgets('the saved plan cannot be changed until everything is read', (
+    tester,
+  ) async {
+    final cases = {
+      'No pudimos revisar las alergias de tu familia. Revisa tu conexión e '
+          'intenta de nuevo.': () =>
+          pumpTab(tester, plans: currentPlan, members: failed()),
+      'No pudimos cargar los datos de tu hogar. Revisa tu conexión e intenta '
+          'de nuevo.': () =>
+          pumpTab(tester, plans: currentPlan, family: failed()),
+      'No pudimos cargar las recetas de BAMX. Revisa tu conexión e intenta de '
+          'nuevo.': () =>
+          pumpTab(tester, plans: currentPlan, catalog: failed()),
+    };
+    for (final MapEntry(key: warning, value: pump) in cases.entries) {
+      await pump();
+
+      expectWarning(tester, warning);
+      expect(find.text('Cambiar'), findsNothing, reason: warning);
+      expect(find.text('Elegir receta'), findsNothing, reason: warning);
+    }
+  });
+
+  testWidgets('the sample recipes of an empty catalog cannot be picked', (
+    tester,
+  ) async {
+    await pumpTab(tester, plans: currentPlan, catalog: loaded(const []));
+
+    expect(
+      find.text(
+        'Para cambiar tu plan hacen falta recetas del catálogo de BAMX.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Cambiar'), findsNothing);
+  });
+
+  testWidgets('without the catalog a saved recipe is not called gone and '
+      'cannot be replaced', (tester) async {
+    await pumpTab(
+      tester,
+      plans: loaded(savedPlans(end: DateTime(2026, 10, 19))),
+      catalog: failed(),
+    );
+
+    expect(find.text('Receta sin cargar'), findsOneWidget);
+    expect(find.text('Receta no disponible'), findsNothing);
+    expect(find.text('Elegir otra'), findsNothing);
   });
 }

@@ -3,16 +3,32 @@ import 'package:flutter/material.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../domain/meal_plan_edits.dart';
+import '../../../domain/models/appliance.dart';
 import '../../../domain/models/meal_plan.dart';
+import '../../formatting.dart';
 import '../../models/expiration_urgency.dart';
 import '../../models/recipe.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_icon.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/pill.dart';
 import '../profile/appliances_section.dart' show pendingSyncLabel;
+import 'delete_meal_plan_sheet.dart';
+import 'edit_plan_day_sheet.dart';
 import 'leftover_ingredients_section.dart';
+import 'meal_plan_saving.dart';
+
+const _weekdays = [
+  'lunes',
+  'martes',
+  'miércoles',
+  'jueves',
+  'viernes',
+  'sábado',
+  'domingo',
+];
 
 const _months = [
   'enero',
@@ -40,9 +56,20 @@ String _rangeLabel(DateTime first, DateTime last) {
       '${_dayOfMonth(last)}';
 }
 
+/// "miércoles 16".
+String _dayName(DateTime date) => '${_weekdays[date.weekday - 1]} ${date.day}';
+
+/// "Miércoles 16 de octubre".
+String _dayTitle(DateTime date) {
+  final weekday = _weekdays[date.weekday - 1];
+  return '${weekday[0].toUpperCase()}${weekday.substring(1)} '
+      '${_dayOfMonth(date)}';
+}
+
 /// El plan que guardó la familia (mealPlans/{id}): una tarjeta por día, de hoy
 /// al último del plan (los días que ya pasaron no se muestran), y lo que le
-/// sobra de la despensa después de cocinarlo.
+/// sobra de la despensa después de cocinarlo. Cada día se puede cambiar de
+/// receta o dejar libre, y el plan se puede eliminar.
 ///
 /// Los recipeId del plan se buscan en [recipes]; si la receta ya no está (se
 /// borró del catálogo o volvió a revisión), el día dice "Receta no
@@ -56,8 +83,12 @@ class SavedPlanView extends StatelessWidget {
     required this.members,
     required this.pantry,
     required this.today,
+    this.warnings = const [],
     this.catalogFailed = false,
+    this.appliances = const [],
     required this.onOpenRecipe,
+    required this.onSaveMeals,
+    required this.onDelete,
   });
 
   final MealPlan plan;
@@ -71,12 +102,67 @@ class SavedPlanView extends StatelessWidget {
   final List<PantryItem> pantry;
   final DateTime today;
 
+  /// Lo que no se pudo leer; va arriba de los días.
+  final List<String> warnings;
+
   /// Si no se pudo leer el catálogo: una receta que no está en [recipes] no
   /// se sabe si sigue en él.
   final bool catalogFailed;
 
+  /// Ids de Appliance del hogar; vacía si no se sabe ([lacksAppliance]).
+  final List<String> appliances;
+
   /// Recibe la receta original: el detalle ajusta las porciones él mismo.
   final ValueChanged<Recipe> onOpenRecipe;
+
+  /// Guarda las comidas del plan después de cambiar un día. Null si no se
+  /// puede: [warnings] dice por qué o, sin avisos, las recetas son de ejemplo.
+  final Future<void> Function(MealPlan plan)? onSaveMeals;
+
+  /// Elimina el plan.
+  final Future<void> Function() onDelete;
+
+  void _editDay(
+    BuildContext context,
+    DateTime day,
+    MealPlanMeal? meal,
+    Future<void> Function(MealPlan plan) save,
+  ) {
+    final options = planOptionsFor(
+      [
+        for (final recipe in recipes)
+          if (recipe.id.isNotEmpty) scaledForHousehold(recipe, members),
+      ],
+      pantry,
+      day,
+      today: today,
+    );
+    showEditPlanDaySheet(
+      context,
+      title: _dayTitle(day),
+      dayName: _dayName(day),
+      options: [
+        for (final entry in options)
+          (
+            entry: entry,
+            hasAllergens: allergyConflicts(entry.recipe, members).isNotEmpty,
+            missingAppliances: _missingAppliances(entry.recipe),
+          ),
+      ],
+      currentRecipeId: meal?.recipeId,
+      onPick: (recipe) => save(
+        MealPlanEdits.withRecipe(
+          plan,
+          day,
+          recipeId: recipe.id,
+          servings: planServings(members, recipe),
+        ),
+      ),
+      onClear: meal == null
+          ? null
+          : () => save(MealPlanEdits.withoutMeal(plan, day)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,10 +172,15 @@ class SavedPlanView extends StatelessWidget {
     };
     final start = MealPlanEdits.dateOnly(plan.dateRangeStart);
     final end = MealPlanEdits.dateOnly(plan.dateRangeEnd);
+    final range = _rangeLabel(
+      start,
+      DateTime(end.year, end.month, end.day - 1),
+    );
     final first = MealPlanEdits.dateOnly(today).isAfter(start)
         ? MealPlanEdits.dateOnly(today)
         : start;
 
+    final save = onSaveMeals;
     // Lo que se va a cocinar de hoy en adelante, para "Lo que te sobra".
     final entries = <MealPlanEntry>[];
     final cards = <Widget>[];
@@ -100,12 +191,22 @@ class SavedPlanView extends StatelessWidget {
     ) {
       final meal = MealPlanEdits.mealOn(plan, day);
       final recipe = meal == null ? null : byId[meal.recipeId];
+      final edit = save == null
+          ? null
+          : () => _editDay(context, day, meal, save);
       if (meal == null) {
         cards.add(
           _PlanDayCard(
             date: day,
             title: 'Día libre',
             message: 'No hay receta para este día.',
+            action: edit == null
+                ? null
+                : _CardAction(
+                    label: 'Elegir receta',
+                    semanticLabel: 'Elegir receta para el ${_dayName(day)}',
+                    onPressed: edit,
+                  ),
           ),
         );
       } else if (recipe == null && catalogFailed) {
@@ -117,6 +218,14 @@ class SavedPlanView extends StatelessWidget {
             title: 'Receta no disponible',
             message:
                 'La receta que guardaste ya no está en el catálogo de BAMX.',
+            action: edit == null
+                ? null
+                : _CardAction(
+                    label: 'Elegir otra',
+                    semanticLabel:
+                        'Elegir otra receta para el ${_dayName(day)}',
+                    onPressed: edit,
+                  ),
           ),
         );
       } else {
@@ -135,6 +244,13 @@ class SavedPlanView extends StatelessWidget {
             urgency: entry.urgency,
             hasAllergens: allergyConflicts(recipe, members).isNotEmpty,
             onTap: () => onOpenRecipe(recipe),
+            action: edit == null
+                ? null
+                : _CardAction(
+                    label: 'Cambiar',
+                    semanticLabel: 'Cambiar la receta del ${_dayName(day)}',
+                    onPressed: edit,
+                  ),
           ),
         );
       }
@@ -143,10 +259,22 @@ class SavedPlanView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _SavedPlanBanner(
-          range: _rangeLabel(start, DateTime(end.year, end.month, end.day - 1)),
-          pendingSync: pendingSync,
-        ),
+        _SavedPlanBanner(range: range, pendingSync: pendingSync),
+        for (final warning in warnings) ...[
+          const SizedBox(height: 12),
+          InfoBanner(
+            message: warning,
+            background: AppColors.warningSoft,
+            foreground: AppColors.warningText,
+          ),
+        ],
+        if (save == null && warnings.isEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Para cambiar tu plan hacen falta recetas del catálogo de BAMX.',
+            style: AppText.nunito(14, 21, color: AppColors.textMuted),
+          ),
+        ],
         for (final card in cards) ...[const SizedBox(height: 12), card],
         if (entries.isNotEmpty) ...[
           const SizedBox(height: 24),
@@ -155,9 +283,32 @@ class SavedPlanView extends StatelessWidget {
             today: today,
           ),
         ],
+        const SizedBox(height: 24),
+        Center(
+          child: DangerLinkButton(
+            label: 'Eliminar plan',
+            semanticLabel: 'Eliminar plan $range',
+            onPressed: () => showDeleteMealPlanSheet(
+              context,
+              range: range,
+              onDelete: onDelete,
+            ),
+          ),
+        ),
       ],
     );
   }
+
+  /// Lo que pide [recipe] y no tiene el hogar, p. ej. "licuadora".
+  List<String> _missingAppliances(Recipe recipe) => [
+    if (lacksAppliance(recipe, appliances))
+      for (final id in recipe.requiredEquipment)
+        if (!appliances.contains(id))
+          switch (Appliance.fromId(id)) {
+            final appliance? => applianceLabel(appliance).toLowerCase(),
+            null => id,
+          },
+  ];
 
   /// El día de una receta que no se sabe si sigue en el catálogo.
   Widget _notLoadedCard(DateTime day) => _PlanDayCard(
@@ -217,12 +368,15 @@ class _SavedPlanBanner extends StatelessWidget {
 }
 
 /// Un día del plan guardado, con el mismo cuadro del día que las tarjetas del
-/// plan sugerido. Sin [urgency] es un día sin receta que mostrar.
+/// plan sugerido. Sin [urgency] es un día sin receta que mostrar. La acción
+/// ("Cambiar") va debajo del texto y no junto a la píldora, para que quepa
+/// con letra grande.
 class _PlanDayCard extends StatelessWidget {
   const _PlanDayCard({
     required this.date,
     required this.title,
     required this.message,
+    this.action,
     this.urgency,
     this.hasAllergens = false,
     this.onTap,
@@ -233,6 +387,9 @@ class _PlanDayCard extends StatelessWidget {
 
   /// Por qué se eligió la receta, o qué pasa con el día.
   final String message;
+
+  /// "Cambiar", "Elegir receta"…; null si el día no se puede cambiar.
+  final Widget? action;
   final ExpirationUrgency? urgency;
 
   /// Si la receta lleva algo a lo que un integrante es alérgico.
@@ -249,6 +406,7 @@ class _PlanDayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final urgency = this.urgency;
+    final action = this.action;
 
     return Material(
       color: AppColors.surface,
@@ -257,7 +415,8 @@ class _PlanDayCard extends StatelessWidget {
         onTap: onTap,
         customBorder: _shape,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          // La acción ya trae aire abajo: mide 48 dp aunque el texto no.
+          padding: EdgeInsets.fromLTRB(16, 16, 16, action == null ? 16 : 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -295,6 +454,7 @@ class _PlanDayCard extends StatelessWidget {
                         ),
                       ),
                     ],
+                    if (action != null) ...[const SizedBox(height: 2), action],
                   ],
                 ),
               ),
@@ -353,6 +513,57 @@ class _DayTile extends StatelessWidget {
             style: AppText.baloo(16, 20, weight: FontWeight.w600),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Enlace verde subrayado de una tarjeta del plan, como [TextLinkButton] pero
+/// alineado con el texto de la tarjeta y de 48 dp de alto.
+class _CardAction extends StatelessWidget {
+  const _CardAction({
+    required this.label,
+    required this.semanticLabel,
+    required this.onPressed,
+  });
+
+  final String label;
+
+  /// [label] con el día: cada tarjeta tiene un "Cambiar".
+  final String semanticLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: semanticLabel,
+      onTap: onPressed,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: 1,
+            child: Text(
+              label,
+              style:
+                  AppText.nunito(
+                    15,
+                    22.5,
+                    weight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                  ).copyWith(
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.primaryDark,
+                  ),
+            ),
+          ),
+        ),
       ),
     );
   }
