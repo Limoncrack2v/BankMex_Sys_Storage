@@ -61,6 +61,10 @@ Future<void> seedFixtures() async {
 }
 
 Db staff() => Db.user('staff1');
+// Las acciones sensibles piden una sesión de menos de 5 minutos
+// (recentlySignedIn en firestore.rules).
+Db staleStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 6));
+Db recentStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 4));
 Db fam1() => Db.user('fam1');
 Db fam2() => Db.user('fam2');
 Db newbie() => Db.user('newbie');
@@ -117,6 +121,30 @@ void main() {
         ]),
       );
     });
+
+    test('staff con sesión vieja no crea perfil + hogar', () async {
+      await assertDenied(
+        staleStaff().commit([
+          setWrite('users/newbie', profile('family')),
+          setWrite('families/newbie', family('newbie')),
+        ]),
+      );
+    });
+
+    // Sin el perfil en el batch, la regla de users no participa: la sesión
+    // reciente la tiene que pedir la regla de families.
+    test(
+      'staff con sesión vieja no crea el hogar de un perfil que ya existe',
+      () async {
+        await Db.admin().setDoc('users/newbie', profile('family'));
+        await assertDenied(
+          staleStaff().setDoc('families/newbie', family('newbie')),
+        );
+        await assertAllowed(
+          staff().setDoc('families/newbie', family('newbie')),
+        );
+      },
+    );
 
     test('staff no crea hogar sin perfil de familia', () async {
       await assertDenied(staff().setDoc('families/newbie', family('newbie')));

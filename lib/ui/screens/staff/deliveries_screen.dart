@@ -26,6 +26,7 @@ import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
 import '../../widgets/standard_basket_selector.dart';
+import '../session/step_up_sheet.dart';
 
 /// Sin conexión, Firestore guarda el cambio en el dispositivo pero el commit
 /// no termina hasta sincronizar. Pasado este tiempo se da por guardado y la
@@ -1863,6 +1864,8 @@ class _DeliveryActionSheetState extends State<_DeliveryActionSheet> {
     if (_saving || _alreadyChanged) return;
     final delivery = widget.delivery;
     final isDeliver = _isDeliver;
+    // Cancelar pide una sesión reciente; entregar no (se hace sin conexión).
+    if (!isDeliver && (!await ensureRecentSignIn(context) || !mounted)) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _saving = true;
@@ -2093,6 +2096,8 @@ class _ReassignSheetState extends State<_ReassignSheet> {
       setState(() => _attempted = true);
       return;
     }
+    // Reasignar pide una sesión reciente.
+    if (!await ensureRecentSignIn(context) || !mounted) return;
     final delivery = widget.delivery;
     final messenger = ScaffoldMessenger.of(context);
     FocusScope.of(context).unfocus();

@@ -15,6 +15,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
+import '../session/step_up_sheet.dart';
 
 /// Alta de cuentas por el staff: familias (con su hogar), staff o nutriólogos.
 /// Después de crearla, el mismo sheet muestra la confirmación.
@@ -100,6 +101,8 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
   Future<void> _submit() async {
     if (!_canSave || _saving) return;
     FocusScope.of(context).unfocus();
+    // Crear cuentas pide una sesión reciente.
+    if (!await ensureRecentSignIn(context) || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     final isFamily = _isFamily;

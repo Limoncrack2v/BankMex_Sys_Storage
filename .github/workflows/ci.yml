@@ -75,6 +75,17 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: npm ci --prefix functions
       - run: npm install --global firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
+      # Pruebas de la Cloud Function programada (node --test): las puras, y las
+      # que usan el emulador de Firestore. El trigger programado no se dispara
+      # en el emulador, así que se llama su lógica directo.
+      - name: npm test (functions)
+        run: npm test --prefix functions
+      - name: npm run test:emulator (functions)
+        run: >
+          firebase emulators:exec
+          --only firestore
+          --project bank-storage-bamx
+          "npm run test:emulator --prefix functions"
       - name: flutter test test_emulator
         run: >
           firebase emulators:exec

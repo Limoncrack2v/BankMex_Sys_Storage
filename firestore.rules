@@ -22,6 +22,16 @@ service cloud.firestore {
         || (isStaff() && exists(/databases/$(database)/documents/families/$(familyId)));
     }
 
+    // Acciones sensibles del staff (crear cuentas, revisar solicitudes,
+    // publicar recetas, cancelar o reasignar entregas): la sesión se inició
+    // hace menos de 5 minutos (MASVS-AUTH-3). auth_time viene en segundos y
+    // renovar el token no lo cambia: solo un inicio de sesión o una
+    // reautenticación con contraseña lo actualiza.
+    function recentlySignedIn() {
+      return request.auth != null
+        && request.time < timestamp.value(request.auth.token.auth_time * 1000) + duration.value(5, 'm');
+    }
+
     // nextDeliveryDate solo lo escribe la Cloud Function syncNextDelivery;
     // aquí se acepta porque validFamily revisa el documento completo, 
     // y abajo se impide que un cliente lo cree o lo cambie.
@@ -104,6 +114,56 @@ service cloud.firestore {
         && (data.localTimestamp is timestamp && data.localTimestamp <= request.time + duration.value(5, 'm'));
     }
 
+    // Un producto de una entrega (DeliveryItem.toMap), con los mismos límites
+    // que DeliveryItem.validate y invalidReason (functions/pantry.js), salvo
+    // el tope de la cantidad (PantryItem.maxQuantity): no cabe en el
+    // presupuesto de expresiones de una reasignación con cuota y
+    // justificación, y lo siguen aplicando DeliveryItem.validate e
+    // invalidReason, que no deja pasar a la despensa un producto que lo
+    // exceda. Si falta un campo o no tiene el tipo esperado, la evaluación
+    // falla y la escritura se rechaza. type y unit son los valores de
+    // FoodType y FoodUnit (lib/data/models/pantry_item.dart) y de FOOD_TYPES y
+    // FOOD_UNITS (functions/pantry.js); se revisan juntos como "tipo/unidad"
+    // para gastar menos expresiones.
+    function validDeliveryItem(item) {
+      return item.productId.matches('(?s).{1,100}')
+        && (item.type + '/' + item.unit).matches('(grain|legume|canned|dairy|produce|protein|beverage|other)/(kg|g|l|ml|piece|can|pack)')
+        && item.quantity > 0
+        && item.expirationDate is timestamp;
+    }
+
+    // Las reglas no tienen ciclos ni recursión: cada producto se revisa por su
+    // índice, y el producto k solo se evalúa si hay más de k (dentro de la
+    // guarda del anterior). Cada solicitud tiene un tope de expresiones
+    // (1000), y cada producto gasta unas 60: por eso el máximo es 16, igual
+    // que Delivery.maxItems. El margen es corto: medido en el emulador caben
+    // 11 condiciones triviales más en validDelivery, unos 1.5 productos. No
+    // solo subir el tope: cualquier condición nueva en la creación o en la
+    // reasignación de una entrega obliga a repetir las pruebas del máximo en
+    // test_emulator/rules_deliveries_test.dart (grupo 'cantidad máxima de
+    // productos' y las pruebas 'se reasigna una entrega con el máximo de
+    // productos' y 'se reasigna el máximo con cuota y justificación').
+    function validDeliveryItems(items) {
+      let n = items.size();
+      return items is list && n >= 1 && n <= 16
+        && validDeliveryItem(items[0])
+        && (n <= 1 || validDeliveryItem(items[1])
+          && (n <= 2 || validDeliveryItem(items[2])
+            && (n <= 3 || validDeliveryItem(items[3])
+              && (n <= 4 || validDeliveryItem(items[4])
+                && (n <= 5 || validDeliveryItem(items[5])
+                  && (n <= 6 || validDeliveryItem(items[6])
+                    && (n <= 7 || validDeliveryItem(items[7])
+                      && (n <= 8 || validDeliveryItem(items[8])
+                        && (n <= 9 || validDeliveryItem(items[9])
+                          && (n <= 10 || validDeliveryItem(items[10])
+                            && (n <= 11 || validDeliveryItem(items[11])
+                              && (n <= 12 || validDeliveryItem(items[12])
+                                && (n <= 13 || validDeliveryItem(items[13])
+                                  && (n <= 14 || validDeliveryItem(items[14])
+                                    && (n <= 15 || validDeliveryItem(items[15]))))))))))))))));
+    }
+
     function validDelivery(data) {
       return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom', 'deviceId', 'localTimestamp'])
         && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt', 'deviceId', 'localTimestamp'])
@@ -118,7 +178,7 @@ service cloud.firestore {
         && (!('recoveryFee' in data) || ('justification' in data && data.justification.trim().size() > 0))
         && data.status in ['scheduled', 'delivered', 'cancelled']
         && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
-        && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
+        && validDeliveryItems(data.items)
         && data.createdAt is timestamp
         && (!('reassignedFrom' in data) || (data.reassignedFrom is string
           && data.reassignedFrom.size() > 0 && data.reassignedFrom.size() <= 128))
@@ -141,6 +201,7 @@ service cloud.firestore {
       // (mismo batch). El id del hogar es el uid de su cuenta: un hogar por
       // cuenta.
       allow create: if isStaff()
+        && recentlySignedIn()
         && validFamily(request.resource.data)
         && familyId == request.resource.data.authUid
         && getAfter(/databases/$(database)/documents/users/$(familyId)).data.role == 'family'
@@ -207,7 +268,12 @@ service cloud.firestore {
       // cancelada o a reasignada (con la entrega nueva para otra familia en el
       // mismo batch). Así no se puede marcar como entregada dos veces desde
       // dos dispositivos y duplicar los productos en la despensa.
+      // Cancelar y reasignar piden una sesión reciente. Marcar como entregada
+      // no: la entrega se hace sin conexión, y una escritura en cola que se
+      // sincroniza más de 5 minutos después de iniciar sesión se rechazaría
+      // y la despensa nunca se llenaría.
       allow update: if isStaff()
+        && (request.resource.data.status == 'delivered' || recentlySignedIn())
         && resource.data.status == 'scheduled'
         && validTrace(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(['localTimestamp'])
@@ -233,6 +299,7 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/users/$(uid));
       allow read: if request.auth != null && (request.auth.uid == uid || isStaff());
       allow update: if isStaff()
+        && recentlySignedIn()
         && resource.data.status == 'pending'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt'])
         && request.resource.data.reviewedBy == request.auth.uid
@@ -253,17 +320,24 @@ service cloud.firestore {
     match /users/{userId} {
       // Solo el staff crea perfiles
       // (así nadie puede asignarse el rol staff o de nutriólogo).
-      allow create: if isStaff() && validUserProfile(request.resource.data);
+      allow create: if isStaff()
+        && recentlySignedIn()
+        && validUserProfile(request.resource.data);
       allow read: if request.auth != null && userId == request.auth.uid;
     }
 
     // Catálogo global. El staff publica y edita; la familia solo lee approved
-    // y el nutriólogo solo lee pending y no escribe
+    // y el nutriólogo solo lee pending y no escribe.
+    // Toda escritura que deja la receta como approved (publicar una nueva o
+    // una pendiente, editar una publicada) pide una sesión reciente; guardar
+    // una pendiente, regresarla a pendiente y borrar no.
     match /recipes/{recipeId} {
       allow read: if isStaff()
         || (isNutritionist() && resource.data.status == 'pending')
         || (request.auth != null && resource.data.status == 'approved');
-      allow create, update, delete: if isStaff();
+      allow create, update: if isStaff()
+        && (request.resource.data.status != 'approved' || recentlySignedIn());
+      allow delete: if isStaff();
     }
 
     // Solo la familia dueña del plan y el staff lo leen y lo escriben. Un plan
