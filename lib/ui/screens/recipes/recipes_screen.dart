@@ -6,12 +6,12 @@ import '../../../data/models/pantry_item.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
 import '../../models/recipe.dart';
-import '../../sample_data.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_icon.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/pill.dart';
 import 'recipe_detail_screen.dart';
 
@@ -38,11 +38,9 @@ class RecipesScreen extends StatefulWidget {
   const RecipesScreen({
     super.key,
     required this.familyId,
-    this.recipes = SampleData.recipes,
   });
 
   final String familyId;
-  final List<Recipe> recipes;
 
   @override
   State<RecipesScreen> createState() => _RecipesScreenState();
@@ -83,10 +81,33 @@ class _RecipesScreenState extends State<RecipesScreen> {
           child: StreamBuilder<List<Recipe>>(
             stream: _catalog,
             builder: (context, catalog) {
-              final recipes =
-                  catalog.hasData && catalog.data!.isNotEmpty
-                      ? catalog.data!
-                      : widget.recipes;
+              if (catalog.hasError) {
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: const [
+                    InfoBanner(
+                      message:
+                          'No se pudieron cargar las recetas. Revisa tu '
+                          'conexión e intenta de nuevo.',
+                      background: AppColors.dangerSoft,
+                      foreground: AppColors.dangerText,
+                    ),
+                  ],
+                );
+              }
+              final recipes = catalog.data;
+              if (recipes == null) {
+                return const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                );
+              }
+              if (recipes.isEmpty) {
+                return const EmptyState(
+                  title: 'Aún no hay recetas',
+                  message:
+                      'Cuando el nutriólogo apruebe recetas, las verás aquí.',
+                );
+              }
               return StreamBuilder<List<Member>>(
                 stream: _members,
                 builder: (context, members) => StreamBuilder<List<PantryItem>>(

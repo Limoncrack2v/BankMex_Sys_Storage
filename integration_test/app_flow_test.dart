@@ -431,7 +431,9 @@ void main() {
       await _tap(tester, find.text('Eliminar'));
       await _waitFor(tester, find.text('Receta eliminada'));
       await _tap(tester, find.text('Listo'));
-      await _waitFor(tester, find.text('Aún no hay recetas en el catálogo.'));
+      // El catálogo del seed sigue ahí; la receta de la prueba ya no.
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text(recipeName), findsNothing);
 
       await _tap(tester, find.byTooltip('Cuenta'));
       await _waitFor(tester, find.text(newStaffName));

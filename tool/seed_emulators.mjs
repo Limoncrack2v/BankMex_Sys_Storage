@@ -18,6 +18,7 @@
 //   Familia: familia.ramirez@bamx.test / bamx1234
 //   Solicitud de staff pendiente de aprobar: solicitud.staff@bamx.test / bamx1234
 
+import { RECIPES } from './catalog_recipes.mjs';
 import { STANDARD_BASKETS, basketFields } from './standard_baskets.mjs';
 
 const PROJECT_ID = 'bank-storage-bamx';
@@ -405,6 +406,12 @@ async function seed() {
 
   for (const basket of STANDARD_BASKETS) {
     await setDocument(`standardBaskets/${basket.id}`, basketFields(basket, now));
+  }
+
+  // Catálogo de recetas: sin él las familias no ven recetas (la app no usa
+  // datos de muestra).
+  for (const [id, fields] of RECIPES) {
+    await setDocument(`recipes/${id}`, fields);
   }
 
   // Solicitud de "Registro de Staff" pendiente. Si una corrida anterior la

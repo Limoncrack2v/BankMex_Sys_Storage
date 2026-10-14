@@ -10,10 +10,10 @@ import '../../../data/repositories/pantry_repository.dart';
 import '../../../domain/meal_plan_length.dart';
 import '../../formatting.dart';
 import '../../models/recipe.dart';
-import '../../sample_data.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_header.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/pill.dart';
 import '../recipes/recipe_detail_screen.dart';
 import 'leftover_ingredients_section.dart';
@@ -25,11 +25,9 @@ class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({
     super.key,
     required this.familyId,
-    this.recipes = SampleData.recipes,
   });
 
   final String familyId;
-  final List<Recipe> recipes;
 
   @override
   State<MealPlanScreen> createState() => _MealPlanScreenState();
@@ -76,10 +74,33 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           child: StreamBuilder<List<Recipe>>(
             stream: _catalog,
             builder: (context, catalog) {
-              final recipes =
-                  catalog.hasData && catalog.data!.isNotEmpty
-                      ? catalog.data!
-                      : widget.recipes;
+              if (catalog.hasError) {
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: const [
+                    InfoBanner(
+                      message:
+                          'No se pudieron cargar las recetas. Revisa tu '
+                          'conexión e intenta de nuevo.',
+                      background: AppColors.dangerSoft,
+                      foreground: AppColors.dangerText,
+                    ),
+                  ],
+                );
+              }
+              final recipes = catalog.data;
+              if (recipes == null) {
+                return const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                );
+              }
+              if (recipes.isEmpty) {
+                return const EmptyState(
+                  title: 'Aún no hay recetas para armar tu plan',
+                  message:
+                      'Cuando el nutriólogo apruebe recetas, tu plan de comidas se armará con ellas.',
+                );
+              }
               return StreamBuilder<Family?>(
                 stream: _family,
                 builder: (context, family) => StreamBuilder<List<Member>>(
