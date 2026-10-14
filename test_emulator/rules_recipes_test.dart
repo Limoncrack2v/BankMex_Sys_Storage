@@ -374,6 +374,92 @@ void main() {
     });
   });
 
+  // La tabla completa: quién puede pasar una receta de un estado a otro. Cada
+  // fila es (quién, de dónde, a dónde); Staff y el nutriólogo con sesión
+  // reciente son los únicos que escriben, y cada uno solo lo suyo.
+  group('tabla de transiciones', () {
+    const states = ['draft', 'pending', 'approved'];
+
+    Map<String, Map<String, Object?>> from(String status) =>
+        status == 'approved' ? approvedRecipe() : recipe(status);
+
+    /// Lo que cambia ese actor para ir de [origin] a [target]. Si es el mismo
+    /// estado, se edita el contenido.
+    Map<String, Object?> changes(String actor, String origin, String target) {
+      if (origin == target) return {'name': str('Otro nombre')};
+      if (actor == 'nutri' && target == 'approved') return approve();
+      if (actor == 'nutri' && target == 'draft') return reject();
+      return {
+        'status': str(target),
+        if (actor == 'staff' && origin == 'approved') ...{
+          'approvedBy': deleteField,
+          'approvedAt': deleteField,
+        },
+      };
+    }
+
+    bool allowed(String actor, String origin, String target) => switch (actor) {
+      // Staff nunca deja una receta aprobada: solo draft y pending.
+      'staff' => target != 'approved',
+      // El nutriólogo solo decide una pendiente: aprobarla o regresarla.
+      'nutri' => origin == 'pending' && target != 'pending',
+      _ => false,
+    };
+
+    final actors = {
+      'staff': staff,
+      'nutri': nutri,
+      'nutri con sesión vieja': staleNutri,
+      'familia': fam1,
+    };
+
+    for (final entry in actors.entries) {
+      for (final origin in states) {
+        for (final target in states) {
+          final actor = entry.key == 'nutri con sesión vieja'
+              ? 'stale'
+              : entry.key;
+          final expected = allowed(actor, origin, target);
+          test('${entry.key}: $origin a $target '
+              '${expected ? 'se permite' : 'se deniega'}', () async {
+            await Db.admin().setDoc('recipes/r1', from(origin));
+            final result = entry.value().updateDoc(
+              'recipes/r1',
+              changes(actor, origin, target),
+            );
+            await (expected ? assertAllowed(result) : assertDenied(result));
+          });
+        }
+      }
+    }
+
+    for (final entry in actors.entries) {
+      for (final target in states) {
+        final expected = entry.key == 'staff' && target != 'approved';
+        test('${entry.key}: crear como $target '
+            '${expected ? 'se permite' : 'se deniega'}', () async {
+          final result = entry.value().setDoc(
+            'recipes/nueva',
+            target == 'approved' ? approvedRecipe() : recipe(target),
+          );
+          await (expected ? assertAllowed(result) : assertDenied(result));
+        });
+      }
+    }
+
+    for (final entry in actors.entries) {
+      for (final origin in states) {
+        final expected = entry.key == 'staff';
+        test('${entry.key}: borrar una $origin '
+            '${expected ? 'se permite' : 'se deniega'}', () async {
+          await Db.admin().setDoc('recipes/r1', from(origin));
+          final result = entry.value().deleteDoc('recipes/r1');
+          await (expected ? assertAllowed(result) : assertDenied(result));
+        });
+      }
+    }
+  });
+
   group('lectura y familia', () {
     test('la familia lee solo las aprobadas', () async {
       await Db.admin().setDoc('recipes/r1', approvedRecipe());
