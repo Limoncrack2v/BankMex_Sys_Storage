@@ -16,6 +16,7 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/pill.dart';
 import '../recipes/recipe_detail_screen.dart';
+import 'leftover_ingredients_section.dart';
 
 /// Plan de comidas semanal o quincenal, según la próxima entrega de la
 /// familia (ver [MealPlanLength]): una receta por día, armado con la despensa
@@ -164,6 +165,13 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
               familyId: widget.familyId,
               backLabel: 'Volver al plan de comidas',
             ),
+          ),
+        ],
+        if (plan.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          LeftoverIngredientsSection(
+            leftovers: planLeftovers(plan, pantry, today: today),
+            today: today,
           ),
         ],
       ],
