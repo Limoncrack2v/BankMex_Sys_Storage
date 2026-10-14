@@ -37,6 +37,10 @@ Map<String, Map<String, Object?>> solicitud([
 // Sesiones. La de "nueva" lleva su correo en el token porque la regla de
 // creación lo compara con el de la solicitud.
 Db staff() => Db.user('staff1');
+// Las acciones sensibles piden una sesión de menos de 5 minutos
+// (recentlySignedIn en firestore.rules).
+Db staleStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 6));
+Db recentStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 4));
 Db fam1() => Db.user('fam1');
 Db nueva() => Db.user('nueva', email: 'nueva@bamx.test');
 Db anon() => Db.anonymous();
@@ -171,6 +175,37 @@ void main() {
         await assertAllowed(approve(staff()));
       },
     );
+
+    test('staff con sesión vieja no aprueba', () async {
+      await seedRequest();
+      await assertDenied(approve(staleStaff()));
+    });
+
+    test('staff con sesión vieja no rechaza', () async {
+      await seedRequest();
+      await assertDenied(
+        staleStaff().updateDoc('staffRequests/nueva', {
+          'status': str('rejected'),
+          'reviewedBy': str('staff1'),
+          'reviewedAt': serverTimestamp,
+        }),
+      );
+    });
+
+    test('staff que inició sesión hace 4 minutos aprueba', () async {
+      await seedRequest();
+      await assertAllowed(approve(recentStaff()));
+    });
+
+    test('staff con sesión vieja sigue viendo las pendientes', () async {
+      await seedRequest();
+      await assertAllowed(
+        staleStaff().listDocs(
+          'staffRequests',
+          where: ('status', str('pending')),
+        ),
+      );
+    });
 
     test('aprobar sin crear el perfil rechazado', () async {
       await seedRequest();

@@ -80,6 +80,10 @@ Map<String, Object?> restamp() => {'localTimestamp': ts(DateTime.now())};
 
 // Sesiones usadas en estos grupos.
 Db staff() => Db.user('staff1');
+// Cancelar y reasignar piden una sesión de menos de 5 minutos
+// (recentlySignedIn en firestore.rules); marcar como entregada no.
+Db staleStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 6));
+Db recentStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 4));
 Db fam1() => Db.user('fam1');
 
 /// Datos que existen antes de cada caso (el beforeEach del suite de Node, solo
@@ -184,6 +188,17 @@ void main() {
       );
     });
 
+    // La entrega se hace sin conexión: la escritura puede sincronizarse mucho
+    // después de iniciar sesión, y si se rechazara no se llenaría la despensa.
+    test('staff con sesión vieja sí marca como entregada', () async {
+      await assertAllowed(
+        staleStaff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
+      );
+    });
+
     test('cambiar la familia de una entrega rechazado', () async {
       await assertDenied(
         staff().updateDoc('deliveries/del1', {
@@ -226,6 +241,15 @@ void main() {
     test('staff cancela una programada', () async {
       await assertAllowed(
         staff().updateDoc('deliveries/del1', {
+          'status': str('cancelled'),
+          ...restamp(),
+        }),
+      );
+    });
+
+    test('staff con sesión vieja no cancela', () async {
+      await assertDenied(
+        staleStaff().updateDoc('deliveries/del1', {
           'status': str('cancelled'),
           ...restamp(),
         }),
@@ -347,6 +371,23 @@ void main() {
 
     test('staff reasigna una programada a otra familia', () async {
       await assertAllowed(reassign(staff()));
+    });
+
+    test('staff con sesión vieja no reasigna', () async {
+      await assertDenied(reassign(staleStaff()));
+    });
+
+    test('staff reciente cancela y reasigna', () async {
+      await assertAllowed(
+        recentStaff().updateDoc('deliveries/del1', {
+          'status': str('cancelled'),
+          ...restamp(),
+        }),
+      );
+      // del1 vuelve a quedar programada para poder reasignarla.
+      await clearFirestore();
+      await seed();
+      await assertAllowed(reassign(recentStaff()));
     });
 
     test('la familia no puede reasignar', () async {

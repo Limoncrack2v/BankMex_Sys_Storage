@@ -18,6 +18,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
+import '../session/step_up_sheet.dart';
 
 /// Sin conexión el commit no termina hasta sincronizar; pasado este tiempo se
 /// da por guardado (igual que en Entregas).
@@ -191,6 +192,12 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
   Future<void> _save() async {
     if (_saving || _missing != null) return;
     FocusScope.of(context).unfocus();
+    // Lo que deja la receta publicada pide una sesión reciente; guardar una
+    // pendiente no.
+    final publishes = widget.recipe == null
+        ? _publish
+        : widget.recipe!.status == RecipeStatus.approved;
+    if (publishes && (!await ensureRecentSignIn(context) || !mounted)) return;
     final messenger = ScaffoldMessenger.of(context);
     final name = _name.text.trim();
     setState(() {
@@ -283,6 +290,7 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
   Future<void> _publishPending() async {
     final recipe = widget.recipe;
     if (recipe == null || _saving) return;
+    if (!await ensureRecentSignIn(context) || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _saving = true;

@@ -31,6 +31,10 @@ Future<void> seedFixtures() async {
 }
 
 Db staff() => Db.user('staff1');
+// Las acciones sensibles piden una sesión de menos de 5 minutos
+// (recentlySignedIn en firestore.rules).
+Db staleStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 6));
+Db recentStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 4));
 Db fam1() => Db.user('fam1');
 Db newbie() => Db.user('newbie');
 Db anon() => Db.anonymous();
@@ -60,6 +64,19 @@ void main() {
 
     test('staff crea perfil de staff para otra cuenta', () async {
       await assertAllowed(staff().setDoc('users/newbie', profile('staff')));
+    });
+
+    test('staff con sesión vieja no crea perfiles', () async {
+      await assertDenied(
+        staleStaff().setDoc('users/newbie', profile('family')),
+      );
+      await assertDenied(staleStaff().setDoc('users/newbie', profile('staff')));
+    });
+
+    test('staff que inició sesión hace 4 minutos crea un perfil', () async {
+      await assertAllowed(
+        recentStaff().setDoc('users/newbie', profile('family')),
+      );
     });
 
     test('rol inválido rechazado', () async {
