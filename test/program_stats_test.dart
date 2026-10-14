@@ -145,6 +145,32 @@ void main() {
       expect(stats.comparedUntil, DateTime(2026, 9, 30));
       expect(stats.familiesServedBefore, 2);
     });
+
+    test('las entregas se leen desde el día 1 del mes anterior', () {
+      expect(ProgramStats.deliveriesStart(now), DateTime(2026, 9));
+      expect(
+        ProgramStats.deliveriesStart(DateTime(2026, 1, 31)),
+        DateTime(2025, 12),
+      );
+    });
+
+    test('una entrega de antes del mes anterior no cambia nada', () {
+      final recent = [
+        delivery('a', DateTime(2026, 10, 2)),
+        delivery('b', DateTime(2026, 9, 1)),
+      ];
+      final withOlder = compute(
+        deliveries: [...recent, delivery('c', DateTime(2026, 8, 31, 23))],
+      );
+      final onlyRecent = compute(deliveries: recent);
+      expect(withOlder.familiesServed, onlyRecent.familiesServed);
+      expect(withOlder.familiesServedBefore, onlyRecent.familiesServedBefore);
+      expect(withOlder.packagesDelivered, onlyRecent.packagesDelivered);
+      expect(
+        withOlder.packagesDeliveredBefore,
+        onlyRecent.packagesDeliveredBefore,
+      );
+    });
   });
 
   group('consumo y desperdicio por mes', () {

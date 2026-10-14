@@ -14,16 +14,24 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/pill.dart';
 
-/// Lee lo que necesitan las estadísticas: las entregas de los últimos meses
-/// y, de cada familia, sus registros de consumo y su despensa. Son lecturas
-/// puntuales (dos por familia), sin listeners.
+/// Lee lo que necesitan las estadísticas: las entregas de este mes y del
+/// anterior y, de cada familia, sus registros de consumo y su despensa. Son
+/// lecturas puntuales (dos por familia), sin listeners, y del servidor: sin
+/// conexión fallan y la pestaña lo avisa, en lugar de mostrar como totales lo
+/// que haya en la caché.
 Future<ProgramStats> loadProgramStats({DateTime? now}) async {
+  // shortcut: cada visita a la pestaña vuelve a leer todas las familias y, de
+  // cada una, su despensa y seis meses de registros (dos consultas por
+  // familia). Con pocas familias está bien; con cientos, conviene que una
+  // Cloud Function lleve totales por mes y que la pestaña lea solo esos.
   final clock = now ?? DateTime.now();
   final since = ProgramStats.windowStart(clock);
   final pantry = PantryRepository();
   final (families, deliveries) = await (
     FamilyRepository().getAllFamilies(),
-    DeliveryRepository().getDeliveriesSince(since),
+    DeliveryRepository().getDeliveriesSince(
+      ProgramStats.deliveriesStart(clock),
+    ),
   ).wait;
   final perFamily = await Future.wait([
     for (final family in families)

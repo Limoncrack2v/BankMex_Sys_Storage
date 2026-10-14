@@ -77,6 +77,10 @@ class ProgramStats {
   static DateTime windowStart(DateTime now) =>
       DateTime(now.year, now.month - (monthsShown - 1));
 
+  /// Primer día del mes anterior: las entregas solo cuentan para este mes y
+  /// los mismos días del anterior, así que no hace falta leer más atrás.
+  static DateTime deliveriesStart(DateTime now) => _previousPeriod(now).start;
+
   final DateTime now;
 
   /// Familias con al menos una entrega entregada este mes, y en los mismos
