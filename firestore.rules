@@ -185,6 +185,54 @@ service cloud.firestore {
         && validTrace(data);
     }
 
+    // Una comida de un plan (MealPlanMeal.toMap), con los mismos límites que
+    // MealPlanMeal.validate: ningún campo fuera de date, recipeId y servings;
+    // la fecha dentro del rango del plan (extremos incluidos); recipeId de 1 a
+    // 128 caracteres sin "/" (es el id de un documento de recipes; mismo tope
+    // que reassignedFrom); y porciones mayores a 0 y de hasta 100 (el mismo
+    // tope que los paquetes de una entrega). No hay hasAll ni "is timestamp",
+    // "is string" o "is number" para gastar menos expresiones: leer un campo
+    // que falta, o compararlo o aplicarle matches con otro tipo, falla la
+    // evaluación y la escritura se rechaza. Si la comida no es un mapa,
+    // hasOnly también falla.
+    function validMeal(meal, start, end) {
+      return meal.keys().hasOnly(['date', 'recipeId', 'servings'])
+        && meal.date >= start && meal.date <= end
+        && meal.recipeId.matches('[^/]{1,128}')
+        && meal.servings > 0 && meal.servings <= 100;
+    }
+
+    // Las reglas no tienen ciclos ni recursión: cada comida se revisa por su
+    // índice, y la comida k solo se evalúa si hay más de k (dentro de la
+    // guarda de la anterior). Un plan abarca 7 o 14 días con una comida por
+    // día (MealPlanLength, MealPlanGenerator): el máximo es 14, igual que
+    // MealPlan.maxMeals. Cada solicitud tiene un tope de expresiones (1000).
+    // El margen es corto: medido en el emulador, con 14 comidas caben 28
+    // condiciones triviales (1 == 1) más en validMealPlan cuando el staff
+    // cambia un plan (la ruta más cara) y fallan 30; al crear, caben 30 y
+    // fallan 32. No solo subir el tope: cualquier condición nueva en validMeal
+    // o en validMealPlan obliga a repetir las pruebas del máximo en
+    // test_emulator/rules_meal_plans_test.dart (grupo 'cantidad máxima de
+    // comidas').
+    function validMeals(meals, start, end) {
+      let n = meals.size();
+      return meals is list && n <= 14
+        && (n == 0 || validMeal(meals[0], start, end)
+          && (n <= 1 || validMeal(meals[1], start, end)
+            && (n <= 2 || validMeal(meals[2], start, end)
+              && (n <= 3 || validMeal(meals[3], start, end)
+                && (n <= 4 || validMeal(meals[4], start, end)
+                  && (n <= 5 || validMeal(meals[5], start, end)
+                    && (n <= 6 || validMeal(meals[6], start, end)
+                      && (n <= 7 || validMeal(meals[7], start, end)
+                        && (n <= 8 || validMeal(meals[8], start, end)
+                          && (n <= 9 || validMeal(meals[9], start, end)
+                            && (n <= 10 || validMeal(meals[10], start, end)
+                              && (n <= 11 || validMeal(meals[11], start, end)
+                                && (n <= 12 || validMeal(meals[12], start, end)
+                                  && (n <= 13 || validMeal(meals[13], start, end)))))))))))))));
+    }
+
     function validMealPlan(data) {
       return data.keys().hasOnly(['familyId', 'dateRangeStart', 'dateRangeEnd', 'meals'])
         && data.keys().hasAll(['familyId', 'dateRangeStart', 'dateRangeEnd', 'meals'])
@@ -193,7 +241,7 @@ service cloud.firestore {
         && data.dateRangeStart is timestamp
         && data.dateRangeEnd is timestamp
         && data.dateRangeEnd >= data.dateRangeStart
-        && data.meals is list && data.meals.size() <= 100;
+        && validMeals(data.meals, data.dateRangeStart, data.dateRangeEnd);
     }
 
     match /families/{familyId} {
