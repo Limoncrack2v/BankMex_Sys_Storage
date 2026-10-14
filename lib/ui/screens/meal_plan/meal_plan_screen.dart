@@ -25,9 +25,20 @@ class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({
     super.key,
     required this.familyId,
+    this.pantry,
+    this.members,
+    this.catalog,
+    this.family,
   });
 
   final String familyId;
+
+  /// Para las pruebas: por omisión se leen de Firestore, de la despensa, los
+  /// integrantes y el hogar de [familyId] y de las recetas aprobadas.
+  final Stream<List<PantryItem>>? pantry;
+  final Stream<List<Member>>? members;
+  final Stream<List<Recipe>>? catalog;
+  final Stream<Family?>? family;
 
   @override
   State<MealPlanScreen> createState() => _MealPlanScreenState();
@@ -56,10 +67,13 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   }
 
   void _watch() {
-    _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
-    _members = MemberRepository().watchAllMembers(widget.familyId);
-    _catalog = watchApprovedCatalogRecipes();
-    _family = FamilyRepository().watchFamily(widget.familyId);
+    _pantry =
+        widget.pantry ??
+        PantryRepository().watchAllPantryItems(widget.familyId);
+    _members =
+        widget.members ?? MemberRepository().watchAllMembers(widget.familyId);
+    _catalog = widget.catalog ?? watchApprovedCatalogRecipes();
+    _family = widget.family ?? FamilyRepository().watchFamily(widget.familyId);
   }
 
   @override
