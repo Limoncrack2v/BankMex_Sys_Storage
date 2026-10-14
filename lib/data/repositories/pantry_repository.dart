@@ -2,11 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../device_identity.dart';
 import '../firestore_paths.dart';
+import '../models/consumption_log.dart';
 import '../models/pantry_item.dart';
-
-/// Por qué salió un producto de la despensa (campo `reason` de
-/// consumptionLogs): se consumió, o ya había caducado y se desechó.
-enum ConsumptionReason { consumed, expired }
 
 /// Despensa de una familia. La app no crea productos: los crea la Cloud
 /// Function onDeliveryWritten (functions/index.js) cuando una entrega queda
@@ -144,6 +141,49 @@ class PantryRepository {
       _pantryItems(familyId)
           .snapshots()
           .map((snapshot) => snapshot.docs.map(_parseOrThrow).toList());
+
+  /// La despensa de una familia, leída una vez del servidor (para las
+  /// estadísticas del staff): sin conexión falla en lugar de regresar lo que
+  /// haya en la caché. Un producto que no se pueda leer se omite.
+  Future<List<PantryItem>> getPantryItems(String familyId) async {
+    final snapshot = await _pantryItems(familyId)
+        .get(const GetOptions(source: Source.server));
+    return [
+      for (final doc in snapshot.docs)
+        ?_tryParse(doc, PantryItem.fromFirestore),
+    ];
+  }
+
+  /// Los registros de consumptionLogs de una familia desde [since], leídos
+  /// del servidor: sin conexión falla en lugar de regresar los que haya en la
+  /// caché. Un registro que no se pueda leer se omite en lugar de romper las
+  /// estadísticas.
+  Future<List<ConsumptionLog>> getConsumptionLogs(
+    String familyId, {
+    required DateTime since,
+  }) async {
+    final snapshot = await _db
+        .collection(FirestorePaths.families)
+        .doc(familyId)
+        .collection(FirestorePaths.consumptionLogs)
+        .where('at', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+        .get(const GetOptions(source: Source.server));
+    return [
+      for (final doc in snapshot.docs)
+        ?_tryParse(doc, ConsumptionLog.fromFirestore),
+    ];
+  }
+
+  static T? _tryParse<T>(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+    T Function(DocumentSnapshot<Map<String, dynamic>>) parse,
+  ) {
+    try {
+      return parse(doc);
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Igual que [watchAllPantryItems], pero indica por producto si tiene
   /// cambios que siguen en el dispositivo (sin conexión) y aún no llegan al
