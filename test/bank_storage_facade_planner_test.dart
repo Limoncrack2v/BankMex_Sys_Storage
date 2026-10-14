@@ -66,7 +66,8 @@ class _Recipes implements RecipeRepository {
 
 class _MealPlans implements MealPlanRepository {
   @override
-  Future<MealPlan> create(MealPlan plan) async => plan;
+  Future<MealPlan> create(MealPlan plan) async =>
+      throw StateError('generateMealPlan no debe guardar el plan');
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
