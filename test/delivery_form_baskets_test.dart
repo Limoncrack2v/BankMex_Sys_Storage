@@ -118,6 +118,16 @@ List<String> _quantities(WidgetTester tester) => [
 AppTextField _nameField(WidgetTester tester, int index) =>
     _fields(tester, 'Ej. Arroz').elementAt(index);
 
+/// Escribe la cantidad del producto [index] (el primer campo con "0" es la
+/// cuota).
+Future<void> _setQuantity(WidgetTester tester, int index, String text) async {
+  await tester.enterText(
+    find.byWidget(_fields(tester, '0').elementAt(index + 1)),
+    text,
+  );
+  await tester.pump();
+}
+
 void main() {
   group('elegir las despensas', () {
     testWidgets('antes de la fecha no llena nada y la pide', (tester) async {
@@ -327,6 +337,97 @@ void main() {
 
       expect(_names(tester), ['Arroz']);
       expect(find.text(StandardBasketSelector.staleMessage), findsNothing);
+    });
+  });
+
+  group('deshacer lo que el staff editó', () {
+    const llenadaPara1 =
+        'Llenada con Despensa básica para 1 despensa (2 productos).';
+    const llenadaPara2 =
+        'Llenada con Despensa básica para 2 despensas (2 productos).';
+
+    Future<void> filledForm(WidgetTester tester) async {
+      await _pumpForm(tester);
+      await _pickDate(tester);
+      await _pickBasket(tester, 'Despensa básica');
+    }
+
+    testWidgets('con otro número de despensas sigue el aviso y se puede '
+        'reemplazar', (tester) async {
+      // Paso 1: llenada para 1 despensa.
+      await filledForm(tester);
+      expect(_quantities(tester), ['1', '0.4']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsNothing);
+      expect(find.text(llenadaPara1), findsOneWidget);
+
+      // Paso 2: el staff cambia la avena.
+      await _setQuantity(tester, 1, '0.5');
+      expect(_quantities(tester), ['1', '0.5']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsNothing);
+      expect(find.text(llenadaPara1), findsNothing);
+
+      // Paso 3: cambia el número de despensas; la lista no se toca y avisa.
+      await _setPackages(tester, '2');
+      expect(_quantities(tester), ['1', '0.5']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsOneWidget);
+      expect(find.text('Reemplazar productos'), findsOneWidget);
+
+      // Paso 4: deshace la avena. La lista vuelve a lo de 1 despensa, que no
+      // es lo de 2: el aviso y el botón siguen.
+      await _setQuantity(tester, 1, '0.4');
+      expect(_quantities(tester), ['1', '0.4']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsOneWidget);
+      expect(find.text('Reemplazar productos'), findsOneWidget);
+      expect(find.text(llenadaPara1), findsNothing);
+      expect(find.text(llenadaPara2), findsNothing);
+
+      await tester.tap(find.text('Reemplazar productos'));
+      await tester.pump();
+
+      expect(_quantities(tester), ['2', '0.8']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsNothing);
+      expect(find.text('Reemplazar productos'), findsNothing);
+      expect(find.text(llenadaPara2), findsOneWidget);
+    });
+
+    testWidgets('con otra despensa elegida sigue el aviso y se puede '
+        'reemplazar', (tester) async {
+      await filledForm(tester);
+      await _setQuantity(tester, 1, '0.5');
+      await _pickBasket(tester, 'Frescos');
+      expect(_names(tester), ['Arroz', 'Avena']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsOneWidget);
+
+      await _setQuantity(tester, 1, '0.4');
+
+      expect(_names(tester), ['Arroz', 'Avena']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsOneWidget);
+      expect(find.text('Reemplazar productos'), findsOneWidget);
+
+      await tester.tap(find.text('Reemplazar productos'));
+      await tester.pump();
+
+      expect(_names(tester), ['Arroz', 'Avena', 'Huevo']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsNothing);
+    });
+
+    testWidgets('si la lista vuelve a lo que toca, el aviso se quita y sale '
+        'la nota', (tester) async {
+      await filledForm(tester);
+      await _setQuantity(tester, 1, '0.5');
+      await _setPackages(tester, '2');
+      expect(find.text(StandardBasketSelector.staleMessage), findsOneWidget);
+
+      // Con la avena editada, volver a 1 despensa sigue sin coincidir.
+      await _setPackages(tester, '1');
+      expect(find.text(StandardBasketSelector.staleMessage), findsOneWidget);
+
+      // Al deshacer la avena la lista es justo la de 1 despensa.
+      await _setQuantity(tester, 1, '0.4');
+
+      expect(_quantities(tester), ['1', '0.4']);
+      expect(find.text(StandardBasketSelector.staleMessage), findsNothing);
+      expect(find.text(llenadaPara1), findsOneWidget);
     });
   });
 

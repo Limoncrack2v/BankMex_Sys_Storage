@@ -797,7 +797,9 @@ class _DeliveryFormState extends State<DeliveryForm> {
         lastFilled: _filledLines,
         target: [for (final item in items) ProductLine.fromItem(item)],
       );
-      stale = _basketsStale && action == BasketFillAction.askFirst;
+      // Deshacer una edición deja la lista como se llenó (fill), no como toca
+      // ahora: el aviso sigue hasta que coincida (keep) o se reemplace.
+      stale = _basketsStale && action != BasketFillAction.keep;
       if (action == BasketFillAction.keep) {
         final packages = _packageCount!;
         final noun = packages == 1 ? 'despensa' : 'despensas';
