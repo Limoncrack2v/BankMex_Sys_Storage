@@ -26,6 +26,22 @@ class MealPlanRepository {
     );
   }
 
+  /// Guarda el plan vigente de la familia: si [plan] ya tiene id (el del plan
+  /// que se leyó con [getCurrent]) lo reemplaza; si no, crea el documento. Así
+  /// la familia tiene un plan vigente y no acumula uno nuevo cada vez. El id
+  /// no es el de la familia: otra familia podría crear ese documento antes y
+  /// dejarla sin poder guardar su plan.
+  Future<MealPlan> save(MealPlan plan) => create(plan);
+
+  /// El plan vigente de [familyId]: el que empieza más tarde, o null si aún no
+  /// tiene.
+  Future<MealPlan?> getCurrent(String familyId) async {
+    final plans = await listByFamily(familyId);
+    if (plans.isEmpty) return null;
+    plans.sort((a, b) => b.dateRangeStart.compareTo(a.dateRangeStart));
+    return plans.first;
+  }
+
   Future<MealPlan?> getById(String planId) async {
     final snap = await _col.doc(planId).get();
     if (!snap.exists || snap.data() == null) return null;

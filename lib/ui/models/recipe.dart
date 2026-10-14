@@ -33,6 +33,7 @@ class RecipeIngredient {
 
 class Recipe {
   const Recipe({
+    this.id = '',
     required this.name,
     required this.image,
     required this.minutes,
@@ -42,6 +43,9 @@ class Recipe {
     required this.steps,
   });
 
+  /// El id de la receta en el catálogo (recipes/{id}); vacío en las recetas de
+  /// muestra. Es lo que se guarda en un plan de comidas (mealPlans).
+  final String id;
   final String name;
   final String image;
   final int minutes;
@@ -249,6 +253,7 @@ Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
   }
   final factor = target / recipe.servings;
   return Recipe(
+    id: recipe.id,
     name: recipe.name,
     image: recipe.image,
     minutes: recipe.minutes,

@@ -100,6 +100,7 @@ abstract final class CatalogMappers {
 
   static ui.Recipe recipeToUi(domain.Recipe recipe) {
     return ui.Recipe(
+      id: recipe.id,
       name: recipe.name,
       image: recipe.image.isEmpty ? AppImages.sopaDeLentejas : recipe.image,
       minutes: recipe.prepTimeMinutes,
