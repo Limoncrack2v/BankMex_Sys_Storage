@@ -64,12 +64,12 @@ void main() {
     await auth.signOut();
   });
 
-  testWidgets('sin conexión cierra la sesión y descarta lo que no se subió', (
-    tester,
-  ) async {
+  testWidgets('sin conexión cierra la sesión y deja en cola lo que no se '
+      'subió', (tester) async {
     final auth = AuthRepository();
     final session = await auth.signIn(_familyEmail, _password);
     final db = FirebaseFirestore.instance;
+    final profile = db.collection('users').doc(session.user.userId);
     final member = db
         .collection('families')
         .doc(session.family!.familyId)
@@ -77,8 +77,16 @@ void main() {
         .doc();
 
     await db.disableNetwork();
+    var offline = true;
+    addTearDown(() async {
+      if (offline) await db.enableNetwork();
+    });
     // Sin conexión la escritura no termina: se queda pendiente en la caché.
-    member.set({'name': 'Sin subir'}).ignore();
+    member.set({
+      'name': 'Sin subir',
+      'memberType': 'adult',
+      'createdAt': Timestamp.now(),
+    }).ignore();
     final pending = await member
         .snapshots(includeMetadataChanges: true)
         .firstWhere((snapshot) => snapshot.exists)
@@ -90,11 +98,21 @@ void main() {
     // Solo espera los 5 s que se dan a las escrituras pendientes.
     expect(elapsed.elapsed, lessThan(const Duration(seconds: 15)));
 
-    await expectLater(member.get(_fromCache), _notInCache);
+    // La caché no se borró: el perfil leído al iniciar sesión sigue ahí.
+    expect((await profile.get(_fromCache)).exists, isTrue);
 
-    // Se descartó con la caché: tampoco llegó al servidor.
+    // La misma cuenta vuelve a entrar con conexión y la escritura en cola se
+    // sube.
+    await db.enableNetwork();
+    offline = false;
     await auth.signIn(_familyEmail, _password);
-    expect((await member.get()).exists, isFalse);
+    await db.waitForPendingWrites().timeout(const Duration(seconds: 10));
+    final uploaded = await member.get(const GetOptions(source: Source.server));
+    expect(uploaded.data()?['name'], 'Sin subir');
+    await member.delete();
+
+    // Con conexión, el siguiente cierre de sesión sí borra la caché.
     await auth.signOut();
+    await expectLater(profile.get(_fromCache), _notInCache);
   });
 }

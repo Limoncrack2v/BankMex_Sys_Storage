@@ -10,12 +10,17 @@ import 'package:flutter/foundation.dart';
 /// cerrar sesión se borran, para que no queden ahí para la siguiente persona
 /// que use el teléfono:
 /// 1. Espera hasta [pendingWritesTimeout] a que se suban las escrituras
-///    pendientes. Sin conexión no alcanzan a subirse y se pierden con la
-///    caché.
+///    pendientes.
 /// 2. Cierra la sesión de Auth.
-/// 3. terminate() detiene Firestore y clearPersistence() borra sus archivos.
-///    La siguiente llamada a Firestore crea otra instancia con la misma
-///    configuración (en debug, la del emulador).
+/// 3. Si se subieron, terminate() detiene Firestore y clearPersistence()
+///    borra sus archivos. La siguiente llamada a Firestore crea otra
+///    instancia con la misma configuración (en debug, la del emulador).
+///
+/// Si no se subieron (sin conexión), la caché se queda con las escrituras en
+/// cola para esa cuenta: borrarla perdería sin avisar, por ejemplo, las
+/// entregas que el staff registró sin señal. Se suben si esa cuenta vuelve a
+/// entrar en este teléfono con conexión, y la caché se borra en el siguiente
+/// cierre de sesión que sí sincronice (de cualquier cuenta).
 ///
 /// Si la caché no se puede borrar, la sesión queda cerrada igual y el error
 /// no se lanza, para que la pantalla de salida no se quede esperando.
@@ -34,14 +39,18 @@ Future<void> signOutAndClearCache({
     return;
   }
 
+  var synced = true;
   try {
     // Solo espera las del usuario con sesión; por eso va antes de cerrarla.
     await firestore.waitForPendingWrites().timeout(pendingWritesTimeout);
   } catch (_) {
     // Sin conexión (TimeoutException) o con error: se cierra la sesión igual.
+    synced = false;
   }
 
   await auth.signOut();
+  // Sin sincronizar: la caché se queda, con las escrituras en cola.
+  if (!synced) return;
 
   try {
     await firestore.terminate();

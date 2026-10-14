@@ -59,25 +59,34 @@ void main() {
     ]);
   });
 
-  test(
-    'sin conexión no se queda esperando las escrituras pendientes',
-    () async {
-      final log = <String>[];
-      await signOutAndClearCache(
-        auth: _FakeAuth(log),
-        // Nunca se suben.
-        firestore: _FakeFirestore(log, pendingWrites: Completer<void>().future),
-        isWeb: false,
-        pendingWritesTimeout: const Duration(milliseconds: 10),
-      );
-      expect(log, [
-        'waitForPendingWrites',
-        'signOut',
-        'terminate',
-        'clearPersistence',
-      ]);
-    },
-  );
+  test('sin conexión no se queda esperando y deja la caché con las escrituras '
+      'en cola', () async {
+    final log = <String>[];
+    await signOutAndClearCache(
+      auth: _FakeAuth(log),
+      // Nunca se suben.
+      firestore: _FakeFirestore(log, pendingWrites: Completer<void>().future),
+      isWeb: false,
+      pendingWritesTimeout: const Duration(milliseconds: 10),
+    );
+    expect(log, ['waitForPendingWrites', 'signOut']);
+  });
+
+  test('si falla la espera de las escrituras, cierra la sesión y deja la '
+      'caché', () async {
+    final log = <String>[];
+    await signOutAndClearCache(
+      auth: _FakeAuth(log),
+      firestore: _FakeFirestore(
+        log,
+        pendingWrites: Future.error(
+          FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
+        ),
+      ),
+      isWeb: false,
+    );
+    expect(log, ['waitForPendingWrites', 'signOut']);
+  });
 
   test('si la caché no se puede borrar, la sesión se cierra igual', () async {
     final log = <String>[];
