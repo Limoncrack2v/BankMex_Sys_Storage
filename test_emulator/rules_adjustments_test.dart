@@ -67,6 +67,7 @@ Map<String, Map<String, Object?>> adjustment({
     'recipeId': str('r1'),
     'baseSignature': str('abcdef12'),
     'householdSize': integer(4),
+    'householdKey': str('4-dairy'),
     'servings': integer(4),
     'ingredients': arr([ingredient()]),
     'changes': arr([change()]),
@@ -98,7 +99,7 @@ String idOf(Map<String, Map<String, Object?>> fields) {
       .last;
   return '${family}_${fields['recipeId']?['stringValue']}_'
       '${fields['baseSignature']?['stringValue']}_'
-      '${fields['householdSize']?['integerValue']}';
+      '${fields['householdKey']?['stringValue']}';
 }
 
 /// Crea la adaptación como la app: con su id y con createdAt como la hora del
@@ -235,10 +236,19 @@ void main() {
       final cases = <Map<String, Map<String, Object?>>>[
         {'baseSignature': str('XYZ')},
         {'baseSignature': str('abcdef1')},
-        {'householdSize': integer(0)},
-        {'householdSize': integer(51)},
+        {'householdSize': integer(0), 'householdKey': str('0-dairy')},
+        {'householdSize': integer(51), 'householdKey': str('51-dairy')},
         {'servings': integer(0)},
         {'servings': integer(100)},
+        // La clave del hogar: el tamaño primero y las alergias en orden.
+        {'householdKey': str('5-dairy')},
+        {'householdKey': str('4-gluten-dairy')},
+        {'householdKey': str('4-dairy-dairy')},
+        {'householdKey': str('4-wheat')},
+        {'householdKey': str('4-dairy-gluten-')},
+        {'householdKey': str('dairy-4')},
+        {'householdKey': str('')},
+        {'householdKey': integer(4)},
         {'summary': str('')},
         {'summary': str('a' * 301)},
         {'ingredients': arr([])},
@@ -267,7 +277,7 @@ void main() {
         create(
           fam1(),
           adjustment(change_: {'recipeId': str('a/b')}),
-          id: 'famA_a_b_abcdef12_4',
+          id: 'famA_a_b_abcdef12_4-dairy',
         ),
       );
     });
@@ -312,15 +322,18 @@ void main() {
 
   group('el id del documento limita las pendientes', () {
     test('el id es familia, receta, huella y tamaño del hogar', () async {
-      expect(idOf(adjustment()), 'famA_r1_abcdef12_4');
+      expect(idOf(adjustment()), 'famA_r1_abcdef12_4-dairy');
       await assertAllowed(create(fam1(), adjustment()));
-      expect(await adminDoc('adjustments/famA_r1_abcdef12_4'), isNotNull);
+      expect(await adminDoc('adjustments/famA_r1_abcdef12_4-dairy'), isNotNull);
     });
 
     test('un id que no coincide se deniega', () async {
       for (final id in [
         'a1',
-        'famA_r1_abcdef12_5',
+        'famA_r1_abcdef12_5-dairy',
+        'famA_r1_abcdef12_4',
+        'famA_r1_abcdef12_4-gluten',
+        'famA_r1_abcdef12_4-dairy-gluten',
         'famA_r2_abcdef12_4',
         'famA_r1_abcdef13_4',
         'famA_r1_abcdef12',
@@ -336,7 +349,7 @@ void main() {
         create(
           fam2(),
           adjustment(change_: {'familyId': ref('families/famB')}),
-          id: 'famA_r1_abcdef12_4',
+          id: 'famA_r1_abcdef12_4-dairy',
         ),
       );
       // Con su propio id, sí.
@@ -351,13 +364,77 @@ void main() {
       expect(await adminDocs('adjustments'), hasLength(1));
     });
 
+    test('cambiar solo las alergias es otro documento', () async {
+      await assertAllowed(create(fam1(), adjustment()));
+      await assertAllowed(
+        create(
+          fam1(),
+          adjustment(change_: {'householdKey': str('4-dairy-gluten')}),
+        ),
+      );
+      await assertAllowed(
+        create(fam1(), adjustment(change_: {'householdKey': str('4')})),
+      );
+      expect(
+        (await adminDocs('adjustments')).map((d) => d.id),
+        unorderedEquals([
+          'famA_r1_abcdef12_4-dairy',
+          'famA_r1_abcdef12_4-dairy-gluten',
+          'famA_r1_abcdef12_4',
+        ]),
+      );
+    });
+
+    test('el id debe coincidir con la clave del documento', () async {
+      // La clave dice 4-dairy-gluten pero el id dice 4-dairy, y al revés.
+      await assertDenied(
+        create(
+          fam1(),
+          adjustment(change_: {'householdKey': str('4-dairy-gluten')}),
+          id: 'famA_r1_abcdef12_4-dairy',
+        ),
+      );
+      await assertDenied(
+        create(fam1(), adjustment(), id: 'famA_r1_abcdef12_4-dairy-gluten'),
+      );
+    });
+
+    test(
+      'la cola no se puede llenar: solo hay un id por hogar y receta',
+      () async {
+        // Ids al azar, repetidos o fuera de la clave, todos denegados: de cada
+        // hogar, receta y versión solo existe un documento posible.
+        for (var i = 0; i < 6; i++) {
+          await assertDenied(create(fam1(), adjustment(), id: 'a$i'));
+          await assertDenied(
+            create(fam1(), adjustment(), id: 'famA_r1_abcdef12_4-dairy_$i'),
+          );
+        }
+        expect(await adminDocs('adjustments'), isEmpty);
+
+        await assertAllowed(create(fam1(), adjustment()));
+        for (var i = 0; i < 6; i++) {
+          await assertDenied(create(fam1(), adjustment()));
+        }
+        expect(await adminDocs('adjustments'), hasLength(1));
+      },
+    );
+
     test('con otra huella o otro tamaño de hogar es otro documento', () async {
       await assertAllowed(create(fam1(), adjustment()));
       await assertAllowed(
         create(fam1(), adjustment(change_: {'baseSignature': str('abcdef13')})),
       );
       await assertAllowed(
-        create(fam1(), adjustment(change_: {'householdSize': integer(5)})),
+        create(
+          fam1(),
+          adjustment(
+            change_: {
+              'householdSize': integer(5),
+              'householdKey': str('5-dairy'),
+            },
+          ),
+        ),
       );
       await assertAllowed(
         create(fam1(), adjustment(change_: {'recipeId': str('r3')})),
@@ -367,7 +444,9 @@ void main() {
 
     test('una pendiente retirada se puede volver a sugerir', () async {
       await assertAllowed(create(fam1(), adjustment()));
-      await assertAllowed(fam1().deleteDoc('adjustments/famA_r1_abcdef12_4'));
+      await assertAllowed(
+        fam1().deleteDoc('adjustments/famA_r1_abcdef12_4-dairy'),
+      );
       await assertAllowed(create(fam1(), adjustment()));
     });
 
@@ -375,13 +454,21 @@ void main() {
       'una ya decidida no se puede volver a crear con el mismo id',
       () async {
         await Db.admin().setDoc(
-          'adjustments/famA_r1_abcdef12_4',
+          'adjustments/famA_r1_abcdef12_4-dairy',
           stored(status: 'rejected'),
         );
         await assertDenied(create(fam1(), adjustment()));
         // Después de cambiar el tamaño del hogar sí hay una sugerencia nueva.
         await assertAllowed(
-          create(fam1(), adjustment(change_: {'householdSize': integer(5)})),
+          create(
+            fam1(),
+            adjustment(
+              change_: {
+                'householdSize': integer(5),
+                'householdKey': str('5-dairy'),
+              },
+            ),
+          ),
         );
       },
     );

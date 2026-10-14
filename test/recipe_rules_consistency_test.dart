@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bank_storage_app/data/models/member.dart';
 import 'package:bank_storage_app/data/models/pantry_item.dart';
 import 'package:bank_storage_app/data/repositories/pantry_repository.dart';
 import 'package:bank_storage_app/domain/models/appliance.dart';
@@ -293,6 +294,7 @@ void main() {
           recipeId: 'r1',
           baseSignature: 'abcdef12',
           householdSize: 4,
+          householdKey: '4-dairy',
           servings: 4,
           ingredients: const [],
           changes: const [],
@@ -320,7 +322,7 @@ void main() {
         r"adjustmentId == request\.resource\.data\.familyId\[4\] \+ '_'\s*"
         r"\+ request\.resource\.data\.recipeId \+ '_'\s*"
         r"\+ request\.resource\.data\.baseSignature \+ '_'\s*"
-        r"\+ string\(request\.resource\.data\.householdSize\)",
+        r"\+ request\.resource\.data\.householdKey",
       ).firstMatch(rules);
 
       expect(rule, isNotNull);
@@ -329,9 +331,31 @@ void main() {
           familyId: 'famA',
           recipeId: 'r1',
           baseSignature: 'abcdef12',
-          householdSize: 4,
+          householdKey: '4-dairy',
         ),
-        'famA_r1_abcdef12_4',
+        'famA_r1_abcdef12_4-dairy',
+      );
+    });
+
+    test('the household key is the size and the allergies in alphabetical order', () {
+      // La regla acepta el tamaño y luego las alergias de Allergy, en orden
+      // alfabético y cada una una sola vez.
+      final rule = RegExp(
+        r"householdKey\.matches\(string\(data\.householdSize\) \+ '([^']+)'\)",
+      ).firstMatch(body('validAdjustment'));
+
+      expect(rule, isNotNull);
+      final allergies = RegExp(r'\(-([a-z]+)\)\?')
+          .allMatches(rule!.group(1)!)
+          .map((m) => m.group(1)!)
+          .toList();
+      final sorted = Allergy.values.map((a) => a.name).toList()..sort();
+
+      expect(allergies, sorted);
+      // Y la clave de Dart sale en ese mismo orden.
+      expect(
+        householdKeyOf(3, Allergy.values.reversed),
+        '3-${sorted.join('-')}',
       );
     });
 

@@ -149,7 +149,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                           adjustments.hasError
                               ? const []
                               : adjustments.data ?? const [],
-                          householdSize: householdSizeOf(household),
+                          members: household,
                         );
                         return StreamBuilder<List<PantryItem>>(
                           stream: _pantry,

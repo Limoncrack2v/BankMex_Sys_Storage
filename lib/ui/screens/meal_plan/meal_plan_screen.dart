@@ -287,7 +287,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       applyAdjustments(
         catalog,
         adjustments,
-        householdSize: householdSizeOf(members),
+        members: members,
       ),
       members,
     );

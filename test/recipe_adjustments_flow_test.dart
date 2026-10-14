@@ -88,20 +88,24 @@ RecipeAdjustment adjustment({
   String recipeId = 'r1',
   String? signature,
   int householdSize = 4,
+  String? householdKey,
+  List<String> ingredientNames = const ['Arroz', 'Bebida de avena'],
 }) => RecipeAdjustment(
   id: 'a1',
   familyId: 'famA',
   recipeId: recipeId,
   baseSignature: signature ?? uiRecipe().signature,
   householdSize: householdSize,
+  // dairyHousehold: 4 integrantes, uno con alergia a los lácteos.
+  householdKey: householdKey ?? '$householdSize-dairy',
   servings: 4,
-  ingredients: const [
-    domain.RecipeIngredient(productName: 'Arroz', quantity: 0.4, unit: 'kg'),
-    domain.RecipeIngredient(
-      productName: 'Bebida de avena',
-      quantity: 1,
-      unit: 'l',
-    ),
+  ingredients: [
+    for (final name in ingredientNames)
+      domain.RecipeIngredient(
+        productName: name,
+        quantity: name == 'Arroz' ? 0.4 : 1,
+        unit: name == 'Arroz' ? 'kg' : 'l',
+      ),
   ],
   changes: const [
     AdjustmentChange(
@@ -122,8 +126,14 @@ RecipeAdjustment adjustment({
 
 void main() {
   group('applyAdjustments', () {
-    List<ui.Recipe> apply(List<RecipeAdjustment> adjustments, {int size = 4}) =>
-        applyAdjustments([uiRecipe()], adjustments, householdSize: size);
+    List<ui.Recipe> apply(
+      List<RecipeAdjustment> adjustments, {
+      List<Member>? members,
+    }) => applyAdjustments(
+      [uiRecipe()],
+      adjustments,
+      members: members ?? dairyHousehold,
+    );
 
     test('an approved adaptation replaces the ingredients and says why', () {
       final recipe = apply([adjustment()]).single;
@@ -157,14 +167,64 @@ void main() {
       final edited = applyAdjustments(
         [uiRecipe(rice: 0.5)],
         [adjustment()],
-        householdSize: 4,
+        members: dairyHousehold,
       ).single;
       expect(edited.adaptation, isNull);
       expect(edited.ingredients.last.name, 'Leche entera');
     });
 
     test('one made for another household size does not apply', () {
-      expect(apply([adjustment()], size: 5).single.adaptation, isNull);
+      expect(
+        apply(
+          [adjustment()],
+          members: [...dairyHousehold, member('Eva')],
+        ).single.adaptation,
+        isNull,
+      );
+    });
+
+    test('one made for other allergies does not apply, same size or not', () {
+      final moreAllergies = [
+        member('Ana', allergies: [Allergy.dairy, Allergy.gluten]),
+        member('Beto'),
+        member('Carla'),
+        member('Dario'),
+      ];
+      final noAllergies = [
+        for (final name in ['Ana', 'Beto', 'Carla', 'Dario']) member(name),
+      ];
+
+      expect(
+        apply([adjustment()], members: moreAllergies).single.adaptation,
+        isNull,
+      );
+      expect(
+        apply([adjustment()], members: noAllergies).single.adaptation,
+        isNull,
+      );
+      // La misma que ahora sí aplica.
+      expect(apply([adjustment()]).single.adaptation, isNotNull);
+    });
+
+    test('an approved adaptation with an allergen of the household is never applied', () {
+      // Aunque esté aprobada y la clave coincida: lleva leche y hay alergia.
+      final unsafe = adjustment(ingredientNames: ['Arroz', 'Leche entera']);
+      final recipe = apply([unsafe]).single;
+
+      expect(recipe.adaptation, isNull);
+      expect(recipe.ingredients.last.name, 'Leche entera');
+      // Con otro alérgeno del hogar pasa lo mismo.
+      final cheese = adjustment(
+        householdKey: '4-dairy-gluten',
+        ingredientNames: ['Arroz', 'Pan de caja'],
+      );
+      final gluten = [
+        member('Ana', allergies: [Allergy.dairy, Allergy.gluten]),
+        member('Beto'),
+        member('Carla'),
+        member('Dario'),
+      ];
+      expect(apply([cheese], members: gluten).single.adaptation, isNull);
     });
 
     test('a recipe without an id or fingerprint is left alone', () {
@@ -180,14 +240,21 @@ void main() {
       final result = applyAdjustments(
         [sample],
         [adjustment()],
-        householdSize: 4,
+        members: dairyHousehold,
       );
       expect(result.single, same(sample));
     });
 
-    test('household size counts the members, one when there are none', () {
-      expect(householdSizeOf(dairyHousehold), 4);
-      expect(householdSizeOf(const []), 1);
+    test('the key of a household is its size and its allergies in order', () {
+      expect(householdKeyForMembers(dairyHousehold), '4-dairy');
+      expect(householdKeyForMembers(const []), '1');
+      expect(
+        householdKeyForMembers([
+          member('Ana', allergies: [Allergy.soy, Allergy.dairy]),
+          member('Beto', allergies: [Allergy.dairy, Allergy.egg]),
+        ]),
+        '2-dairy-egg-soy',
+      );
     });
   });
 
@@ -355,7 +422,10 @@ void main() {
         await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
 
         final signature = recipeSignature(domainRecipe());
-        expect(fake.adjustments.created.single.id, 'famA_r1_${signature}_4');
+        expect(
+          fake.adjustments.created.single.id,
+          'famA_r1_${signature}_4-dairy',
+        );
       },
     );
 
@@ -372,7 +442,7 @@ void main() {
 
       expect(again, isNotNull);
       expect(fake.adjustments.created.map((a) => a.householdSize), [4, 5]);
-      expect(fake.adjustments.created.last.id, endsWith('_5'));
+      expect(fake.adjustments.created.last.id, endsWith('_5-dairy'));
     });
 
     test('after a rejection, an edited recipe suggests again', () async {
@@ -394,9 +464,7 @@ void main() {
       );
     });
 
-    test('a decided adjustment with the same id is not overwritten', () async {
-      // Otra alergia con el mismo tamaño de hogar y la misma receta daría el
-      // mismo id: el documento ya decidido se queda y no se intenta crear.
+    test('changing only the allergies makes a new document', () async {
       final fake = _Fakes(members: dairyHousehold);
       await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
       fake.adjustments.setStatus(AdjustmentStatus.approved);
@@ -412,7 +480,40 @@ void main() {
         recipeId: 'r1',
       );
 
-      expect(again, isNull);
+      // El mismo tamaño, la misma receta y otras alergias: otro documento. El
+      // aprobado viejo se queda (la familia no lo borra) y ya no se aplica.
+      expect(again, isNotNull);
+      expect(fake.adjustments.created.map((a) => a.householdKey), [
+        '4-dairy',
+        '4-dairy-gluten',
+      ]);
+      expect(fake.adjustments.created.first.status, AdjustmentStatus.approved);
+      expect(fake.adjustments.deleted, isEmpty);
+      expect(fake.adjustments.created.last.id, endsWith('_4-dairy-gluten'));
+    });
+
+    test('a pending suggestion for the old allergies is withdrawn', () async {
+      final fake = _Fakes(members: dairyHousehold);
+      await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+      final oldId = fake.adjustments.created.single.id;
+
+      fake.household.members = [
+        member('Ana', allergies: [Allergy.dairy, Allergy.egg]),
+        member('Beto'),
+        member('Carla'),
+        member('Dario'),
+      ];
+      await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+
+      expect(fake.adjustments.deleted, [oldId]);
+      expect(fake.adjustments.created.last.householdKey, '4-dairy-egg');
+    });
+
+    test('the same household asking again does not create another', () async {
+      final fake = _Fakes(members: dairyHousehold);
+      for (var i = 0; i < 3; i++) {
+        await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+      }
       expect(fake.adjustments.created, hasLength(1));
     });
 
@@ -532,6 +633,24 @@ void main() {
       expect(find.text('Arroz con leche'), findsOneWidget);
     });
 
+    testWidgets('an approved adaptation with an allergen is not suggested', (
+      tester,
+    ) async {
+      await pump(tester, [
+        adjustment(ingredientNames: ['Arroz', 'Leche entera']),
+      ]);
+
+      expect(find.text('Arroz con leche'), findsNothing);
+    });
+
+    testWidgets('an approval for other allergies is not suggested', (
+      tester,
+    ) async {
+      await pump(tester, [adjustment(householdKey: '4-dairy-gluten')]);
+
+      expect(find.text('Arroz con leche'), findsNothing);
+    });
+
     testWidgets('a rejected one changes nothing', (tester) async {
       await pump(tester, [adjustment(status: AdjustmentStatus.rejected)]);
 
@@ -609,6 +728,25 @@ void main() {
 
       expect(find.text('Arroz con leche'), findsNothing);
     });
+
+    testWidgets('an approval for other allergies does not apply', (
+      tester,
+    ) async {
+      await pump(tester, [adjustment(householdKey: '4-dairy-gluten')]);
+
+      expect(find.text('Arroz con leche'), findsNothing);
+    });
+
+    testWidgets(
+      'an approved adaptation with an allergen never enters the plan',
+      (tester) async {
+        await pump(tester, [
+          adjustment(ingredientNames: ['Arroz', 'Leche entera']),
+        ]);
+
+        expect(find.text('Arroz con leche'), findsNothing);
+      },
+    );
   });
 }
 
@@ -678,6 +816,7 @@ class _FakeAdjustments extends Fake implements AdjustmentRepository {
         recipeId: a.recipeId,
         baseSignature: a.baseSignature,
         householdSize: a.householdSize,
+        householdKey: a.householdKey,
         servings: a.servings,
         ingredients: a.ingredients,
         changes: a.changes,
@@ -695,6 +834,7 @@ class _FakeAdjustments extends Fake implements AdjustmentRepository {
       recipeId: adjustment.recipeId,
       baseSignature: adjustment.baseSignature,
       householdSize: adjustment.householdSize,
+      householdKey: adjustment.householdKey,
       servings: adjustment.servings,
       ingredients: adjustment.ingredients,
       changes: adjustment.changes,
@@ -778,6 +918,7 @@ class _OtherEngine implements RecipePlanner {
       recipeId: recipe.id,
       baseSignature: recipeSignature(recipe),
       householdSize: household.householdSize,
+      householdKey: household.householdKey,
       servings: 4,
       ingredients: const [
         domain.RecipeIngredient(

@@ -196,9 +196,11 @@ class BankStorageFacade {
 
   /// Sugiere cómo adaptar [recipeId] (aprobada) al hogar de [familyId]: la
   /// guarda como una adaptación pendiente que solo el nutriólogo puede aprobar.
-  /// No hace nada si ya hay una igual (pendiente, aprobada o rechazada) o si
-  /// no hay nada que cambiar. Una pendiente vieja (la receta o el hogar
-  /// cambiaron) se retira. Regresa la que creó, o null.
+  /// No hace nada si ya hay una para esta versión de la receta y este hogar
+  /// (pendiente, aprobada o rechazada) o si no hay nada que cambiar. Una
+  /// pendiente vieja (la receta, el tamaño del hogar o sus alergias cambiaron)
+  /// se retira, y las aprobadas o rechazadas se quedan. Regresa la que creó, o
+  /// null.
   Future<RecipeAdjustment?> suggestAdjustment({
     required String familyId,
     required String recipeId,
@@ -212,32 +214,18 @@ class BankStorageFacade {
     );
     final existing = await adjustments.listForRecipe(familyId, recipeId);
 
+    // Una adaptación es de ahora si es de esta versión de la receta y de este
+    // hogar (tamaño y alergias); su id lo dice (RecipeAdjustment.documentId).
     bool isCurrent(RecipeAdjustment a) =>
         suggestion != null &&
         a.baseSignature == suggestion.baseSignature &&
-        a.householdSize == suggestion.householdSize &&
-        a.summary == suggestion.summary;
+        a.householdKey == suggestion.householdKey;
     for (final old in existing) {
       if (old.status == AdjustmentStatus.pending && !isCurrent(old)) {
         await adjustments.delete(old.id);
       }
     }
     if (suggestion == null || existing.any(isCurrent)) return null;
-    // El id del documento es único por familia, receta, versión y tamaño: una
-    // ya decidida con ese id (aprobada o rechazada) se queda, y la sugerencia
-    // nueva no se puede guardar (p. ej. si cambiaron las alergias con el mismo
-    // tamaño de hogar).
-    final id = RecipeAdjustment.documentId(
-      familyId: familyId,
-      recipeId: recipeId,
-      baseSignature: suggestion.baseSignature,
-      householdSize: suggestion.householdSize,
-    );
-    if (existing.any(
-      (a) => a.documentKey == id && a.status != AdjustmentStatus.pending,
-    )) {
-      return null;
-    }
     return adjustments.create(
       RecipeAdjustment.pending(familyId: familyId, suggestion: suggestion),
     );

@@ -409,13 +409,14 @@ service cloud.firestore {
     // integrantes: solo el tamaño del hogar y el motivo de cada cambio.
     // Los ingredientes se revisan como los de una receta.
     function validAdjustment(data) {
-      return data.keys().hasOnly(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
-        && data.keys().hasAll(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
+      return data.keys().hasOnly(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'householdKey', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
+        && data.keys().hasAll(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'householdKey', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
         && data.familyId is path
         && data.familyId == /databases/$(database)/documents/families/$(data.familyId[4])
         && data.recipeId.matches('[^/]{1,128}')
         && data.baseSignature.matches('[0-9a-f]{8}')
         && data.householdSize is int && data.householdSize >= 1 && data.householdSize <= 50
+        && data.householdKey.matches(string(data.householdSize) + '(-dairy)?(-egg)?(-gluten)?(-peanut)?(-shellfish)?(-soy)?')
         && data.servings is int && data.servings >= 1 && data.servings <= 99
         && data.summary.matches('(?s).{1,300}')
         && data.status == 'pending'
@@ -608,16 +609,17 @@ service cloud.firestore {
     match /adjustments/{adjustmentId} {
       allow read: if isNutritionist()
         || (request.auth != null && isFamilyOwner(resource.data.familyId[4]));
-      // El id es uno por familia, receta, versión de la receta y tamaño del
-      // hogar (RecipeAdjustment.documentId): una familia no puede llenar la
-      // cola del nutriólogo, porque crear el mismo id otra vez es una
-      // actualización y la familia no actualiza.
+      // El id es uno por familia, receta, versión de la receta y hogar (su
+      // tamaño y sus alergias, en orden: householdKey; RecipeAdjustment.
+      // documentId): una familia no puede llenar la cola del nutriólogo,
+      // porque crear el mismo id otra vez es una actualización y la familia
+      // no actualiza. Si cambian las alergias, la clave y el id son otros.
       allow create: if isFamilyOwner(request.resource.data.familyId[4])
         && validAdjustment(request.resource.data)
         && adjustmentId == request.resource.data.familyId[4] + '_'
           + request.resource.data.recipeId + '_'
           + request.resource.data.baseSignature + '_'
-          + string(request.resource.data.householdSize)
+          + request.resource.data.householdKey
         && get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.status == 'approved';
       allow update: if isNutritionist()
         && recentlySignedIn()

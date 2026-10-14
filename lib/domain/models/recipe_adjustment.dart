@@ -31,6 +31,7 @@ class RecipeAdjustment {
     required this.recipeId,
     required this.baseSignature,
     required this.householdSize,
+    required this.householdKey,
     required this.servings,
     required this.ingredients,
     required this.changes,
@@ -50,6 +51,10 @@ class RecipeAdjustment {
   /// la actual, la receta se editó y esta adaptación no se aplica.
   final String baseSignature;
   final int householdSize;
+
+  /// [householdKeyOf]: el tamaño del hogar y sus alergias. Una adaptación solo
+  /// sirve mientras el hogar tenga esta misma clave.
+  final String householdKey;
   final int servings;
   final List<RecipeIngredient> ingredients;
   final List<AdjustmentChange> changes;
@@ -66,21 +71,22 @@ class RecipeAdjustment {
   static const int maxReasonLength = 300;
 
   /// El id del documento: uno por familia, receta, versión de la receta y
-  /// tamaño del hogar. firestore.rules lo exige al crear, así que una familia
-  /// no puede llenar la cola del nutriólogo con sugerencias repetidas: crear
-  /// el mismo id otra vez es una actualización, y la familia no actualiza.
+  /// hogar (tamaño y alergias, ver [householdKeyOf]). firestore.rules lo exige
+  /// al crear, así que una familia no puede llenar la cola del nutriólogo con
+  /// sugerencias repetidas: crear el mismo id otra vez es una actualización, y
+  /// la familia no actualiza.
   static String documentId({
     required String familyId,
     required String recipeId,
     required String baseSignature,
-    required int householdSize,
-  }) => '${familyId}_${recipeId}_${baseSignature}_$householdSize';
+    required String householdKey,
+  }) => '${familyId}_${recipeId}_${baseSignature}_$householdKey';
 
   String get documentKey => documentId(
     familyId: familyId,
     recipeId: recipeId,
     baseSignature: baseSignature,
-    householdSize: householdSize,
+    householdKey: householdKey,
   );
 
   /// La sugerencia de [RecipeAdjustmentRules] como adaptación nueva, pendiente.
@@ -93,6 +99,7 @@ class RecipeAdjustment {
     recipeId: suggestion.recipeId,
     baseSignature: suggestion.baseSignature,
     householdSize: suggestion.householdSize,
+    householdKey: suggestion.householdKey,
     servings: suggestion.servings,
     ingredients: suggestion.ingredients,
     changes: suggestion.changes,
@@ -109,6 +116,7 @@ class RecipeAdjustment {
       recipeId: map['recipeId'] as String? ?? '',
       baseSignature: map['baseSignature'] as String? ?? '',
       householdSize: (map['householdSize'] as num?)?.toInt() ?? 0,
+      householdKey: map['householdKey'] as String? ?? '',
       servings: (map['servings'] as num?)?.toInt() ?? 0,
       ingredients: [
         for (final item in rawIngredients)
@@ -133,6 +141,7 @@ class RecipeAdjustment {
     'recipeId': recipeId,
     'baseSignature': baseSignature,
     'householdSize': householdSize,
+    'householdKey': householdKey,
     'servings': servings,
     'ingredients': [for (final item in ingredients) item.toMap()],
     'changes': [for (final item in changes) item.toMap()],

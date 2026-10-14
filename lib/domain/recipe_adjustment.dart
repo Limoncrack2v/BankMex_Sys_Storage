@@ -6,6 +6,17 @@ import 'models/family_profile.dart';
 import 'models/recipe.dart';
 import 'portion_adjuster.dart';
 
+/// La clave del hogar de una adaptación: cuántos son y a qué alérgenos hay
+/// alergia, en orden alfabético y sin repetir: "4", "4-dairy", "4-dairy-gluten".
+/// Dos hogares con la misma clave piden la misma adaptación; si cambian las
+/// alergias (aunque no el tamaño) cambia la clave y la adaptación anterior ya
+/// no sirve. firestore.rules valida este formato (validAdjustment).
+String householdKeyOf(int householdSize, Iterable<Allergy> allergies) {
+  final names = {for (final allergy in allergies) allergy.name}.toList()
+    ..sort();
+  return [householdSize, ...names].join('-');
+}
+
 /// Un cambio sugerido a una receta, con el motivo que ve el nutriólogo.
 class AdjustmentChange {
   const AdjustmentChange({
@@ -59,6 +70,7 @@ class RecipeAdjustmentSuggestion {
     required this.recipeId,
     required this.baseSignature,
     required this.householdSize,
+    required this.householdKey,
     required this.servings,
     required this.ingredients,
     required this.changes,
@@ -71,6 +83,9 @@ class RecipeAdjustmentSuggestion {
   /// [recipeSignature]): si después se edita la receta, ya no coincide.
   final String baseSignature;
   final int householdSize;
+
+  /// [householdKeyOf] del hogar: tamaño y alergias con los que se sugirió.
+  final String householdKey;
 
   /// Porciones de la receta ya ajustada y sus ingredientes, ya escalados y con
   /// las sustituciones.
@@ -128,6 +143,8 @@ class AdjustmentContext {
   final double portions;
 
   final List<Allergy> allergies;
+
+  String get householdKey => householdKeyOf(householdSize, allergies);
 
   factory AdjustmentContext.forHousehold(FamilyProfile family) =>
       AdjustmentContext(
@@ -252,6 +269,7 @@ class RecipeAdjustmentRules {
       recipeId: recipe.id,
       baseSignature: recipeSignature(recipe),
       householdSize: householdSize,
+      householdKey: household.householdKey,
       servings: servings,
       ingredients: ingredients,
       changes: changes,

@@ -151,7 +151,7 @@ Cuando una familia abre una receta, la app sugiere cómo adaptarla a su hogar: l
 
 - **Interfaz:** `RecipePlanner.suggestAdjustment(household, recipe)` en `lib/domain/recipe_planner.dart`, la misma interfaz que elige las recetas y arma el plan. `household` es un `AdjustmentContext`: el tamaño del hogar, las porciones de adulto que come y sus alergias. No lleva nombres, edades ni pesos.
 - **Implementación actual:** `RuleBasedRecipePlanner` delega en `RecipeAdjustmentRules` (`lib/domain/recipe_adjustment.dart`), un algoritmo por reglas que corre en el dispositivo y no manda datos a nadie.
-- **Dónde se guarda:** `adjustments/{familyId}_{recipeId}_{huella}_{tamaño}`. El id es único por familia, receta, versión de la receta y tamaño de hogar: así una familia no puede llenar la cola del nutriólogo, y las reglas lo exigen al crear.
+- **Dónde se guarda:** `adjustments/{familyId}_{recipeId}_{huella}_{householdKey}`, donde `householdKey` es el tamaño del hogar y sus alergias en orden alfabético (`4`, `4-dairy`, `4-dairy-gluten`). El id es único por familia, receta, versión de la receta y hogar: así una familia no puede llenar la cola del nutriólogo, y las reglas lo exigen al crear. Si cambian las alergias, cambia la clave: la adaptación vieja deja de aplicarse y se sugiere una nueva.
 - **Cómo enchufar otro motor:** implementa `RecipePlanner` (lo que no cambies, delégalo en `RuleBasedRecipePlanner`) y pásalo a `BankStorageFacade(planner: ...)`; la facade y las pantallas no cambian. `test/recipe_adjustments_flow_test.dart` tiene un ejemplo (`_OtherEngine`). Un motor remoto solo recibe el `AdjustmentContext` y debe llamarse desde el backend (una Cloud Function), no desde la app; antes hay que volver a revisar MASVS-PRIVACY-1.
 
 ## Cuentas

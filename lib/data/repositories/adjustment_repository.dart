@@ -35,6 +35,7 @@ class AdjustmentRepository {
       recipeId: adjustment.recipeId,
       baseSignature: adjustment.baseSignature,
       householdSize: adjustment.householdSize,
+      householdKey: adjustment.householdKey,
       servings: adjustment.servings,
       ingredients: adjustment.ingredients,
       changes: adjustment.changes,

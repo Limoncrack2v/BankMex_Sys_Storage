@@ -1,43 +1,59 @@
 import '../../data/models/member.dart';
 import '../../domain/catalog_mappers.dart';
 import '../../domain/models/recipe_adjustment.dart';
+import '../../domain/recipe_adjustment.dart';
 import 'recipe.dart';
 
-/// El tamaño del hogar que usa el motor de ajuste (adultos más niños; uno si
-/// aún no hay integrantes), para comparar con el de una adaptación.
-int householdSizeOf(List<Member> members) =>
-    members.isEmpty ? 1 : members.length;
+/// La clave del hogar de [members] (tamaño y alergias; ver [householdKeyOf]),
+/// la misma que le sale al motor de ajuste para ese hogar.
+String householdKeyForMembers(List<Member> members) => householdKeyOf(
+  members.isEmpty ? 1 : members.length,
+  {for (final member in members) ...?member.allergies},
+);
 
 /// Las recetas de [recipes] con su adaptación si ya está aprobada: la que el
-/// nutriólogo aprobó para esa receta, para un hogar de [householdSize] y para
-/// esta versión de la receta. Las demás quedan como están, que es lo que ve la
-/// familia mientras la sugerencia espera al nutriólogo, si la rechazó, o si la
-/// receta se editó o el hogar cambió después.
+/// nutriólogo aprobó para esa receta, para esta versión de la receta y para el
+/// hogar de [members] (mismo tamaño y mismas alergias). Las demás quedan como
+/// están, que es lo que ve la familia mientras la sugerencia espera al
+/// nutriólogo, si la rechazó, o si la receta o el hogar cambiaron después.
+///
+/// Una adaptación que lleve un ingrediente al que alguien del hogar es
+/// alérgico no se aplica nunca, aunque esté aprobada: se queda la receta base,
+/// que el plan y las sugerencias dejan fuera.
 List<Recipe> applyAdjustments(
   List<Recipe> recipes,
   List<RecipeAdjustment> adjustments, {
-  required int householdSize,
+  required List<Member> members,
 }) {
   if (adjustments.isEmpty) return recipes;
+  final key = householdKeyForMembers(members);
+  final allergies = {for (final member in members) ...?member.allergies};
   return [
     for (final recipe in recipes)
-      _adapted(recipe, adjustments, householdSize) ?? recipe,
+      _adapted(recipe, adjustments, key, allergies) ?? recipe,
   ];
 }
 
 Recipe? _adapted(
   Recipe recipe,
   List<RecipeAdjustment> adjustments,
-  int householdSize,
+  String householdKey,
+  Set<Allergy> allergies,
 ) {
   if (recipe.id.isEmpty || recipe.signature.isEmpty) return null;
   for (final adjustment in adjustments) {
     if (adjustment.status != AdjustmentStatus.approved ||
         adjustment.recipeId != recipe.id ||
         adjustment.baseSignature != recipe.signature ||
-        adjustment.householdSize != householdSize) {
+        adjustment.householdKey != householdKey) {
       continue;
     }
+    final hasAllergen = adjustment.ingredients.any(
+      (ingredient) => allergies.any(
+        (allergy) => containsAllergen(ingredient.productName, allergy),
+      ),
+    );
+    if (hasAllergen) continue;
     return Recipe(
       id: recipe.id,
       signature: recipe.signature,

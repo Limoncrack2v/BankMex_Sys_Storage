@@ -1,3 +1,4 @@
+import 'package:bank_storage_app/data/models/member.dart';
 import 'package:bank_storage_app/domain/models/child_profile.dart';
 import 'package:bank_storage_app/domain/models/family_profile.dart';
 import 'package:bank_storage_app/domain/models/recipe.dart';
@@ -64,6 +65,7 @@ void main() {
 
       expect(suggestion.servings, 2);
       expect(suggestion.householdSize, 2);
+      expect(suggestion.householdKey, '2');
       expect(suggestion.ingredients.map((i) => i.quantity), [0.2, 0.5]);
       expect(suggestion.changes, hasLength(1));
       expect(suggestion.changes.single.kind, AdjustmentChange.kindPortions);
@@ -190,6 +192,48 @@ void main() {
         );
         expect(remaining, isNull, reason: allergy);
       }
+    });
+  });
+
+  group('householdKey', () {
+    test('is the size and the allergies in order, without repeats', () {
+      expect(householdKeyOf(4, const []), '4');
+      expect(householdKeyOf(4, [Allergy.soy, Allergy.dairy]), '4-dairy-soy');
+      expect(
+        householdKeyOf(2, [Allergy.egg, Allergy.egg, Allergy.dairy]),
+        '2-dairy-egg',
+      );
+    });
+
+    test('changes when only the allergies change', () {
+      final one = AdjustmentContext.forHousehold(
+        family(restrictions: const ['dairy']),
+      );
+      final two = AdjustmentContext.forHousehold(
+        family(restrictions: const ['dairy', 'gluten']),
+      );
+
+      expect(one.householdSize, two.householdSize);
+      expect(one.householdKey, '4-dairy');
+      expect(two.householdKey, '4-dairy-gluten');
+    });
+
+    test(
+      'does not depend on the order of the restrictions or on conditions',
+      () {
+        final a = AdjustmentContext.forHousehold(
+          family(restrictions: const ['gluten', 'diabetes', 'dairy']),
+        );
+        final b = AdjustmentContext.forHousehold(
+          family(restrictions: const ['dairy', 'gluten']),
+        );
+        expect(a.householdKey, b.householdKey);
+      },
+    );
+
+    test('the suggestion carries the key of its household', () {
+      final suggestion = suggest(base, family(restrictions: const ['dairy']))!;
+      expect(suggestion.householdKey, '4-dairy');
     });
   });
 
