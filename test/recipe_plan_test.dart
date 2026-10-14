@@ -327,7 +327,7 @@ void main() {
     test('compares whole words, not pieces of words', () {
       expect(containsAllergen('Lechuga', Allergy.dairy), isFalse);
       expect(containsAllergen('Queso panela', Allergy.gluten), isFalse);
-      expect(containsAllergen('Empanada', Allergy.gluten), isFalse);
+      expect(containsAllergen('Pancita de res', Allergy.gluten), isFalse);
       expect(containsAllergen('Arroz', Allergy.gluten), isFalse);
       expect(containsAllergen('Jamón de pavo', Allergy.egg), isFalse);
     });
