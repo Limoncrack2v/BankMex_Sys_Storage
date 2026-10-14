@@ -14,10 +14,7 @@ abstract final class CatalogMappers {
   static domain.PantryItem pantryToDomain(
     data.PantryItem item, {
     required String familyId,
-    DateTime? now,
   }) {
-    final clock = now ?? DateTime.now();
-    final today = DateTime(clock.year, clock.month, clock.day);
     return domain.PantryItem(
       id: item.pantryItemId,
       familyId: familyId,
@@ -25,7 +22,11 @@ abstract final class CatalogMappers {
       name: item.productId,
       quantity: item.quantity,
       unit: item.unit.name,
-      expirationDate: today.add(Duration(days: item.daysUntilExpiration)),
+      // daysUntilExpiration se cuenta desde que la familia recibió el
+      // producto (localTimestamp), no desde hoy.
+      expirationDate: item.localTimestamp.add(
+        Duration(days: item.daysUntilExpiration),
+      ),
       category: item.type.name,
       originalQuantity: item.quantity,
       consumedQuantity: 0,

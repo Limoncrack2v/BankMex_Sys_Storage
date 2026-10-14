@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bank_storage_app/ui/screens/staff/register_account_sheet.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
+import 'package:bank_storage_app/ui/widgets/option_button.dart';
 
 Future<void> _pumpSheet(WidgetTester tester) async {
   tester.view.physicalSize = const Size(402, 874);
@@ -47,4 +48,28 @@ void main() {
     await tester.pump();
     expect(_createButton(tester).onPressed, isNotNull);
   });
+
+  testWidgets(
+    'Nutriólogo pide nombre completo y es el único tipo seleccionado',
+    (tester) async {
+      await _pumpSheet(tester);
+      await tester.tap(find.text('Nutriólogo'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('staffName')), findsOneWidget);
+      expect(find.text('Electrodomésticos'), findsNothing);
+
+      bool selected(String label) => tester
+          .widget<OptionButton>(find.widgetWithText(OptionButton, label))
+          .selected;
+      expect(selected('Nutriólogo'), isTrue);
+      expect(selected('Familia') || selected('Staff'), isFalse);
+
+      // Sin dirección: nombre, correo y contraseña.
+      await tester.enterText(find.byType(TextField).at(0), 'Ana Nutrióloga');
+      await tester.enterText(find.byType(TextField).at(1), 'ana@bamx.test');
+      await tester.enterText(find.byType(TextField).at(2), 'bamx1234');
+      await tester.pump();
+      expect(_createButton(tester).onPressed, isNotNull);
+    },
+  );
 }
