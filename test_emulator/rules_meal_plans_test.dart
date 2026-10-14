@@ -215,6 +215,13 @@ void main() {
       await assertDenied(fam1().setDoc(p, plan({'meals': str('Pollo asado')})));
     });
 
+    test('meals vacío que no es lista rechazado', () async {
+      // Sin comidas que revisar, solo is list lo distingue de una lista vacía.
+      await assertDenied(fam1().setDoc(p, plan({'meals': str('')})));
+      await assertDenied(fam1().setDoc(p, plan({'meals': mapValue({})})));
+      await assertDenied(fam1().setDoc(p, plan({'meals': nul()})));
+    });
+
     test('una comida más que el máximo rechazada', () async {
       await assertDenied(
         fam1().setDoc(p, planWith(List.filled(maxMeals + 1, meal()))),
@@ -268,7 +275,7 @@ void main() {
         assertAllowed(fam1().setDoc(p, data));
 
     Future<void> deniedMeal(Map<String, Map<String, Object?>> data) =>
-        denied(planWith([meal(), data]));
+        denied(planWith([meal(), meal(data)]));
 
     test('una comida normal se acepta', () async {
       await allowed(planWith([meal()]));
