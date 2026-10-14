@@ -90,6 +90,7 @@ Cuentas de prueba del seed (contraseña `bamx1234`):
 
 - Staff: `staff@bamx.test`
 - Familia: `familia.ramirez@bamx.test`
+- Nutriólogo: `nutriologo@bamx.test`
 - Solicitud de staff pendiente de aprobar: `solicitud.staff@bamx.test`
 
 En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `northamerica-south1`:
@@ -154,6 +155,15 @@ Para guardar capturas de la prueba de punta a punta en `build/e2e_screenshots`:
 ```sh
 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/app_flow_test.dart -d <emulador> --dart-define=E2E_SCREENSHOTS=true
 ```
+
+### CI y dependencias
+
+GitHub Actions corre lo mismo en cada PR (`.github/workflows/ci.yml`): `flutter analyze`, `flutter test` y `flutter test test_emulator` con los emuladores. Como `lib/firebase_options.dart` y `firebase.json` están en `.gitignore`, CI usa los de `.github/ci/`, que no son de ningún proyecto y solo sirven para los emuladores.
+
+- La versión de Flutter de CI está en `FLUTTER_VERSION`, en los dos workflows. Si subes Flutter en tu computadora y CI falla por eso, súbela ahí en su propio PR.
+- `.github/workflows/dependency-scan.yml` corre cada lunes, a mano desde la pestaña Actions y en los PR que cambian dependencias. Guarda como artefacto la salida de `npm audit`, `flutter pub outdated` y [osv-scanner](https://google.github.io/osv-scanner/) con su fecha, y falla si hay un aviso sin revisar.
+- Un aviso que ya se revisó y no aplica se anota en `osv-scanner.toml`, con el motivo y la fecha en que se vuelve a revisar.
+- Dependabot (`.github/dependabot.yml`) abre cada lunes los PR de actualización de `pub`, de `npm` en `functions/` y de las acciones de los workflows.
 
 ## Cómo está organizado
 

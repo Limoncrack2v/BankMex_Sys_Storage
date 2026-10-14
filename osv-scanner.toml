@@ -1,0 +1,11 @@
+# Avisos que el escaneo de dependencias (.github/workflows/dependency-scan.yml)
+# deja pasar, con el motivo y la fecha en que se vuelven a revisar.
+
+# uuid 9.0.1 llega por firebase-admin > @google-cloud/storage > gaxios 6.7.1.
+# El aviso es de v3, v5 y v6 cuando se les pasa un buffer; gaxios solo llama a
+# v4 sin buffer, y la Cloud Function no usa Storage. `npm audit fix` no lo
+# arregla: @google-cloud/storage 8 pide gaxios 6, que pide uuid 9.
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2026-12-01
+reason = "No alcanzable: gaxios solo usa uuid.v4() sin buffer. Sin arreglo hasta que firebase-admin suba @google-cloud/storage."

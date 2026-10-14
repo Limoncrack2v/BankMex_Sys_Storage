@@ -1,22 +1,28 @@
 import 'package:flutter/material.dart';
 
+import '../data/models/app_user.dart';
 import '../data/repositories/auth_repository.dart';
 import 'connection_status.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/nutritionist/nutritionist_home_screen.dart';
 import 'screens/sign_in/sign_in_screen.dart';
 import 'screens/staff/staff_home_screen.dart';
 
+// Pantalla principal de la sesión según el rol
+Widget homeFor(AuthSession session) => switch (session.user.role) {
+  AppUser.roleStaff => StaffHomeScreen(session: session),
+  AppUser.roleNutritionist => NutritionistHomeScreen(session: session),
+  _ => HomeScreen(family: session.family!),
+};
+
 /// Abre la pantalla principal según el rol y borra el historial de rutas.
 void openSessionHome(BuildContext context, AuthSession session) {
-  final Widget home = session.isStaff
-      ? StaffHomeScreen(session: session)
-      : HomeScreen(family: session.family!);
+  final Widget home = homeFor(session);
 
   ConnectionStatus.instance.watch(session.user.userId);
-  Navigator.of(context).pushAndRemoveUntil(
-    MaterialPageRoute(builder: (_) => home),
-    (_) => false,
-  );
+  Navigator.of(
+    context,
+  ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => home), (_) => false);
 }
 
 /// Regresa al inicio de sesión y después cierra la sesión. En ese orden, las
