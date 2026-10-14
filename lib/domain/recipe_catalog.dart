@@ -2,6 +2,13 @@ import 'models/recipe.dart';
 
 /// Catalog rules only. Persistence lives in [RecipeRepository].
 class RecipeCatalog {
+  /// Los máximos de firestore.rules (validRecipe): las reglas revisan cada
+  /// ingrediente y cada paso por su índice y tienen un tope de expresiones,
+  /// así que pasarlos rechaza la receta.
+  static const int maxIngredients = 10;
+  static const int maxSteps = 12;
+  static const int maxDietaryTags = 10;
+
   static Recipe submitRecipe({
     String id = '',
     required String name,
@@ -13,6 +20,11 @@ class RecipeCatalog {
     List<String> nutritionalTags = const [],
     List<String> requiredEquipment = const [],
   }) {
+    validateLimits(
+      ingredients: ingredients,
+      steps: steps,
+      dietaryTags: dietaryTags,
+    );
     validateTags(
       nutritionalTags: nutritionalTags,
       requiredEquipment: requiredEquipment,
@@ -29,6 +41,25 @@ class RecipeCatalog {
       nutritionalTags: nutritionalTags,
       requiredEquipment: requiredEquipment,
     );
+  }
+
+  /// Lanza [ArgumentError] si la receta pasa los máximos de las reglas.
+  static void validateLimits({
+    required List<RecipeIngredient> ingredients,
+    required List<String> steps,
+    List<String> dietaryTags = const [],
+  }) {
+    if (ingredients.length > maxIngredients) {
+      throw ArgumentError(
+        'Una receta lleva máximo $maxIngredients ingredientes',
+      );
+    }
+    if (steps.length > maxSteps) {
+      throw ArgumentError('Una receta lleva máximo $maxSteps pasos');
+    }
+    if (dietaryTags.length > maxDietaryTags) {
+      throw ArgumentError('Una receta lleva máximo $maxDietaryTags etiquetas');
+    }
   }
 
   /// Lanza [ArgumentError] con un mensaje para mostrar si alguna etiqueta o

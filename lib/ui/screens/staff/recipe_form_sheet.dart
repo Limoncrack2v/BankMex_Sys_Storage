@@ -8,6 +8,7 @@ import '../../../application/bank_storage_facade.dart';
 import '../../../data/models/family.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../domain/models/recipe.dart';
+import '../../../domain/recipe_catalog.dart';
 import '../../formatting.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
@@ -688,7 +689,9 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
         SecondaryButton(
           label: 'Agregar ingrediente',
           icon: AppIcons.plus,
-          onPressed: _addIngredient,
+          onPressed: _ingredients.length < RecipeCatalog.maxIngredients
+              ? _addIngredient
+              : null,
         ),
         const SizedBox(height: 16),
         const FieldLabel('Preparación', required: true),
@@ -708,7 +711,7 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
         SecondaryButton(
           label: 'Agregar paso',
           icon: AppIcons.plus,
-          onPressed: _addStep,
+          onPressed: _steps.length < RecipeCatalog.maxSteps ? _addStep : null,
         ),
         if (!_isEditing) ...[
           const SizedBox(height: 16),

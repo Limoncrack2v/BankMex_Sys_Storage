@@ -196,6 +196,109 @@ service cloud.firestore {
         && data.meals is list && data.meals.size() <= 100;
     }
 
+    // Un ingrediente de una receta (RecipeIngredient.toMap). unit es un valor
+    // de FoodUnit (lib/data/models/pantry_item.dart). Si falta un campo o no
+    // tiene el tipo esperado, la evaluación falla y la escritura se rechaza.
+    // No se revisan campos de más dentro del ingrediente: cada comprobación
+    // gasta expresiones y la app los ignora.
+    function validRecipeIngredient(item) {
+      return item.productName.matches('(?s).{1,100}')
+        && item.quantity > 0 && item.quantity <= 1000000
+        && item.unit.matches('kg|g|l|ml|piece|can|pack');
+    }
+
+    // Las reglas no tienen ciclos: cada ingrediente y cada paso se revisa por
+    // su índice, y el k solo se evalúa si hay más de k. Por eso hay un máximo
+    // (RecipeCatalog.maxIngredients y maxSteps): pasarlo rechaza la receta.
+    // Una solicitud tiene un tope de 1000 expresiones y con estos máximos una
+    // receta usa casi todas. Si se sube alguno, repetir las pruebas de máximos
+    // de test_emulator/rules_recipe_validation_test.dart.
+    function validRecipeIngredients(items) {
+      let n = items.size();
+      return items is list && n >= 1 && n <= 10
+        && (n <= 0 || validRecipeIngredient(items[0]))
+        && (n <= 1 || validRecipeIngredient(items[1]))
+        && (n <= 2 || validRecipeIngredient(items[2]))
+        && (n <= 3 || validRecipeIngredient(items[3]))
+        && (n <= 4 || validRecipeIngredient(items[4]))
+        && (n <= 5 || validRecipeIngredient(items[5]))
+        && (n <= 6 || validRecipeIngredient(items[6]))
+        && (n <= 7 || validRecipeIngredient(items[7]))
+        && (n <= 8 || validRecipeIngredient(items[8]))
+        && (n <= 9 || validRecipeIngredient(items[9]));
+    }
+
+    function validRecipeSteps(steps) {
+      let n = steps.size();
+      return steps is list && n >= 1 && n <= 12
+        && (n <= 0 || steps[0].matches('(?s).{1,300}'))
+        && (n <= 1 || steps[1].matches('(?s).{1,300}'))
+        && (n <= 2 || steps[2].matches('(?s).{1,300}'))
+        && (n <= 3 || steps[3].matches('(?s).{1,300}'))
+        && (n <= 4 || steps[4].matches('(?s).{1,300}'))
+        && (n <= 5 || steps[5].matches('(?s).{1,300}'))
+        && (n <= 6 || steps[6].matches('(?s).{1,300}'))
+        && (n <= 7 || steps[7].matches('(?s).{1,300}'))
+        && (n <= 8 || steps[8].matches('(?s).{1,300}'))
+        && (n <= 9 || steps[9].matches('(?s).{1,300}'))
+        && (n <= 10 || steps[10].matches('(?s).{1,300}'))
+        && (n <= 11 || steps[11].matches('(?s).{1,300}'));
+    }
+
+    // Las etiquetas libres solo se cuentan: revisar cada una gasta
+    // expresiones que las demás partes de la receta necesitan.
+    function validDietaryTags(tags) {
+      return tags is list && tags.size() <= 10;
+    }
+
+    // Etiquetas y electrodomésticos: los de NutritionalTag y Appliance
+    // (lib/domain/models). Al editar se aceptan también los ids que la receta
+    // ya tenía, para no borrar los de una versión más nueva de la app
+    // (RecipeCatalog.validateTags hace lo mismo).
+    function validRecipeTags(tags, known, stored) {
+      return tags is list && tags.size() <= 20
+        && tags.hasOnly(known.concat(stored))
+        && tags.toSet().size() == tags.size();
+    }
+
+    // before es el documento guardado al editar, o {} al crear. La receta
+    // completa debe ser válida: el catálogo escribe todos los campos siempre
+    // (Recipe.toMap).
+    function validRecipe(data, before) {
+      return data.keys().hasOnly(['name', 'ingredients', 'steps', 'prepTimeMinutes', 'caloriesPerServing', 'status', 'dietaryTags', 'nutritionalTags', 'requiredEquipment', 'image', 'servings'])
+        && data.keys().hasAll(['name', 'ingredients', 'steps', 'prepTimeMinutes', 'caloriesPerServing', 'status', 'dietaryTags', 'nutritionalTags', 'requiredEquipment', 'image', 'servings'])
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.status in ['pending', 'approved']
+        && data.prepTimeMinutes is int && data.prepTimeMinutes >= 1 && data.prepTimeMinutes <= 9999
+        && data.caloriesPerServing is int && data.caloriesPerServing >= 0 && data.caloriesPerServing <= 5000
+        && data.servings is int && data.servings >= 1 && data.servings <= 99
+        && data.image is string && data.image.size() <= 300
+        && validRecipeIngredients(data.ingredients)
+        && validRecipeSteps(data.steps)
+        && validDietaryTags(data.dietaryTags)
+        && validRecipeTags(data.nutritionalTags,
+          ['bajoEnSodio', 'bajoEnAzucar', 'bajoEnGrasa', 'altoEnFibra', 'altoEnProteina', 'vegetariano', 'aptoDiabeticos'],
+          before.get('nutritionalTags', []))
+        && validRecipeTags(data.requiredEquipment,
+          ['estufa', 'refrigerador', 'horno', 'microondas', 'licuadora', 'ollaPresion'],
+          before.get('requiredEquipment', []));
+    }
+
+    // Un registro de consumo (PantryRepository.consumptionLog). at puede venir
+    // de un dispositivo sin conexión, así que solo se limita hacia el futuro,
+    // igual que localTimestamp en validTrace.
+    function validConsumptionLog(data) {
+      return data.keys().hasOnly(['productId', 'quantity', 'unit', 'category', 'at', 'deviceId', 'reason'])
+        && data.keys().hasAll(['productId', 'quantity', 'unit', 'category', 'at', 'deviceId', 'reason'])
+        && data.productId is string && data.productId.size() >= 1 && data.productId.size() <= 100
+        && data.quantity is number && data.quantity > 0 && data.quantity <= 1000000
+        && data.unit in ['kg', 'g', 'l', 'ml', 'piece', 'can', 'pack']
+        && data.category in ['grain', 'legume', 'canned', 'dairy', 'produce', 'protein', 'beverage', 'other']
+        && data.at is timestamp && data.at <= request.time + duration.value(5, 'm')
+        && data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 64
+        && data.reason in ['consumed', 'expired'];
+    }
+
     match /families/{familyId} {
       // Solo el staff registra familias, junto con su perfil users/{authUid}
       // (mismo batch). El id del hogar es el uid de su cuenta: un hogar por
@@ -245,8 +348,13 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt;
       }
 
+      // Solo se agregan: ningún flujo de la app edita o borra un registro, y
+      // las estadísticas de consumo y desperdicio cuentan con ellos.
       match /consumptionLogs/{logId} {
-        allow read, write: if canAccessFamily(familyId);
+        allow read: if canAccessFamily(familyId);
+        allow create: if canAccessFamily(familyId)
+          && validConsumptionLog(request.resource.data);
+        allow update, delete: if false;
       }
     }
 
@@ -335,7 +443,11 @@ service cloud.firestore {
       allow read: if isStaff()
         || (isNutritionist() && resource.data.status == 'pending')
         || (request.auth != null && resource.data.status == 'approved');
-      allow create, update: if isStaff()
+      allow create: if isStaff()
+        && validRecipe(request.resource.data, {})
+        && (request.resource.data.status != 'approved' || recentlySignedIn());
+      allow update: if isStaff()
+        && validRecipe(request.resource.data, resource.data)
         && (request.resource.data.status != 'approved' || recentlySignedIn());
       allow delete: if isStaff();
     }

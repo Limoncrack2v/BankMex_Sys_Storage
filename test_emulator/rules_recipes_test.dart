@@ -16,10 +16,26 @@ Map<String, Map<String, Object?>> profile(String role) => {
   'createdAt': now(),
 };
 
-/// Las reglas no validan los campos de una receta: con estos dos alcanza.
+/// Una receta completa y válida (Recipe.toMap): las reglas revisan todos los
+/// campos (validRecipe).
 Map<String, Map<String, Object?>> recipe(String status) => {
   'name': str('Arroz con frijoles'),
+  'ingredients': arr([
+    mapValue({
+      'productName': str('Arroz'),
+      'quantity': number(0.25),
+      'unit': str('kg'),
+    }),
+  ]),
+  'steps': arr([str('Cocer el arroz.')]),
+  'prepTimeMinutes': integer(30),
+  'caloriesPerServing': integer(250),
   'status': str(status),
+  'dietaryTags': arr([]),
+  'nutritionalTags': arr([]),
+  'requiredEquipment': arr([]),
+  'image': str(''),
+  'servings': integer(4),
 };
 
 Future<void> seedFixtures() async {

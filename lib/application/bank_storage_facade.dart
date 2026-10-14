@@ -149,6 +149,11 @@ class BankStorageFacade {
     if (recipe.id.isEmpty) {
       throw ArgumentError('updateRecipe requires an id');
     }
+    RecipeCatalog.validateLimits(
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      dietaryTags: recipe.dietaryTags,
+    );
     RecipeCatalog.validateTags(
       nutritionalTags: recipe.nutritionalTags,
       requiredEquipment: recipe.requiredEquipment,
