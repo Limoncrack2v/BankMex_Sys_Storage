@@ -60,7 +60,13 @@ class PantryItem {
   final PantryItemStatus status;
   final DateTime? consumedAt;
 
-  bool isExpired(DateTime now) => expirationDate.isBefore(now);
+  /// Compares calendar days: an item is still usable during its whole
+  /// expiration day, like `daysLeft >= 0` in the UI.
+  bool isExpired(DateTime now) => DateTime(
+        expirationDate.year,
+        expirationDate.month,
+        expirationDate.day,
+      ).isBefore(DateTime(now.year, now.month, now.day));
 
   bool isUsable(DateTime now) =>
       status == PantryItemStatus.available &&
