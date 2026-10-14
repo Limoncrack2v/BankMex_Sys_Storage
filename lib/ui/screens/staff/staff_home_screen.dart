@@ -13,12 +13,12 @@ import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_icon.dart';
-import '../../widgets/coming_soon.dart';
 import '../../widgets/pill.dart';
 import 'deliveries_screen.dart';
 import 'recipe_catalog_screen.dart';
 import 'register_account_sheet.dart';
 import 'staff_requests_sheet.dart';
+import 'stats_screen.dart';
 
 /// Panel del staff: Entregas, con acceso a la cuenta (alta de cuentas,
 /// solicitudes de staff y cerrar sesión) desde el header. Si hay solicitudes
@@ -35,7 +35,7 @@ class StaffHomeScreen extends StatefulWidget {
 class _StaffHomeScreenState extends State<StaffHomeScreen> {
   late final Stream<List<StaffRequest>> _pendingRequests;
 
-  /// Pestaña abierta: 0 Entregas, 2 Catálogo de recetas (Estadísticas aún no).
+  /// Pestaña abierta: 0 Entregas, 1 Estadísticas, 2 Catálogo de recetas.
   int _tab = 0;
 
   AuthSession get _session => widget.session;
@@ -101,6 +101,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
           ),
           Expanded(
             child: switch (_tab) {
+              1 => const StatsScreen(),
               2 => const RecipeCatalogScreen(),
               _ => DeliveriesScreen(
                 session: _session,
@@ -114,11 +115,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
         items: AppBottomNav.staffItems,
         currentIndex: _tab,
         onTap: (index) {
-          // Estadísticas todavía no está.
-          if (index == 1) {
-            showComingSoon(context);
-            return;
-          }
           if (index != _tab) setState(() => _tab = index);
         },
       ),

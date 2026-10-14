@@ -12,7 +12,11 @@ class MealPlanRepository {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection(FirestorePaths.mealPlans);
 
+  /// Lanza ArgumentError, sin escribir nada, si alguna comida del plan o el
+  /// plan no cumplen los límites de firestore.rules (MealPlan.validate).
   Future<MealPlan> create(MealPlan plan) async {
+    final error = plan.validate();
+    if (error != null) throw ArgumentError(error);
     final ref = plan.id.isEmpty ? _col.doc() : _col.doc(plan.id);
     final data = plan.toMap();
     data['familyId'] = _db.doc(FirestorePaths.familyDoc(plan.familyId));

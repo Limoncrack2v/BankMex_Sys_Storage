@@ -40,8 +40,19 @@ class MealPlanGenerator {
     DateTime? startDate,
     DateTime? now,
   }) {
+    // Un plan guarda a lo más una comida por día y MealPlan.maxMeals comidas.
+    if (days < 1 || days > MealPlan.maxMeals) {
+      throw ArgumentError.value(
+        days,
+        'days',
+        'Un plan abarca de 1 a ${MealPlan.maxMeals} días',
+      );
+    }
     final clock = now ?? DateTime.now();
-    final start = startDate ?? DateTime(clock.year, clock.month, clock.day);
+    // Siempre a medianoche: las comidas caen a medianoche de cada día y la
+    // primera no puede quedar antes del inicio del rango (validMeal).
+    final first = startDate ?? clock;
+    final start = DateTime(first.year, first.month, first.day);
     final servings = roundQuantity(PortionAdjuster.familyServingFactor(family));
     var remaining = pantryItems.map((item) => item.copyWith()).toList();
     final meals = <MealPlanMeal>[];

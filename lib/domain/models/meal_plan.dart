@@ -1,6 +1,16 @@
 import '../firestore_codec.dart';
+import '../meal_plan_length.dart';
 
 class MealPlanMeal {
+  /// Mismo tope que validMeal en firestore.rules: el id de una receta es el
+  /// de un documento de recipes (mismo tope que reassignedFrom en las
+  /// entregas).
+  static const int maxRecipeIdLength = 128;
+
+  /// Mismo tope que validMeal en firestore.rules (igual que los paquetes de
+  /// una entrega, Delivery.maxPackages).
+  static const double maxServings = 100;
+
   const MealPlanMeal({
     required this.date,
     required this.recipeId,
@@ -30,9 +40,37 @@ class MealPlanMeal {
         'recipeId': recipeId,
         'servings': servings,
       };
+
+  /// Null si la comida se puede guardar; si no, el motivo. Mismos límites que
+  /// validMeal en firestore.rules: la fecha dentro del rango del plan (con los
+  /// extremos incluidos), un recipeId de 1 a [maxRecipeIdLength] caracteres
+  /// sin "/" y porciones mayores a 0 y de hasta [maxServings].
+  String? validate({required DateTime rangeStart, required DateTime rangeEnd}) {
+    if (date.isBefore(rangeStart) || date.isAfter(rangeEnd)) {
+      return 'La fecha de la comida está fuera del rango del plan';
+    }
+    if (recipeId.isEmpty) return 'La receta de la comida es obligatoria';
+    if (recipeId.runes.length > maxRecipeIdLength) {
+      return 'El id de la receta no puede tener más de $maxRecipeIdLength caracteres';
+    }
+    if (recipeId.contains('/')) {
+      return 'El id de la receta no puede contener "/"';
+    }
+    if (!servings.isFinite || servings <= 0 || servings > maxServings) {
+      return 'Las porciones deben ser mayores a 0 y de hasta ${maxServings.toInt()}';
+    }
+    return null;
+  }
 }
 
 class MealPlan {
+  /// Un plan abarca 7 o 14 días con una comida por día (MealPlanLength), así
+  /// que no tiene más de 14. Mismo tope que validMeals en firestore.rules: las
+  /// reglas revisan cada comida por su índice y una solicitud solo puede
+  /// evaluar 1000 expresiones, así que no pueden aceptar más sin dejar de
+  /// revisarlas.
+  static const int maxMeals = MealPlanLength.biweekly;
+
   const MealPlan({
     required this.id,
     required this.familyId,
@@ -76,4 +114,24 @@ class MealPlan {
         'dateRangeEnd': dateRangeEnd.toIso8601String(),
         'meals': meals.map((meal) => meal.toJson()).toList(),
       };
+
+  /// Null si el plan se puede guardar; si no, el motivo. Mismos límites que
+  /// validMealPlan en firestore.rules: el rango en orden, a lo más [maxMeals]
+  /// comidas y cada una válida dentro del rango.
+  String? validate() {
+    if (dateRangeEnd.isBefore(dateRangeStart)) {
+      return 'El plan termina antes de empezar';
+    }
+    if (meals.length > maxMeals) {
+      return 'Un plan no puede tener más de $maxMeals comidas';
+    }
+    for (var i = 0; i < meals.length; i++) {
+      final error = meals[i].validate(
+        rangeStart: dateRangeStart,
+        rangeEnd: dateRangeEnd,
+      );
+      if (error != null) return 'Comida ${i + 1}: $error';
+    }
+    return null;
+  }
 }

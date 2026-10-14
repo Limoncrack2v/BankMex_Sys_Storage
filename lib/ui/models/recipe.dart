@@ -458,11 +458,21 @@ typedef _RankedRecipe = ({
 });
 
 /// Plan de [days] días que empieza hoy: 7 o 14, según la próxima entrega de
-/// la familia (ver [MealPlanLength]). Primero van las recetas que usan lo que
-/// caduca antes en la despensa (lo caducado no cuenta); las que no usan nada
+/// la familia (ver [MealPlanLength]).
+///
+/// Se arma un día a la vez. Cada día se ordenan las recetas contra la despensa
+/// tal como estará en esa fecha: lo que ya caducó ese día no cuenta, los días
+/// que quedan se cuentan desde la fecha de la tarjeta (no desde hoy) y ya no
+/// está lo que se comieron los días anteriores del plan (ver [_PantryReplay]).
+/// Van primero las recetas que usan lo que caduca antes; las que no usan nada
 /// de la despensa van al final. Entre iguales va primero la que tiene menos
-/// ingredientes faltantes. Con menos recetas que días se repiten en el mismo
-/// orden.
+/// ingredientes faltantes y luego la que aparece antes en [recipes].
+///
+/// Cada receta sale una vez por ronda: cuando se acaban las recetas, empieza
+/// otra ronda con todas, salvo la del día anterior, que no se repite dos días
+/// seguidos. Si ese día nada de la despensa sirve (todo caducó o se acabó), se
+/// elige la receta a la que le faltan menos ingredientes y el motivo solo dice
+/// cuántos faltan, sin nombrar ningún producto.
 List<MealPlanEntry> buildMealPlan(
   List<Recipe> recipes,
   List<PantryItem> pantry, {
@@ -471,18 +481,28 @@ List<MealPlanEntry> buildMealPlan(
 }) {
   if (recipes.isEmpty) return const [];
   final now = today ?? DateTime.now();
-  final ranked = [
-    for (var i = 0; i < recipes.length; i++)
-      _rankRecipe(recipes[i], i, pantry, now),
-  ]..sort(_compareRanked);
+  final replay = _PantryReplay(pantry);
+  final plan = <MealPlanEntry>[];
+  // Recetas que ya salieron en la ronda actual y la del día anterior.
+  var served = <int>{};
+  int? previous;
 
-  return [
-    for (var offset = 0; offset < days; offset++)
-      _planEntry(
-        ranked[offset % ranked.length],
-        DateTime(now.year, now.month, now.day + offset),
-      ),
-  ];
+  for (var offset = 0; offset < days; offset++) {
+    final date = DateTime(now.year, now.month, now.day + offset);
+    if (served.length == recipes.length) served = {};
+    final ranked = [
+      for (var i = 0; i < recipes.length; i++)
+        if (!served.contains(i) && (recipes.length == 1 || i != previous))
+          _rankRecipe(recipes[i], i, replay.current, date),
+    ]..sort(_compareRanked);
+
+    final chosen = ranked.first;
+    plan.add(_planEntry(chosen, date));
+    served.add(chosen.index);
+    previous = chosen.index;
+    replay.cook(chosen.recipe, date);
+  }
+  return plan;
 }
 
 _RankedRecipe _rankRecipe(
@@ -603,54 +623,39 @@ class PlanLeftover {
 }
 
 /// Qué queda de cada producto de la despensa después de cocinar las recetas de
-/// [plan] en orden. Los productos caducados o sin cantidad no cuentan (como en
-/// [planConsumption]); los demás van del que caduca primero al que caduca
-/// después.
+/// [plan] en orden. Los productos que ya caducaron hoy o no tienen cantidad no
+/// cuentan (como en [planConsumption]); los demás van del que caduca primero al
+/// que caduca después.
 ///
-/// [buildWeeklyPlan] repite las recetas cuando hay menos de 7 y no descuenta
-/// nada entre un día y otro, así que aquí sí se descuenta día por día: una
-/// receta repetida usa lo que quede cuando le toca, y cuando un ingrediente se
-/// acaba los días siguientes ya no lo usan. Por eso la cantidad que sobra nunca
-/// es negativa, aunque dos días pidan más de lo que hay. Las fechas de los días
-/// no se usan: un producto que caduca a media semana cuenta para todo el plan.
+/// Es la misma repetición día por día con la que [buildMealPlan] arma el plan
+/// ([_PantryReplay]): cada receta se cocina en la fecha de su tarjeta, así que
+/// no usa un producto que ya caducó ese día, y lo que usan los días anteriores
+/// ya no está. Una receta repetida usa lo que quede cuando le toca y, cuando un
+/// ingrediente se acaba, los días siguientes ya no lo usan. Por eso la cantidad
+/// que sobra nunca es negativa, aunque dos días pidan más de lo que hay. Un
+/// producto que caduca a media semana sigue en la lista con lo que no alcanzó a
+/// usarse antes de caducar.
 List<PlanLeftover> planLeftovers(
   List<MealPlanEntry> plan,
   List<PantryItem> pantry, {
   DateTime? today,
 }) {
   final now = today ?? DateTime.now();
-  final usable = [
-    for (final item in pantry)
-      if (item.quantity > 0 && daysLeft(item, today: now) >= 0) item,
-  ];
-  final remaining = [for (final item in usable) item.quantity];
-  // Lo que ve planConsumption: los mismos productos con lo que va quedando.
-  final working = List<PantryItem>.of(usable);
-  final positions = Map<PantryItem, int>.identity();
-  for (var i = 0; i < working.length; i++) {
-    positions[working[i]] = i;
-  }
-
+  final replay = _PantryReplay(pantry);
   for (final entry in plan) {
-    for (final (:item, :amount) in planConsumption(
-      entry.recipe,
-      working,
-      today: now,
-    )) {
-      final i = positions[item]!;
-      remaining[i] = _round3(math.max(0.0, remaining[i] - amount));
-      working[i] = _withQuantity(usable[i], remaining[i]);
-      positions[working[i]] = i;
-    }
+    replay.cook(entry.recipe, entry.date);
   }
 
   return [
-    for (var i = 0; i < usable.length; i++)
-      PlanLeftover(
-        item: usable[i],
-        used: _round3(math.max(0.0, usable[i].quantity - remaining[i])),
-        remaining: remaining[i],
-      ),
+    for (var i = 0; i < replay.original.length; i++)
+      if (daysLeft(replay.original[i], today: now) >= 0)
+        PlanLeftover(
+          item: replay.original[i],
+          used: _round3(
+            math.max(0.0, replay.original[i].quantity - replay.remaining[i]),
+          ),
+          remaining: replay.remaining[i],
+        ),
   ]..sort((a, b) {
     final byDays = daysLeft(
       a.item,
@@ -663,6 +668,52 @@ List<PlanLeftover> planLeftovers(
         ? byName
         : a.item.pantryItemId.compareTo(b.item.pantryItemId);
   });
+}
+
+/// La despensa mientras se cocina el plan día por día. La comparten
+/// [buildMealPlan] (para elegir cada día contra lo que queda) y
+/// [planLeftovers] (para contar lo que sobra), de modo que las dos cuentas no
+/// pueden separarse.
+class _PantryReplay {
+  _PantryReplay(List<PantryItem> pantry)
+    : original = [
+        for (final item in pantry)
+          if (item.quantity > 0) item,
+      ] {
+    remaining = [for (final item in original) item.quantity];
+    current = List<PantryItem>.of(original);
+    for (var i = 0; i < current.length; i++) {
+      _positions[current[i]] = i;
+    }
+  }
+
+  /// Los productos con cantidad, tal como llegaron.
+  final List<PantryItem> original;
+
+  /// Lo que queda de cada uno de [original], en su unidad. Nunca es negativo.
+  late final List<double> remaining;
+
+  /// Los mismos productos con lo que va quedando: es lo que ve
+  /// [planConsumption]. Los caducados siguen aquí, pero no sirven en ninguna
+  /// fecha posterior a su caducidad.
+  late final List<PantryItem> current;
+
+  final _positions = Map<PantryItem, int>.identity();
+
+  /// Cocina [recipe] el día [date]: descuenta lo que [planConsumption] usaría
+  /// ese día de lo que queda.
+  void cook(Recipe recipe, DateTime date) {
+    for (final (:item, :amount) in planConsumption(
+      recipe,
+      current,
+      today: date,
+    )) {
+      final i = _positions[item]!;
+      remaining[i] = _round3(math.max(0.0, remaining[i] - amount));
+      current[i] = _withQuantity(original[i], remaining[i]);
+      _positions[current[i]] = i;
+    }
+  }
 }
 
 PantryItem _withQuantity(PantryItem item, double quantity) => PantryItem(
