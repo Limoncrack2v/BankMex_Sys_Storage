@@ -982,3 +982,22 @@ PantryItem _withQuantity(PantryItem item, double quantity) => PantryItem(
   deviceId: item.deviceId,
   localTimestamp: item.localTimestamp,
 );
+
+// ---------------------------------------------------------------------------
+// Plan guardado.
+
+/// La tarjeta de [recipe] el día [date] de un plan guardado. Como en
+/// [buildMealPlan], lo que caduca se cuenta desde hoy, no desde [date].
+MealPlanEntry planEntryFor(
+  Recipe recipe,
+  DateTime date,
+  List<PantryItem> pantry, {
+  DateTime? today,
+}) {
+  final day = DateTime(date.year, date.month, date.day);
+  final ranked = _rankRecipe(recipe, 0, pantry, today ?? DateTime.now());
+  return _planEntry(ranked, day);
+}
+
+/// Abreviatura del día de [date], como en las tarjetas del plan ("Mié").
+String planDayLabel(DateTime date) => _weekdays[date.weekday - 1];

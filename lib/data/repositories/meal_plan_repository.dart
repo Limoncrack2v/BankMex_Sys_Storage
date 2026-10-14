@@ -37,4 +37,26 @@ class MealPlanRepository {
     final snap = await _col.where('familyId', isEqualTo: familyRef).get();
     return snap.docs.map((doc) => MealPlan.fromMap(doc.id, doc.data())).toList();
   }
+
+  /// Planes de la familia en vivo y si cada uno tiene cambios que siguen en
+  /// el dispositivo (sin conexión) y aún no llegan al servidor. Filtra por
+  /// familyId, como piden las reglas para listar, y no ordena, para no
+  /// necesitar un índice.
+  Stream<List<({MealPlan plan, bool pendingSync})>> watchByFamily(
+    String familyId,
+  ) {
+    final familyRef = _db.doc(FirestorePaths.familyDoc(familyId));
+    return _col
+        .where('familyId', isEqualTo: familyRef)
+        .snapshots(includeMetadataChanges: true)
+        .map(
+          (snapshot) => [
+            for (final doc in snapshot.docs)
+              (
+                plan: MealPlan.fromMap(doc.id, doc.data()),
+                pendingSync: doc.metadata.hasPendingWrites,
+              ),
+          ],
+        );
+  }
 }
