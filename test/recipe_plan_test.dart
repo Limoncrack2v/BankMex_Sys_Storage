@@ -845,6 +845,29 @@ void main() {
       ]);
     });
 
+    test('no repite la receta del día anterior aunque al empezar otra ronda '
+        'sea la mejor', () {
+      final plan = buildMealPlan(
+        [conLeche, conArroz],
+        [
+          item('Leche entera', 5, FoodUnit.l, days: 1),
+          item('Arroz', 5, FoodUnit.kg, days: 100),
+        ],
+        today: today,
+        days: 4,
+      );
+
+      // El miércoles la leche ya caducó y "Con arroz" es la única receta con
+      // algo que usar, pero salió el martes: toca "Con leche".
+      expect(plan.map((e) => e.recipe.name), [
+        'Con leche',
+        'Con arroz',
+        'Con leche',
+        'Con arroz',
+      ]);
+      expect(plan[2].reason, 'Te falta 1 ingrediente');
+    });
+
     test('con la despensa vacía todos los días dicen solo lo que falta', () {
       final plan = buildMealPlan(
         SampleData.recipes,
