@@ -37,6 +37,7 @@ Recipe recipe(List<RecipeIngredient> ingredients) => Recipe(
 );
 
 MealPlanEntry entry(Recipe recipe) => MealPlanEntry(
+  date: today,
   day: 'Lun',
   recipe: recipe,
   reason: '',
@@ -328,7 +329,7 @@ void main() {
           item('Frijol', 1, FoodUnit.kg, days: 90),
           item('Avena', 0.2, FoodUnit.kg, days: 60),
         ];
-        final plan = buildWeeklyPlan(SampleData.recipes, pantry, today: today);
+        final plan = buildMealPlan(SampleData.recipes, pantry, today: today);
 
         final leftovers = planLeftovers(plan, pantry, today: today);
 
