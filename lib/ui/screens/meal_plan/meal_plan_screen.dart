@@ -125,9 +125,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                         builder: (context, pantry) => _buildPlan(
                           context,
                           pantry,
-                          members.hasError
-                              ? const []
-                              : members.data ?? const [],
+                          members,
                           recipes,
                           family.data?.nextDeliveryDate,
                         ),
@@ -144,8 +142,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   Widget _buildPlan(
     BuildContext context,
     AsyncSnapshot<List<PantryItem>> snapshot,
-    List<Member> members,
-    List<Recipe> recipes,
+    AsyncSnapshot<List<Member>> membersSnapshot,
+    List<Recipe> catalog,
     DateTime? nextDelivery,
   ) {
     if (snapshot.hasError) {
@@ -154,6 +152,30 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         children: const [PantryErrorBanner()],
       );
     }
+    // Sin saber las alergias del hogar no se arma el plan: podría traer una
+    // receta que alguien no puede comer.
+    if (membersSnapshot.hasError) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [
+          InfoBanner(
+            message:
+                'No pudimos revisar las alergias de tu familia, así que no '
+                'armamos el plan. Intenta de nuevo en un momento.',
+            background: AppColors.dangerSoft,
+            foreground: AppColors.dangerText,
+          ),
+        ],
+      );
+    }
+    final members = membersSnapshot.data;
+    if (members == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+    // Las recetas que chocan con una alergia del hogar no entran al plan.
+    final recipes = recipesSafeForHousehold(catalog, members);
     final pantry = snapshot.data;
     if (pantry == null) {
       return const Center(
@@ -202,6 +224,14 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             ),
           ),
         ],
+        if (plan.isEmpty && catalog.isNotEmpty)
+          const EmptyState(
+            title: 'Ninguna receta es segura para tu familia',
+            message:
+                'Todas las recetas del catálogo llevan algo a lo que alguien '
+                'de tu familia es alérgico, así que no armamos un plan. '
+                'Puedes ver el catálogo completo, con sus avisos, en Recetas.',
+          ),
         if (plan.isNotEmpty) ...[
           const SizedBox(height: 24),
           LeftoverIngredientsSection(

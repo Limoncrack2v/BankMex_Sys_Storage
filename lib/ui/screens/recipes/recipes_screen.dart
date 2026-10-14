@@ -129,6 +129,8 @@ class _RecipesScreenState extends State<RecipesScreen> {
                     pantry,
                     members.hasError ? const [] : members.data ?? const [],
                     recipes,
+                    allergiesKnown: members.hasData,
+                    allergiesFailed: members.hasError,
                   ),
                 ),
               );
@@ -143,16 +145,26 @@ class _RecipesScreenState extends State<RecipesScreen> {
     BuildContext context,
     AsyncSnapshot<List<PantryItem>> snapshot,
     List<Member> members,
-    List<Recipe> recipes,
-  ) {
+    List<Recipe> recipes, {
+    required bool allergiesKnown,
+    required bool allergiesFailed,
+  }) {
     final pantry = snapshot.hasError ? null : snapshot.data;
     final loading = pantry == null && !snapshot.hasError;
     // "Con lo que tengo" no se puede calcular sin la despensa.
     final needsPantry = _filter == RecipeFilter.conLoQueTengo && pantry == null;
+    // "Con lo que tengo" es la sugerencia de qué cocinar: deja fuera las
+    // recetas con alérgenos del hogar, así que tampoco se arma sin saber las
+    // alergias. Los demás filtros muestran todo el catálogo, con su aviso.
+    final suggests = _filter == RecipeFilter.conLoQueTengo;
+    final needsAllergies = suggests && !allergiesKnown && !allergiesFailed;
 
     final visible = <_VisibleRecipe>[];
-    if (!needsPantry) {
-      for (final recipe in recipes) {
+    final candidates = suggests
+        ? recipesSafeForHousehold(recipes, members)
+        : recipes;
+    if (!needsPantry && !needsAllergies && !(suggests && allergiesFailed)) {
+      for (final recipe in candidates) {
         // Porciones para los integrantes del hogar, según su edad, peso y salud.
         final scaled = scaledForHousehold(recipe, members);
         final missing = pantry == null
@@ -185,7 +197,15 @@ class _RecipesScreenState extends State<RecipesScreen> {
           const SizedBox(height: 12),
           const PantryErrorBanner(),
         ],
-        if (loading && needsPantry)
+        if (suggests && allergiesFailed) ...[
+          const SizedBox(height: 12),
+          Text(
+            'No pudimos revisar las alergias de tu familia, así que no '
+            'sugerimos recetas. Intenta de nuevo en un momento.',
+            textAlign: TextAlign.center,
+            style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
+          ),
+        ] else if ((loading && needsPantry) || needsAllergies)
           const Padding(
             padding: EdgeInsets.only(top: 24),
             child: Center(
