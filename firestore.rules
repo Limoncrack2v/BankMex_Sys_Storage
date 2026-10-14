@@ -333,6 +333,63 @@ service cloud.firestore {
         && data.reason in ['consumed', 'expired'];
     }
 
+    // Un cambio de una adaptación (AdjustmentChange.toMap): su tipo y el motivo
+    // que ve el nutriólogo; en una sustitución, también el ingrediente que se
+    // cambia y el que lo reemplaza.
+    function validAdjustmentChange(change) {
+      return change.kind in ['portions', 'substitution']
+        && change.reason.matches('(?s).{1,200}')
+        && (!('from' in change) || change.from.matches('(?s).{1,100}'))
+        && (!('to' in change) || change.to.matches('(?s).{1,100}'));
+    }
+
+    // Igual que los ingredientes de una receta: cada cambio se revisa por su
+    // índice, así que hay un máximo (AdjustmentChange.maxPerSuggestion).
+    function validAdjustmentChanges(changes) {
+      let n = changes.size();
+      return changes is list && n >= 1 && n <= 6
+        && (n <= 0 || validAdjustmentChange(changes[0]))
+        && (n <= 1 || validAdjustmentChange(changes[1]))
+        && (n <= 2 || validAdjustmentChange(changes[2]))
+        && (n <= 3 || validAdjustmentChange(changes[3]))
+        && (n <= 4 || validAdjustmentChange(changes[4]))
+        && (n <= 5 || validAdjustmentChange(changes[5]));
+    }
+
+    // Una adaptación al crearla (RecipeAdjustment.toMap): siempre pendiente y
+    // sin datos de revisión. No lleva nombres de la familia ni de sus
+    // integrantes: solo el tamaño del hogar y el motivo de cada cambio.
+    // Los ingredientes se revisan como los de una receta.
+    function validAdjustment(data) {
+      return data.keys().hasOnly(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
+        && data.keys().hasAll(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
+        && data.familyId is path
+        && data.familyId == /databases/$(database)/documents/families/$(data.familyId[4])
+        && data.recipeId.matches('[^/]{1,128}')
+        && data.baseSignature.matches('[0-9a-f]{8}')
+        && data.householdSize is int && data.householdSize >= 1 && data.householdSize <= 50
+        && data.servings is int && data.servings >= 1 && data.servings <= 99
+        && data.summary.matches('(?s).{1,300}')
+        && data.status == 'pending'
+        && data.createdAt == request.time
+        && validAdjustmentChanges(data.changes)
+        && validRecipeIngredients(data.ingredients);
+    }
+
+    // El nutriólogo decide una pending: solo cambian status y quién la revisó y
+    // cuándo, y un rechazo lleva su motivo.
+    function nutritionistReviewsAdjustment(data, before) {
+      return before.status == 'pending'
+        && data.reviewedBy == request.auth.uid
+        && data.reviewedAt == request.time
+        && ((data.status == 'approved'
+            && data.diff(before).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']))
+          || (data.status == 'rejected'
+            && data.diff(before).affectedKeys().hasOnly(['status', 'rejectionReason', 'reviewedBy', 'reviewedAt'])
+            && data.rejectionReason is string
+            && data.rejectionReason.trim().size() >= 1 && data.rejectionReason.size() <= 300));
+    }
+
     match /families/{familyId} {
       // Solo el staff registra familias, junto con su perfil users/{authUid}
       // (mismo batch). El id del hogar es el uid de su cuenta: un hogar por
@@ -493,6 +550,24 @@ service cloud.firestore {
           && (nutritionistApproves(request.resource.data, resource.data)
             || nutritionistRejects(request.resource.data, resource.data)));
       allow delete: if isStaff();
+    }
+
+    // Adaptaciones de recetas para un hogar. La familia dueña crea la sugerencia
+    // (solo de una receta aprobada, pendiente y sin revisión) y lee las suyas;
+    // retira una que sigue pendiente. El nutriólogo las lee todas y las aprueba
+    // o rechaza con un inicio de sesión reciente, sin cambiar su contenido.
+    // Nadie más las lee ni las escribe, y nadie edita su contenido.
+    match /adjustments/{adjustmentId} {
+      allow read: if isNutritionist()
+        || (request.auth != null && isFamilyOwner(resource.data.familyId[4]));
+      allow create: if isFamilyOwner(request.resource.data.familyId[4])
+        && validAdjustment(request.resource.data)
+        && get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.status == 'approved';
+      allow update: if isNutritionist()
+        && recentlySignedIn()
+        && nutritionistReviewsAdjustment(request.resource.data, resource.data);
+      allow delete: if isFamilyOwner(resource.data.familyId[4])
+        && resource.data.status == 'pending';
     }
 
     // Solo la familia dueña del plan y el staff lo leen y lo escriben. Un plan

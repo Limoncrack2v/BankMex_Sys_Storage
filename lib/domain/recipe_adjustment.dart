@@ -27,7 +27,10 @@ class AdjustmentChange {
   final String? from;
   final String? to;
 
-  /// Máximo del motivo y de cada nombre (firestore.rules: validAdjustment).
+  /// Máximos de firestore.rules (validAdjustment): las reglas revisan cada
+  /// cambio por su índice y tienen un tope de expresiones, así que una
+  /// sugerencia con más cambios no se puede guardar.
+  static const int maxPerSuggestion = 6;
   static const int maxTextLength = 200;
   static const int maxNameLength = 100;
 
@@ -212,7 +215,9 @@ class RecipeAdjustmentRules {
         ),
       );
     }
-    if (changes.isEmpty) return null;
+    if (changes.isEmpty || changes.length > AdjustmentChange.maxPerSuggestion) {
+      return null;
+    }
 
     return RecipeAdjustmentSuggestion(
       recipeId: recipe.id,
