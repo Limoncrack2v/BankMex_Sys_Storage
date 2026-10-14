@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/catalog_source.dart';
+import '../../../data/models/family.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
+import '../../../domain/meal_plan_length.dart';
 import '../../formatting.dart';
 import '../../models/recipe.dart';
 import '../../sample_data.dart';
@@ -14,8 +17,9 @@ import '../../widgets/app_header.dart';
 import '../../widgets/pill.dart';
 import '../recipes/recipe_detail_screen.dart';
 
-/// Plan de comidas semanal: una receta por día, armado con la despensa real
-/// de la familia y priorizando lo que caduca antes (ver [buildWeeklyPlan]).
+/// Plan de comidas semanal o quincenal, según la próxima entrega de la
+/// familia (ver [MealPlanLength]): una receta por día, armado con la despensa
+/// real de la familia y priorizando lo que caduca antes (ver [buildMealPlan]).
 class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({
     super.key,
@@ -35,6 +39,11 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   late Stream<List<Member>> _members;
   late Stream<List<Recipe>> _catalog;
 
+  // El hogar trae nextDeliveryDate (lo escribe syncNextDelivery): al ser un
+  // stream, el plan se alarga o se acorta en vivo si el staff programa o
+  // cancela una entrega.
+  late Stream<Family?> _family;
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +60,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
     _members = MemberRepository().watchAllMembers(widget.familyId);
     _catalog = watchApprovedCatalogRecipes();
+    _family = FamilyRepository().watchFamily(widget.familyId);
   }
 
   @override
@@ -60,7 +70,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         const AppHeader(title: 'Plan de comidas'),
         Expanded(
           // Mientras cargan los integrantes (o si fallan) se usan las
-          // porciones originales de las recetas.
+          // porciones originales de las recetas; mientras carga el hogar (o
+          // si falla), el plan es semanal.
           child: StreamBuilder<List<Recipe>>(
             stream: _catalog,
             builder: (context, catalog) {
@@ -68,16 +79,23 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                   catalog.hasData && catalog.data!.isNotEmpty
                       ? catalog.data!
                       : widget.recipes;
-              return StreamBuilder<List<Member>>(
-                stream: _members,
-                builder: (context, members) => StreamBuilder<List<PantryItem>>(
-                  stream: _pantry,
-                  builder: (context, pantry) => _buildPlan(
-                    context,
-                    pantry,
-                    members.hasError ? const [] : members.data ?? const [],
-                    recipes,
-                  ),
+              return StreamBuilder<Family?>(
+                stream: _family,
+                builder: (context, family) => StreamBuilder<List<Member>>(
+                  stream: _members,
+                  builder: (context, members) =>
+                      StreamBuilder<List<PantryItem>>(
+                        stream: _pantry,
+                        builder: (context, pantry) => _buildPlan(
+                          context,
+                          pantry,
+                          members.hasError
+                              ? const []
+                              : members.data ?? const [],
+                          recipes,
+                          family.data?.nextDeliveryDate,
+                        ),
+                      ),
                 ),
               );
             },
@@ -92,6 +110,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     AsyncSnapshot<List<PantryItem>> snapshot,
     List<Member> members,
     List<Recipe> recipes,
+    DateTime? nextDelivery,
   ) {
     if (snapshot.hasError) {
       return ListView(
@@ -113,7 +132,12 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     for (final recipe in recipes) {
       originals[scaledForHousehold(recipe, members)] = recipe;
     }
-    final plan = buildWeeklyPlan(originals.keys.toList(), pantry, today: today);
+    final plan = buildMealPlan(
+      originals.keys.toList(),
+      pantry,
+      today: today,
+      days: MealPlanLength.daysFor(nextDelivery: nextDelivery, now: today),
+    );
     final hasProducts = pantry.any(
       (item) => item.quantity > 0 && daysLeft(item, today: today) >= 0,
     );
@@ -186,14 +210,24 @@ class _DayCard extends StatelessWidget {
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  entry.day.toUpperCase(),
-                  style: AppText.nunito(
-                    11,
-                    16.5,
-                    weight: FontWeight.w700,
-                    color: AppColors.textMuted,
-                  ),
+                // Día y número: en un plan de 14 días hay dos "LUN".
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      entry.day.toUpperCase(),
+                      style: AppText.nunito(
+                        11,
+                        16.5,
+                        weight: FontWeight.w700,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    Text(
+                      '${entry.date.day}',
+                      style: AppText.baloo(16, 20, weight: FontWeight.w600),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 12),
