@@ -30,6 +30,21 @@ String formatNumber(double value) {
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
+/// Entero con separador de miles ("1,240").
+String formatInteger(int value) => value.toString().replaceAllMapped(
+  RegExp(r'\B(?=(\d{3})+(?!\d))'),
+  (_) => ',',
+);
+
+/// Kilos de las estadísticas: desde 100 sin decimales y con separador de
+/// miles ("22,100"); abajo, con un decimal como máximo ("12.4", "0.3").
+String formatKg(double kg) => kg >= 100
+    ? formatInteger(kg.round())
+    : formatNumber((kg * 10).round() / 10);
+
+/// Abreviatura del mes ("oct").
+String monthShort(DateTime date) => _monthsShort[date.month - 1];
+
 /// Abreviatura de la unidad; las unidades contables van en singular o plural.
 String unitLabel(FoodUnit unit, double quantity) {
   final one = quantity == 1;

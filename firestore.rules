@@ -114,6 +114,56 @@ service cloud.firestore {
         && (data.localTimestamp is timestamp && data.localTimestamp <= request.time + duration.value(5, 'm'));
     }
 
+    // Un producto de una entrega (DeliveryItem.toMap), con los mismos límites
+    // que DeliveryItem.validate y invalidReason (functions/pantry.js), salvo
+    // el tope de la cantidad (PantryItem.maxQuantity): no cabe en el
+    // presupuesto de expresiones de una reasignación con cuota y
+    // justificación, y lo siguen aplicando DeliveryItem.validate e
+    // invalidReason, que no deja pasar a la despensa un producto que lo
+    // exceda. Si falta un campo o no tiene el tipo esperado, la evaluación
+    // falla y la escritura se rechaza. type y unit son los valores de
+    // FoodType y FoodUnit (lib/data/models/pantry_item.dart) y de FOOD_TYPES y
+    // FOOD_UNITS (functions/pantry.js); se revisan juntos como "tipo/unidad"
+    // para gastar menos expresiones.
+    function validDeliveryItem(item) {
+      return item.productId.matches('(?s).{1,100}')
+        && (item.type + '/' + item.unit).matches('(grain|legume|canned|dairy|produce|protein|beverage|other)/(kg|g|l|ml|piece|can|pack)')
+        && item.quantity > 0
+        && item.expirationDate is timestamp;
+    }
+
+    // Las reglas no tienen ciclos ni recursión: cada producto se revisa por su
+    // índice, y el producto k solo se evalúa si hay más de k (dentro de la
+    // guarda del anterior). Cada solicitud tiene un tope de expresiones
+    // (1000), y cada producto gasta unas 60: por eso el máximo es 16, igual
+    // que Delivery.maxItems. El margen es corto: medido en el emulador caben
+    // 11 condiciones triviales más en validDelivery, unos 1.5 productos. No
+    // solo subir el tope: cualquier condición nueva en la creación o en la
+    // reasignación de una entrega obliga a repetir las pruebas del máximo en
+    // test_emulator/rules_deliveries_test.dart (grupo 'cantidad máxima de
+    // productos' y las pruebas 'se reasigna una entrega con el máximo de
+    // productos' y 'se reasigna el máximo con cuota y justificación').
+    function validDeliveryItems(items) {
+      let n = items.size();
+      return items is list && n >= 1 && n <= 16
+        && validDeliveryItem(items[0])
+        && (n <= 1 || validDeliveryItem(items[1])
+          && (n <= 2 || validDeliveryItem(items[2])
+            && (n <= 3 || validDeliveryItem(items[3])
+              && (n <= 4 || validDeliveryItem(items[4])
+                && (n <= 5 || validDeliveryItem(items[5])
+                  && (n <= 6 || validDeliveryItem(items[6])
+                    && (n <= 7 || validDeliveryItem(items[7])
+                      && (n <= 8 || validDeliveryItem(items[8])
+                        && (n <= 9 || validDeliveryItem(items[9])
+                          && (n <= 10 || validDeliveryItem(items[10])
+                            && (n <= 11 || validDeliveryItem(items[11])
+                              && (n <= 12 || validDeliveryItem(items[12])
+                                && (n <= 13 || validDeliveryItem(items[13])
+                                  && (n <= 14 || validDeliveryItem(items[14])
+                                    && (n <= 15 || validDeliveryItem(items[15]))))))))))))))));
+    }
+
     function validDelivery(data) {
       return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom', 'deviceId', 'localTimestamp'])
         && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt', 'deviceId', 'localTimestamp'])
@@ -128,11 +178,59 @@ service cloud.firestore {
         && (!('recoveryFee' in data) || ('justification' in data && data.justification.trim().size() > 0))
         && data.status in ['scheduled', 'delivered', 'cancelled']
         && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
-        && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
+        && validDeliveryItems(data.items)
         && data.createdAt is timestamp
         && (!('reassignedFrom' in data) || (data.reassignedFrom is string
           && data.reassignedFrom.size() > 0 && data.reassignedFrom.size() <= 128))
         && validTrace(data);
+    }
+
+    // Una comida de un plan (MealPlanMeal.toMap), con los mismos límites que
+    // MealPlanMeal.validate: ningún campo fuera de date, recipeId y servings;
+    // la fecha dentro del rango del plan (extremos incluidos); recipeId de 1 a
+    // 128 caracteres sin "/" (es el id de un documento de recipes; mismo tope
+    // que reassignedFrom); y porciones mayores a 0 y de hasta 100 (el mismo
+    // tope que los paquetes de una entrega). No hay hasAll ni "is timestamp",
+    // "is string" o "is number" para gastar menos expresiones: leer un campo
+    // que falta, o compararlo o aplicarle matches con otro tipo, falla la
+    // evaluación y la escritura se rechaza. Si la comida no es un mapa,
+    // hasOnly también falla.
+    function validMeal(meal, start, end) {
+      return meal.keys().hasOnly(['date', 'recipeId', 'servings'])
+        && meal.date >= start && meal.date <= end
+        && meal.recipeId.matches('[^/]{1,128}')
+        && meal.servings > 0 && meal.servings <= 100;
+    }
+
+    // Las reglas no tienen ciclos ni recursión: cada comida se revisa por su
+    // índice, y la comida k solo se evalúa si hay más de k (dentro de la
+    // guarda de la anterior). Un plan abarca 7 o 14 días con una comida por
+    // día (MealPlanLength, MealPlanGenerator): el máximo es 14, igual que
+    // MealPlan.maxMeals. Cada solicitud tiene un tope de expresiones (1000).
+    // El margen es corto: medido en el emulador, con 14 comidas caben 28
+    // condiciones triviales (1 == 1) más en validMealPlan cuando el staff
+    // cambia un plan (la ruta más cara) y fallan 30; al crear, caben 30 y
+    // fallan 32. No solo subir el tope: cualquier condición nueva en validMeal
+    // o en validMealPlan obliga a repetir las pruebas del máximo en
+    // test_emulator/rules_meal_plans_test.dart (grupo 'cantidad máxima de
+    // comidas').
+    function validMeals(meals, start, end) {
+      let n = meals.size();
+      return meals is list && n <= 14
+        && (n == 0 || validMeal(meals[0], start, end)
+          && (n <= 1 || validMeal(meals[1], start, end)
+            && (n <= 2 || validMeal(meals[2], start, end)
+              && (n <= 3 || validMeal(meals[3], start, end)
+                && (n <= 4 || validMeal(meals[4], start, end)
+                  && (n <= 5 || validMeal(meals[5], start, end)
+                    && (n <= 6 || validMeal(meals[6], start, end)
+                      && (n <= 7 || validMeal(meals[7], start, end)
+                        && (n <= 8 || validMeal(meals[8], start, end)
+                          && (n <= 9 || validMeal(meals[9], start, end)
+                            && (n <= 10 || validMeal(meals[10], start, end)
+                              && (n <= 11 || validMeal(meals[11], start, end)
+                                && (n <= 12 || validMeal(meals[12], start, end)
+                                  && (n <= 13 || validMeal(meals[13], start, end)))))))))))))));
     }
 
     function validMealPlan(data) {
@@ -143,7 +241,7 @@ service cloud.firestore {
         && data.dateRangeStart is timestamp
         && data.dateRangeEnd is timestamp
         && data.dateRangeEnd >= data.dateRangeStart
-        && data.meals is list && data.meals.size() <= 100;
+        && validMeals(data.meals, data.dateRangeStart, data.dateRangeEnd);
     }
 
     match /families/{familyId} {
