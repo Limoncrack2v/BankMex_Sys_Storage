@@ -27,8 +27,10 @@ import '../domain/unit_converter.dart';
 /// Orquesta el catálogo y el plan sobre los repos del equipo.
 ///
 /// Contrato para la UI de staff (no hay HTTP):
-/// [publishRecipe], [updateRecipe], [deleteRecipe], [watchStaffRecipes].
-/// [submitRecipe] deja pending; [approveRecipe] la publica.
+/// [submitRecipe], [updateRecipe], [deleteRecipe], [watchStaffRecipes].
+/// Staff deja las recetas en draft o pending; [approveRecipe] la publica y
+/// [rejectRecipe] la regresa a draft, y las dos son del nutriólogo
+/// (firestore.rules). Las familias solo ven las approved.
 /// La familia lee approved y [filterRecipesByPantry].
 class BankStorageFacade {
   BankStorageFacade({
@@ -93,6 +95,7 @@ class BankStorageFacade {
     List<String> requiredEquipment = const [],
     String image = '',
     int servings = 4,
+    RecipeStatus status = RecipeStatus.pending,
   }) async {
     final pending = RecipeCatalog.submitRecipe(
       id: id,
@@ -104,36 +107,9 @@ class BankStorageFacade {
       dietaryTags: dietaryTags,
       nutritionalTags: nutritionalTags,
       requiredEquipment: requiredEquipment,
+      status: status,
     ).copyWith(image: image, servings: servings);
     return recipes.create(pending);
-  }
-
-  /// Alta del staff: queda approved y la familia ya la puede ver.
-  Future<Recipe> publishRecipe({
-    String id = '',
-    required String name,
-    required List<RecipeIngredient> ingredients,
-    required List<String> steps,
-    required int prepTimeMinutes,
-    required int caloriesPerServing,
-    List<String> dietaryTags = const [],
-    List<String> nutritionalTags = const [],
-    List<String> requiredEquipment = const [],
-    String image = '',
-    int servings = 4,
-  }) async {
-    final published = RecipeCatalog.publishRecipe(
-      id: id,
-      name: name,
-      ingredients: ingredients,
-      steps: steps,
-      prepTimeMinutes: prepTimeMinutes,
-      caloriesPerServing: caloriesPerServing,
-      dietaryTags: dietaryTags,
-      nutritionalTags: nutritionalTags,
-      requiredEquipment: requiredEquipment,
-    ).copyWith(image: image, servings: servings);
-    return recipes.create(published);
   }
 
   /// [previous] es la receta guardada antes de editarla: sus etiquetas y
@@ -148,6 +124,9 @@ class BankStorageFacade {
   }) async {
     if (recipe.id.isEmpty) {
       throw ArgumentError('updateRecipe requires an id');
+    }
+    if (recipe.status == RecipeStatus.approved) {
+      throw ArgumentError('Solo el nutriólogo deja una receta aprobada');
     }
     RecipeCatalog.validateLimits(
       ingredients: recipe.ingredients,
@@ -166,12 +145,50 @@ class BankStorageFacade {
 
   Stream<List<Recipe>> watchStaffRecipes() => recipes.watchAll();
 
-  Future<Recipe> approveRecipe(String recipeId) async {
+  /// Solo el nutriólogo, con inicio de sesión reciente: las reglas no dejan
+  /// que nadie más pase una receta de pending a approved. [reviewerUid] es su
+  /// uid.
+  Future<Recipe> approveRecipe(
+    String recipeId, {
+    required String reviewerUid,
+  }) async {
+    final existing = await _pending(recipeId);
+    await recipes.approve(recipeId, reviewerUid: reviewerUid);
+    return RecipeCatalog.approveRecipe(
+      existing,
+      approvedBy: reviewerUid,
+      at: DateTime.now(),
+    );
+  }
+
+  /// Regresa la receta a draft con el [note] del rechazo (obligatorio). Mismas
+  /// reglas que [approveRecipe].
+  Future<Recipe> rejectRecipe(
+    String recipeId, {
+    required String reviewerUid,
+    required String note,
+  }) async {
+    final error = RecipeCatalog.validateReviewNote(note);
+    if (error != null) throw ArgumentError(error);
+    final existing = await _pending(recipeId);
+    await recipes.reject(recipeId, reviewerUid: reviewerUid, note: note.trim());
+    return RecipeCatalog.rejectRecipe(
+      existing,
+      rejectedBy: reviewerUid,
+      note: note,
+      at: DateTime.now(),
+    );
+  }
+
+  Future<Recipe> _pending(String recipeId) async {
     final existing = await recipes.getById(recipeId);
     if (existing == null) {
       throw StateError('Recipe $recipeId not found');
     }
-    return recipes.update(RecipeCatalog.approveRecipe(existing));
+    if (existing.status != RecipeStatus.pending) {
+      throw StateError('Recipe $recipeId is not pending review');
+    }
+    return existing;
   }
 
   Future<List<Recipe>> filterRecipesByPantry(String familyId) async {

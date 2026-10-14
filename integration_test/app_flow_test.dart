@@ -405,21 +405,21 @@ void main() {
         _fieldWithHint('Ej. Enjuaga las lentejas y ponlas a cocer.'),
         'Mezcla todo y sirve.',
       );
+      // Staff no publica: la deja en borrador (o pendiente del nutriólogo).
+      await _tap(tester, find.text('Borrador'));
       await shot('19_nueva_receta');
       await _tapButton(tester, _primaryButton('Guardar receta'));
-      await _confirmIdentityIfAsked(tester, _newPassword);
-      await _waitFor(tester, find.text('Receta publicada'));
-      await shot('20_receta_publicada');
+      await _waitFor(tester, find.text('Receta guardada'));
+      await shot('20_receta_guardada');
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.text(recipeName));
-      expect(find.text('Publicada'), findsWidgets);
+      expect(find.text('Borrador'), findsWidgets);
       await shot('21_catalogo');
 
       await _tap(tester, find.text('Editar').first);
       await _waitFor(tester, find.text('Editar receta'));
       await _enter(tester, _fieldIn('Minutos'), '25');
       await _tapButton(tester, _primaryButton('Guardar cambios'));
-      await _confirmIdentityIfAsked(tester, _newPassword);
       await _waitFor(tester, find.text('Cambios guardados'));
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.textContaining('25 min'));

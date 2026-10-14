@@ -11,9 +11,9 @@ import '../../widgets/app_buttons.dart';
 import '../../widgets/pill.dart';
 import 'recipe_form_sheet.dart';
 
-/// Pestaña "Catálogo de recetas" del staff: da de alta, edita y elimina las
-/// recetas que ven las familias. Las publicadas aparecen de inmediato en la
-/// app de la familia (solo lee las que están en estado approved).
+/// Pestaña "Catálogo de recetas" del staff: da de alta, edita y elimina
+/// recetas. Staff las deja en borrador o pendientes de revisión; solo el
+/// nutriólogo las aprueba, y las familias solo ven las aprobadas.
 class RecipeCatalogScreen extends StatefulWidget {
   const RecipeCatalogScreen({super.key});
 
@@ -40,7 +40,8 @@ class _RecipeCatalogScreenState extends State<RecipeCatalogScreen> {
           Text('Catálogo de recetas', style: AppText.baloo(22, 27.5)),
           const SizedBox(height: 2),
           Text(
-            'Administra las recetas disponibles para las familias.',
+            'Prepara las recetas. El nutriólogo las revisa y las familias ven '
+            'las que él aprueba.',
             style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
           ),
           const SizedBox(height: 24),
@@ -73,12 +74,12 @@ class _RecipeCatalogScreenState extends State<RecipeCatalogScreen> {
               }
               if (recipes.isEmpty) return const _EmptyCatalog();
 
-              // Primero las pendientes (las que faltan de publicar) y después
-              // por nombre.
+              // Primero las que esperan al nutriólogo, luego los borradores y al
+              // final las aprobadas; dentro de cada estado, por nombre.
               final sorted = [...recipes]
                 ..sort((a, b) {
                   if (a.status != b.status) {
-                    return a.status == RecipeStatus.pending ? -1 : 1;
+                    return _order(a.status).compareTo(_order(b.status));
                   }
                   return a.name.toLowerCase().compareTo(b.name.toLowerCase());
                 });
@@ -103,6 +104,12 @@ class _RecipeCatalogScreenState extends State<RecipeCatalogScreen> {
   }
 }
 
+int _order(RecipeStatus status) => switch (status) {
+  RecipeStatus.pending => 0,
+  RecipeStatus.draft => 1,
+  RecipeStatus.approved => 2,
+};
+
 class _EmptyCatalog extends StatelessWidget {
   const _EmptyCatalog();
 
@@ -124,8 +131,8 @@ class _EmptyCatalog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Las que publiques aquí aparecen en la app de las familias, con '
-            'los ingredientes que tengan en su despensa.',
+            'Las que guardes aquí quedan en borrador o pendientes. Cuando el '
+            'nutriólogo las aprueba, aparecen en la app de las familias.',
             textAlign: TextAlign.center,
             style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
           ),
@@ -174,8 +181,20 @@ class _RecipeCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: AppText.nunito(15, 22.5),
           ),
+          if (recipe.status == RecipeStatus.draft && recipe.reviewNote != null) ...[
+            const SizedBox(height: 8),
+            InfoBanner(
+              message: 'El nutriólogo la regresó: ${recipe.reviewNote}',
+              background: AppColors.warningSoft,
+              foreground: AppColors.warningText,
+            ),
+          ],
           const SizedBox(height: 12),
-          SecondaryButton(label: 'Editar', onPressed: onEdit),
+          // Una pendiente está en revisión: solo se ve, no se edita.
+          SecondaryButton(
+            label: recipe.status == RecipeStatus.pending ? 'Revisar' : 'Editar',
+            onPressed: onEdit,
+          ),
         ],
       ),
     );
@@ -212,7 +231,8 @@ class _RecipeCard extends StatelessWidget {
   }
 }
 
-/// Publicada = la ven las familias; pendiente = solo el staff.
+/// Borrador = solo Staff; pendiente = la revisa el nutriólogo; aprobada = la
+/// ven las familias.
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge(this.status);
 
@@ -220,11 +240,27 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final published = status == RecipeStatus.approved;
+    final (label, background, foreground) = switch (status) {
+      RecipeStatus.draft => (
+        'Borrador',
+        AppColors.background,
+        AppColors.textMuted,
+      ),
+      RecipeStatus.pending => (
+        'Pendiente de revisión',
+        AppColors.warningSoft,
+        AppColors.warningText,
+      ),
+      RecipeStatus.approved => (
+        'Aprobada',
+        AppColors.primarySoft,
+        AppColors.primaryDark,
+      ),
+    };
     return Pill(
-      label: published ? 'Publicada' : 'Pendiente',
-      background: published ? AppColors.primarySoft : AppColors.warningSoft,
-      foreground: published ? AppColors.primaryDark : AppColors.warningText,
+      label: label,
+      background: background,
+      foreground: foreground,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       fontSize: 13,
       lineHeight: 19.5,

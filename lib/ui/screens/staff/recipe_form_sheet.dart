@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -19,7 +20,6 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
-import '../session/step_up_sheet.dart';
 
 /// Sin conexión el commit no termina hasta sincronizar; pasado este tiempo se
 /// da por guardado (igual que en Entregas).
@@ -72,8 +72,10 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
   List<String> _unknownNutritionalTags = const [];
   List<String> _unknownEquipment = const [];
 
-  /// Solo al dar de alta: publicada la ven las familias; pendiente no.
-  bool _publish = true;
+  /// El estado que Staff elige: draft o pending. Una receta aprobada empieza
+  /// en approved y deja de poder serlo en cuanto cambia algo (ver
+  /// [_effectiveStatus]); Staff nunca guarda una como approved.
+  RecipeStatus _status = RecipeStatus.pending;
 
   bool _saving = false;
   bool _deleting = false;
@@ -82,6 +84,46 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
   ({String heading, String message})? _success;
 
   bool get _isEditing => widget.recipe != null;
+
+  bool get _wasApproved => widget.recipe?.status == RecipeStatus.approved;
+
+  /// Una pendiente está en revisión del nutriólogo: Staff la ve en solo
+  /// lectura y solo puede regresarla a borrador.
+  bool get _isPendingReview => widget.recipe?.status == RecipeStatus.pending;
+
+  /// Si el formulario ya no es igual a la receta guardada.
+  bool get _changed {
+    final recipe = widget.recipe;
+    if (recipe == null) return true;
+    final ingredients = _filledIngredients;
+    return _name.text.trim() != recipe.name ||
+        _minuteCount != recipe.prepTimeMinutes ||
+        _servingCount != recipe.servings ||
+        _calorieCount != recipe.caloriesPerServing ||
+        _image != recipe.image ||
+        !setEquals(
+          _nutritionalTagIds.toSet(),
+          recipe.nutritionalTags.toSet(),
+        ) ||
+        !setEquals(_equipmentIds.toSet(), recipe.requiredEquipment.toSet()) ||
+        !listEquals(_filledSteps, recipe.steps) ||
+        ingredients.length != recipe.ingredients.length ||
+        [
+          for (var i = 0; i < ingredients.length; i++)
+            if (ingredients[i].productName !=
+                    recipe.ingredients[i].productName ||
+                ingredients[i].quantity != recipe.ingredients[i].quantity ||
+                ingredients[i].unit != recipe.ingredients[i].unit)
+              i,
+        ].isNotEmpty;
+  }
+
+  /// Aprobada solo mientras no cambie nada: editar una aprobada la regresa a
+  /// revisión, y solo el nutriólogo la vuelve a aprobar.
+  RecipeStatus get _effectiveStatus =>
+      _status == RecipeStatus.approved && _changed
+      ? RecipeStatus.pending
+      : _status;
 
   @override
   void initState() {
@@ -95,6 +137,7 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
           ? ''
           : '${recipe.caloriesPerServing}';
       _image = recipe.image;
+      _status = recipe.status;
       for (final id in recipe.nutritionalTags) {
         final tag = NutritionalTag.fromId(id);
         if (tag != null) _nutritionalTags.add(tag);
@@ -183,6 +226,9 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     }
     if (_filledIngredients.isEmpty) return 'Agrega al menos un ingrediente.';
     if (_filledSteps.isEmpty) return 'Agrega al menos un paso.';
+    if (_effectiveStatus == RecipeStatus.approved) {
+      return 'Cambia la receta o su estado para guardar.';
+    }
     return null;
   }
 
@@ -193,14 +239,9 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
   Future<void> _save() async {
     if (_saving || _missing != null) return;
     FocusScope.of(context).unfocus();
-    // Lo que deja la receta publicada pide una sesión reciente; guardar una
-    // pendiente no.
-    final publishes = widget.recipe == null
-        ? _publish
-        : widget.recipe!.status == RecipeStatus.approved;
-    if (publishes && (!await ensureRecentSignIn(context) || !mounted)) return;
     final messenger = ScaffoldMessenger.of(context);
     final name = _name.text.trim();
+    final status = _effectiveStatus;
     setState(() {
       _saving = true;
       _error = null;
@@ -209,19 +250,7 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     final catalog = BankStorageFacade();
     final recipe = widget.recipe;
     final Future<void> save;
-    if (recipe == null && _publish) {
-      save = catalog.publishRecipe(
-        name: name,
-        ingredients: _filledIngredients,
-        steps: _filledSteps,
-        prepTimeMinutes: _minuteCount!,
-        caloriesPerServing: _calorieCount!,
-        nutritionalTags: _nutritionalTagIds,
-        requiredEquipment: _equipmentIds,
-        image: _image,
-        servings: _servingCount!,
-      );
-    } else if (recipe == null) {
+    if (recipe == null) {
       save = catalog.submitRecipe(
         name: name,
         ingredients: _filledIngredients,
@@ -232,20 +261,23 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
         requiredEquipment: _equipmentIds,
         image: _image,
         servings: _servingCount!,
+        status: status,
       );
     } else {
       save = catalog.updateRecipe(
-        recipe.copyWith(
-          name: name,
-          ingredients: _filledIngredients,
-          steps: _filledSteps,
-          prepTimeMinutes: _minuteCount,
-          caloriesPerServing: _calorieCount,
-          nutritionalTags: _nutritionalTagIds,
-          requiredEquipment: _equipmentIds,
-          image: _image,
-          servings: _servingCount,
-        ),
+        recipe
+            .copyWith(
+              name: name,
+              ingredients: _filledIngredients,
+              steps: _filledSteps,
+              prepTimeMinutes: _minuteCount,
+              caloriesPerServing: _calorieCount,
+              nutritionalTags: _nutritionalTagIds,
+              requiredEquipment: _equipmentIds,
+              image: _image,
+              servings: _servingCount,
+            )
+            .withStaffStatus(status),
         previous: recipe,
       );
     }
@@ -270,28 +302,30 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     }
     if (!mounted) return;
 
-    final heading = _isEditing
-        ? 'Cambios guardados'
-        : _publish
-        ? 'Receta publicada'
-        : 'Receta guardada';
-    var message = _isEditing
-        ? 'Se guardaron los cambios de «$name».'
-        : _publish
-        ? '«$name» ya aparece en las recetas de las familias.'
-        : '«$name» quedó pendiente de revisión; las familias todavía no la '
-              'ven.';
+    var message = switch (status) {
+      RecipeStatus.draft =>
+        '«$name» quedó como borrador; las familias no la ven.',
+      _ =>
+        '«$name» quedó pendiente de revisión del nutriólogo; las familias la '
+            'ven cuando la apruebe.',
+    };
+    if (_wasApproved) {
+      message = '$message Dejó de verse para las familias.';
+    }
     if (!synced) message = '$message $_pendingSyncNote';
     setState(() {
       _saving = false;
-      _success = (heading: heading, message: message);
+      _success = (
+        heading: _isEditing ? 'Cambios guardados' : 'Receta guardada',
+        message: message,
+      );
     });
   }
 
-  Future<void> _publishPending() async {
+  /// Una pendiente en revisión solo puede regresar a borrador.
+  Future<void> _returnToDraft() async {
     final recipe = widget.recipe;
     if (recipe == null || _saving) return;
-    if (!await ensureRecentSignIn(context) || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _saving = true;
@@ -301,27 +335,32 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     final bool synced;
     try {
       synced = await _awaitSave(
-        BankStorageFacade().approveRecipe(recipe.id),
+        BankStorageFacade().updateRecipe(
+          recipe.withStaffStatus(RecipeStatus.draft),
+          previous: recipe,
+        ),
         onLateError: (error) => _showSnack(
           messenger,
-          'No se pudo sincronizar la publicación de «${recipe.name}».',
+          'No se pudo sincronizar «${recipe.name}». Revisa el catálogo e '
+          'intenta de nuevo.',
         ),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = _errorMessage(e, 'publicar la receta');
+        _error = _errorMessage(e, 'regresar la receta a borrador');
       });
       return;
     }
     if (!mounted) return;
 
-    var message = '«${recipe.name}» ya aparece en las recetas de las familias.';
+    var message =
+        '«${recipe.name}» regresó a borrador; el nutriólogo ya no la revisa.';
     if (!synced) message = '$message $_pendingSyncNote';
     setState(() {
       _saving = false;
-      _success = (heading: 'Receta publicada', message: message);
+      _success = (heading: 'Receta en borrador', message: message);
     });
   }
 
@@ -432,6 +471,7 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
       );
     }
     if (_confirmation == _Confirmation.delete) return _buildDeleteConfirmation();
+    if (_isPendingReview) return _buildReview();
 
     final missing = _missing;
     final error = _error;
@@ -465,14 +505,6 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
             loading: _saving,
             onPressed: missing == null ? _save : null,
           ),
-          if (_isEditing && widget.recipe!.status == RecipeStatus.pending) ...[
-            const SizedBox(height: 8),
-            SecondaryButton(
-              label: 'Publicar para las familias',
-              icon: AppIcons.check,
-              onPressed: _saving ? null : _publishPending,
-            ),
-          ],
           if (_isEditing) ...[
             const SizedBox(height: 8),
             Center(
@@ -480,7 +512,8 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
                 label: 'Eliminar receta',
                 onPressed: _saving
                     ? null
-                    : () => setState(() => _confirmation = _Confirmation.delete),
+                    : () =>
+                          setState(() => _confirmation = _Confirmation.delete),
               ),
             ),
           ],
@@ -489,7 +522,93 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     );
   }
 
-  String get _title => _isEditing ? 'Editar receta' : 'Nueva receta';
+  String get _title => _isPendingReview
+      ? 'Revisar receta'
+      : _isEditing
+      ? 'Editar receta'
+      : 'Nueva receta';
+
+  /// Una pendiente: solo lectura. Staff puede regresarla a borrador o
+  /// eliminarla, pero no editarla mientras el nutriólogo la revisa.
+  Widget _buildReview() {
+    final recipe = widget.recipe!;
+    final error = _error;
+    final servings = recipe.servings == 1 ? 'porción' : 'porciones';
+    return AppSheet(
+      title: _title,
+      busy: _saving,
+      body: AbsorbPointer(
+        absorbing: _saving,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const InfoBanner(
+              message:
+                  'Esta receta está pendiente de revisión del nutriólogo. '
+                  'No se puede editar mientras la revisa.',
+              background: AppColors.warningSoft,
+              foreground: AppColors.warningText,
+            ),
+            const SizedBox(height: 16),
+            Text(recipe.name, style: AppText.baloo(20, 30)),
+            const SizedBox(height: 4),
+            Text(
+              '${recipe.prepTimeMinutes} min · ${recipe.servings} $servings'
+              '${recipe.caloriesPerServing > 0 ? ' · ${recipe.caloriesPerServing} kcal por porción' : ''}',
+              style: AppText.nunito(14, 21, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 16),
+            const FieldLabel('Ingredientes'),
+            for (final ingredient in recipe.ingredients)
+              Text(
+                '• ${ingredient.productName} ${_ingredientAmount(ingredient)}',
+                style: AppText.nunito(15, 22.5),
+              ),
+            const SizedBox(height: 16),
+            const FieldLabel('Preparación'),
+            for (final (index, step) in recipe.steps.indexed)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${index + 1}. $step',
+                  style: AppText.nunito(15, 22.5),
+                ),
+              ),
+          ],
+        ),
+      ),
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (error != null) ...[
+            Semantics(
+              liveRegion: true,
+              child: InfoBanner(
+                message: error,
+                background: AppColors.dangerSoft,
+                foreground: AppColors.dangerText,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          SecondaryButton(
+            label: 'Regresar a borrador',
+            onPressed: _saving ? null : _returnToDraft,
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: _DangerLinkButton(
+              label: 'Eliminar receta',
+              onPressed: _saving
+                  ? null
+                  : () => setState(() => _confirmation = _Confirmation.delete),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildDeleteConfirmation() {
     final recipe = widget.recipe!;
@@ -541,9 +660,19 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
   Widget _buildForm() {
     void refresh(String _) => setState(() => _error = null);
 
+    final rejection = widget.recipe?.reviewNote;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (rejection != null &&
+            widget.recipe!.status == RecipeStatus.draft) ...[
+          InfoBanner(
+            message: 'El nutriólogo la regresó: $rejection',
+            background: AppColors.warningSoft,
+            foreground: AppColors.warningText,
+          ),
+          const SizedBox(height: 16),
+        ],
         LabeledField(
           label: 'Nombre',
           required: true,
@@ -713,38 +842,47 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
           icon: AppIcons.plus,
           onPressed: _steps.length < RecipeCatalog.maxSteps ? _addStep : null,
         ),
-        if (!_isEditing) ...[
-          const SizedBox(height: 16),
-          LabeledField(
-            label: 'Publicación',
-            child: Row(
-              children: [
-                Expanded(
-                  child: OptionButton(
-                    label: 'Publicada',
-                    selected: _publish,
-                    onTap: () => setState(() => _publish = true),
-                  ),
+        const SizedBox(height: 16),
+        LabeledField(
+          label: 'Estado',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Una aprobada se muestra como estado actual, pero solo mientras
+              // no cambie nada: después solo el nutriólogo la vuelve a aprobar.
+              if (_wasApproved) ...[
+                OptionButton(
+                  label: 'Aprobada',
+                  selected: _effectiveStatus == RecipeStatus.approved,
+                  onTap: null,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OptionButton(
-                    label: 'Pendiente',
-                    selected: !_publish,
-                    onTap: () => setState(() => _publish = false),
-                  ),
-                ),
+                const SizedBox(height: 8),
               ],
-            ),
+              OptionButton(
+                label: 'Borrador',
+                selected: _effectiveStatus == RecipeStatus.draft,
+                onTap: () => setState(() => _status = RecipeStatus.draft),
+              ),
+              const SizedBox(height: 8),
+              OptionButton(
+                label: 'Pendiente de revisión (nutriólogo)',
+                selected: _effectiveStatus == RecipeStatus.pending,
+                onTap: () => setState(() => _status = RecipeStatus.pending),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          _HelperText(
-            _publish
-                ? 'Las familias la verán en cuanto la guardes.'
-                : 'Queda guardada en el catálogo, pero las familias no la ven '
-                      'hasta publicarla.',
-          ),
-        ],
+        ),
+        const SizedBox(height: 6),
+        _HelperText(switch (_effectiveStatus) {
+          RecipeStatus.approved =>
+            'Aprobada por el nutriólogo: las familias la ven. Si la cambias, '
+                'vuelve a revisión.',
+          RecipeStatus.draft =>
+            'Queda guardada en el catálogo, pero ni el nutriólogo ni las '
+                'familias la ven.',
+          RecipeStatus.pending =>
+            'El nutriólogo la revisa. Las familias la ven cuando la apruebe.',
+        }),
       ],
     );
   }
@@ -773,7 +911,8 @@ class _IngredientDraft {
     return value != null && value.isFinite && value > 0 ? value : null;
   }
 
-  bool get isEmpty => product.text.trim().isEmpty && quantity.text.trim().isEmpty;
+  bool get isEmpty =>
+      product.text.trim().isEmpty && quantity.text.trim().isEmpty;
   bool get isFilled => product.text.trim().isNotEmpty && amount != null;
 
   /// A medio llenar: no se puede guardar así.
@@ -1126,15 +1265,16 @@ class _DangerLinkButton extends StatelessWidget {
         child: Text(
           label,
           textAlign: TextAlign.center,
-          style: AppText.nunito(
-            15,
-            22.5,
-            weight: FontWeight.w700,
-            color: AppColors.dangerText,
-          ).copyWith(
-            decoration: TextDecoration.underline,
-            decorationColor: AppColors.dangerText,
-          ),
+          style:
+              AppText.nunito(
+                15,
+                22.5,
+                weight: FontWeight.w700,
+                color: AppColors.dangerText,
+              ).copyWith(
+                decoration: TextDecoration.underline,
+                decorationColor: AppColors.dangerText,
+              ),
         ),
       ),
     );
@@ -1176,4 +1316,14 @@ void _showSnack(ScaffoldMessengerState messenger, String message) {
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// "0.25 kg", "500 g": la cantidad de un ingrediente con su unidad.
+String _ingredientAmount(RecipeIngredient ingredient) {
+  final unit = FoodUnit.values
+      .where((option) => option.name == ingredient.unit.trim().toLowerCase())
+      .firstOrNull;
+  return unit == null
+      ? '${formatNumber(ingredient.quantity)} ${ingredient.unit}'
+      : formatAmount(ingredient.quantity, unit);
 }

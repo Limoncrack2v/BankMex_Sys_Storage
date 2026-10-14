@@ -263,12 +263,14 @@ service cloud.firestore {
 
     // before es el documento guardado al editar, o {} al crear. La receta
     // completa debe ser válida: el catálogo escribe todos los campos siempre
-    // (Recipe.toMap).
+    // (Recipe.toMap). Los campos de revisión (approvedBy, approvedAt,
+    // reviewNote, rejectedBy y rejectedAt) los escribe solo el nutriólogo,
+    // por eso solo se aceptan aquí y los controlan las reglas de recipes.
     function validRecipe(data, before) {
-      return data.keys().hasOnly(['name', 'ingredients', 'steps', 'prepTimeMinutes', 'caloriesPerServing', 'status', 'dietaryTags', 'nutritionalTags', 'requiredEquipment', 'image', 'servings'])
+      return data.keys().hasOnly(['name', 'ingredients', 'steps', 'prepTimeMinutes', 'caloriesPerServing', 'status', 'dietaryTags', 'nutritionalTags', 'requiredEquipment', 'image', 'servings', 'approvedBy', 'approvedAt', 'reviewNote', 'rejectedBy', 'rejectedAt'])
         && data.keys().hasAll(['name', 'ingredients', 'steps', 'prepTimeMinutes', 'caloriesPerServing', 'status', 'dietaryTags', 'nutritionalTags', 'requiredEquipment', 'image', 'servings'])
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
-        && data.status in ['pending', 'approved']
+        && data.status in ['draft', 'pending', 'approved']
         && data.prepTimeMinutes is int && data.prepTimeMinutes >= 1 && data.prepTimeMinutes <= 9999
         && data.caloriesPerServing is int && data.caloriesPerServing >= 0 && data.caloriesPerServing <= 5000
         && data.servings is int && data.servings >= 1 && data.servings <= 99
@@ -282,6 +284,38 @@ service cloud.firestore {
         && validRecipeTags(data.requiredEquipment,
           ['estufa', 'refrigerador', 'horno', 'microondas', 'licuadora', 'ollaPresion'],
           before.get('requiredEquipment', []));
+    }
+
+    // Lo que Staff deja en una receta que guarda: nada de lo que escribe el
+    // nutriólogo. No queda quién la aprobó, y el motivo de un rechazo solo
+    // sigue mientras la receta sea draft; al reenviarla a pending se borra.
+    function staffKeepsReview(data, before) {
+      return !('approvedBy' in data) && !('approvedAt' in data)
+        && (data.status == 'draft'
+          ? (data.get('reviewNote', null) == before.get('reviewNote', null)
+            && data.get('rejectedBy', null) == before.get('rejectedBy', null)
+            && data.get('rejectedAt', null) == before.get('rejectedAt', null))
+          : (!('reviewNote' in data) && !('rejectedBy' in data) && !('rejectedAt' in data)));
+    }
+
+    // El nutriólogo aprueba una pending: cambian solo status y quién la
+    // aprobó y cuándo.
+    function nutritionistApproves(data, before) {
+      return before.status == 'pending' && data.status == 'approved'
+        && data.diff(before).affectedKeys().hasOnly(['status', 'approvedBy', 'approvedAt'])
+        && data.approvedBy == request.auth.uid
+        && data.approvedAt == request.time;
+    }
+
+    // El nutriólogo rechaza una pending: regresa a draft y cambian solo
+    // status, el motivo (obligatorio) y quién la rechazó y cuándo.
+    function nutritionistRejects(data, before) {
+      return before.status == 'pending' && data.status == 'draft'
+        && data.diff(before).affectedKeys().hasOnly(['status', 'reviewNote', 'rejectedBy', 'rejectedAt'])
+        && data.reviewNote is string
+        && data.reviewNote.trim().size() >= 1 && data.reviewNote.size() <= 300
+        && data.rejectedBy == request.auth.uid
+        && data.rejectedAt == request.time;
     }
 
     // Un registro de consumo (PantryRepository.consumptionLog). at puede venir
@@ -434,21 +468,30 @@ service cloud.firestore {
       allow read: if request.auth != null && userId == request.auth.uid;
     }
 
-    // Catálogo global. El staff publica y edita; la familia solo lee approved
-    // y el nutriólogo solo lee pending y no escribe.
-    // Toda escritura que deja la receta como approved (publicar una nueva o
-    // una pendiente, editar una publicada) pide una sesión reciente; guardar
-    // una pendiente, regresarla a pendiente y borrar no.
+    // Catálogo global. Una receta es draft (Staff la prepara), pending (espera
+    // al nutriólogo) o approved (las familias la ven). Staff crea, edita y
+    // mueve entre draft y pending, y puede sacar una approved a draft o
+    // pending (con o sin cambios), pero nunca guarda una como approved: solo
+    // el nutriólogo la aprueba (pending a approved) o la rechaza (pending a
+    // draft, con motivo), con un inicio de sesión reciente y sin cambiar su
+    // contenido. Editar el contenido dejándola approved no lo puede hacer
+    // nadie. La familia solo lee las approved y el nutriólogo solo las pending.
     match /recipes/{recipeId} {
       allow read: if isStaff()
         || (isNutritionist() && resource.data.status == 'pending')
         || (request.auth != null && resource.data.status == 'approved');
       allow create: if isStaff()
+        && request.resource.data.status in ['draft', 'pending']
         && validRecipe(request.resource.data, {})
-        && (request.resource.data.status != 'approved' || recentlySignedIn());
-      allow update: if isStaff()
-        && validRecipe(request.resource.data, resource.data)
-        && (request.resource.data.status != 'approved' || recentlySignedIn());
+        && staffKeepsReview(request.resource.data, {});
+      allow update: if (isStaff()
+          && request.resource.data.status in ['draft', 'pending']
+          && validRecipe(request.resource.data, resource.data)
+          && staffKeepsReview(request.resource.data, resource.data))
+        || (isNutritionist()
+          && recentlySignedIn()
+          && (nutritionistApproves(request.resource.data, resource.data)
+            || nutritionistRejects(request.resource.data, resource.data)));
       allow delete: if isStaff();
     }
 

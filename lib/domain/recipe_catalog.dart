@@ -19,7 +19,11 @@ class RecipeCatalog {
     List<String> dietaryTags = const [],
     List<String> nutritionalTags = const [],
     List<String> requiredEquipment = const [],
+    RecipeStatus status = RecipeStatus.pending,
   }) {
+    if (status == RecipeStatus.approved) {
+      throw ArgumentError('Solo el nutriólogo aprueba una receta');
+    }
     validateLimits(
       ingredients: ingredients,
       steps: steps,
@@ -36,7 +40,7 @@ class RecipeCatalog {
       steps: steps,
       prepTimeMinutes: prepTimeMinutes,
       caloriesPerServing: caloriesPerServing,
-      status: RecipeStatus.pending,
+      status: status,
       dietaryTags: dietaryTags,
       nutritionalTags: nutritionalTags,
       requiredEquipment: requiredEquipment,
@@ -83,34 +87,73 @@ class RecipeCatalog {
     if (error != null) throw ArgumentError(error);
   }
 
-  static Recipe approveRecipe(Recipe recipe) {
-    return recipe.copyWith(status: RecipeStatus.approved);
+  /// La receta ya aprobada por [approvedBy] (uid del nutriólogo). Solo una
+  /// pending se aprueba.
+  static Recipe approveRecipe(
+    Recipe recipe, {
+    required String approvedBy,
+    required DateTime at,
+  }) {
+    if (recipe.status != RecipeStatus.pending) {
+      throw StateError('Solo se aprueba una receta pendiente');
+    }
+    return Recipe(
+      id: recipe.id,
+      name: recipe.name,
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      prepTimeMinutes: recipe.prepTimeMinutes,
+      caloriesPerServing: recipe.caloriesPerServing,
+      status: RecipeStatus.approved,
+      dietaryTags: recipe.dietaryTags,
+      nutritionalTags: recipe.nutritionalTags,
+      requiredEquipment: recipe.requiredEquipment,
+      image: recipe.image,
+      servings: recipe.servings,
+      approvedBy: approvedBy,
+      approvedAt: at,
+    );
   }
 
-  /// Alta directa del staff: la familia ya puede verla.
-  static Recipe publishRecipe({
-    String id = '',
-    required String name,
-    required List<RecipeIngredient> ingredients,
-    required List<String> steps,
-    required int prepTimeMinutes,
-    required int caloriesPerServing,
-    List<String> dietaryTags = const [],
-    List<String> nutritionalTags = const [],
-    List<String> requiredEquipment = const [],
+  /// La receta que regresa a draft con el motivo de [rejectedBy]. Solo una
+  /// pending se rechaza, y el motivo es obligatorio.
+  static Recipe rejectRecipe(
+    Recipe recipe, {
+    required String rejectedBy,
+    required String note,
+    required DateTime at,
   }) {
-    return approveRecipe(
-      submitRecipe(
-        id: id,
-        name: name,
-        ingredients: ingredients,
-        steps: steps,
-        prepTimeMinutes: prepTimeMinutes,
-        caloriesPerServing: caloriesPerServing,
-        dietaryTags: dietaryTags,
-        nutritionalTags: nutritionalTags,
-        requiredEquipment: requiredEquipment,
-      ),
+    if (recipe.status != RecipeStatus.pending) {
+      throw StateError('Solo se rechaza una receta pendiente');
+    }
+    final error = validateReviewNote(note);
+    if (error != null) throw ArgumentError(error);
+    return Recipe(
+      id: recipe.id,
+      name: recipe.name,
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      prepTimeMinutes: recipe.prepTimeMinutes,
+      caloriesPerServing: recipe.caloriesPerServing,
+      status: RecipeStatus.draft,
+      dietaryTags: recipe.dietaryTags,
+      nutritionalTags: recipe.nutritionalTags,
+      requiredEquipment: recipe.requiredEquipment,
+      image: recipe.image,
+      servings: recipe.servings,
+      reviewNote: note.trim(),
+      rejectedBy: rejectedBy,
+      rejectedAt: at,
     );
+  }
+
+  /// null si [note] sirve como motivo de un rechazo.
+  static String? validateReviewNote(String note) {
+    final trimmed = note.trim();
+    if (trimmed.isEmpty) return 'Escribe el motivo del rechazo';
+    if (trimmed.length > Recipe.maxReviewNoteLength) {
+      return 'El motivo lleva máximo ${Recipe.maxReviewNoteLength} caracteres';
+    }
+    return null;
   }
 }
