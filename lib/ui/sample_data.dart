@@ -6,8 +6,13 @@ import 'theme/app_assets.dart';
 /// en backend; la disponibilidad de ingredientes, las porciones, las alergias
 /// y el plan de comidas sí se calculan con la despensa y los integrantes
 /// reales de la familia (ver models/recipe.dart).
+///
+/// Cada receta lleva el id y los electrodomésticos que tiene en
+/// tool/seed_catalog.mjs: es la misma receta venga de Firestore o de aquí.
 abstract final class SampleData {
   static const sopaDeLentejas = Recipe(
+    id: 'rec_sopa_lentejas',
+    requiredEquipment: ['estufa'],
     name: 'Sopa de lentejas',
     image: AppImages.sopaDeLentejas,
     minutes: 40,
@@ -29,6 +34,8 @@ abstract final class SampleData {
   );
 
   static const arrozConAtun = Recipe(
+    id: 'rec_arroz_atun',
+    requiredEquipment: ['estufa'],
     name: 'Arroz con atún',
     image: AppImages.arrozConAtun,
     minutes: 30,
@@ -49,6 +56,8 @@ abstract final class SampleData {
   );
 
   static const avenaConFruta = Recipe(
+    id: 'rec_avena_fruta',
+    requiredEquipment: ['estufa'],
     name: 'Avena con fruta',
     image: AppImages.avenaConFruta,
     minutes: 10,
@@ -67,6 +76,8 @@ abstract final class SampleData {
   );
 
   static const frijolesDeLaOlla = Recipe(
+    id: 'rec_frijoles',
+    requiredEquipment: ['estufa'],
     name: 'Frijoles de la olla',
     image: AppImages.frijolesDeLaOlla,
     minutes: 90,
@@ -82,6 +93,8 @@ abstract final class SampleData {
   );
 
   static const sandwichDeJamonYQueso = Recipe(
+    id: 'rec_sandwich',
+    requiredEquipment: ['estufa'],
     name: 'Sándwich de jamón y queso',
     image: AppImages.sandwichJamonQueso,
     minutes: 8,
@@ -101,6 +114,8 @@ abstract final class SampleData {
   );
 
   static const sopaDePastaConVerduras = Recipe(
+    id: 'rec_sopa_pasta',
+    requiredEquipment: ['estufa', 'licuadora'],
     name: 'Sopa de pasta con verduras',
     image: AppImages.sopaDePastaConVerduras,
     minutes: 35,

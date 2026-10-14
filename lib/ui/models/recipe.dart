@@ -31,6 +31,7 @@ class RecipeIngredient {
 
 class Recipe {
   const Recipe({
+    this.id = '',
     required this.name,
     required this.image,
     required this.minutes,
@@ -38,8 +39,12 @@ class Recipe {
     required this.kcalPerServing,
     required this.ingredients,
     required this.steps,
+    this.requiredEquipment = const [],
   });
 
+  /// Id del documento recipes/{id}. Las de SampleData llevan el de
+  /// tool/seed_catalog.mjs; vacío si la receta no tiene uno.
+  final String id;
   final String name;
   final String image;
   final int minutes;
@@ -47,6 +52,10 @@ class Recipe {
   final int kcalPerServing;
   final List<RecipeIngredient> ingredients;
   final List<String> steps;
+
+  /// Ids de Appliance que pide la receta (recipes/{id}.requiredEquipment).
+  /// Vacía si no necesita ninguno.
+  final List<String> requiredEquipment;
 
   bool get isQuick => minutes <= 30;
 }
@@ -324,6 +333,8 @@ Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
   }
   final factor = target / recipe.servings;
   return Recipe(
+    id: recipe.id,
+    requiredEquipment: recipe.requiredEquipment,
     name: recipe.name,
     image: recipe.image,
     minutes: recipe.minutes,
