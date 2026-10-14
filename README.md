@@ -102,6 +102,14 @@ firebase deploy --only firestore:rules
 
 Si una entrega queda como entregada mientras la función no está desplegada, sus productos no llegan a la despensa y la app ya no puede volver a escribir esa entrega. Para recuperarla, después de desplegar la función edita cualquier campo de la entrega desde la consola de Firebase: la función se vuelve a disparar y la surte, porque no tiene `pantryStockedAt`.
 
+### Recetas y adaptaciones: despliega la app y las reglas juntas
+
+Las reglas de `recipes` y de `adjustments` cambian lo que la app puede hacer, así que la app nueva y `firestore.rules` se publican al mismo tiempo:
+
+- **Reglas primero:** Staff, con la app vieja, ya no puede publicar recetas (las reglas niegan guardar una receta como `approved`) y la app no le explica por qué.
+- **App primero:** las reglas viejas no tienen `adjustments`, así que la familia no puede leer adaptaciones; ve la receta base y nada se rompe, pero tampoco se guardan sugerencias.
+- Solo el nutriólogo aprueba o rechaza una receta, y para hacerlo la app tiene que tener sus pantallas de revisión. Mientras no existan, las recetas nuevas se quedan en `pending`.
+
 ## Despensa y entregas
 
 Ningún cliente, incluido el staff, crea productos en `families/{familyId}/pantryItems`; las reglas lo rechazan. El flujo es:
@@ -136,6 +144,15 @@ Cada integrante puede tener edad, peso, sexo, alergias y enfermedades crónicas:
   ```sh
   firebase firestore:delete --recursive "families/<familyId>" --project bank-storage-bamx
   ```
+
+## Motor de adaptación
+
+Cuando una familia abre una receta, la app sugiere cómo adaptarla a su hogar: las **porciones** (según cuántos son y la edad y el peso de los niños) y la **sustitución de los ingredientes a los que alguien es alérgico**, cada cambio con su motivo y un resumen de una línea. Nada se aplica solo: la sugerencia queda `pending` en `adjustments` y la familia sigue viendo la receta base hasta que el **nutriólogo** la aprueba. Si la rechaza, no cambia nada. La adaptación aprobada solo sirve para esa receta, para esa versión de la receta y para ese tamaño de hogar.
+
+- **Interfaz:** `RecipePlanner.suggestAdjustment(household, recipe)` en `lib/domain/recipe_planner.dart`, la misma interfaz que elige las recetas y arma el plan. `household` es un `AdjustmentContext`: el tamaño del hogar, las porciones de adulto que come y sus alergias. No lleva nombres, edades ni pesos.
+- **Implementación actual:** `RuleBasedRecipePlanner` delega en `RecipeAdjustmentRules` (`lib/domain/recipe_adjustment.dart`), un algoritmo por reglas que corre en el dispositivo y no manda datos a nadie.
+- **Dónde se guarda:** `adjustments/{familyId}_{recipeId}_{huella}_{tamaño}`. El id es único por familia, receta, versión de la receta y tamaño de hogar: así una familia no puede llenar la cola del nutriólogo, y las reglas lo exigen al crear.
+- **Cómo enchufar otro motor:** implementa `RecipePlanner` (lo que no cambies, delégalo en `RuleBasedRecipePlanner`) y pásalo a `BankStorageFacade(planner: ...)`; la facade y las pantallas no cambian. `test/recipe_adjustments_flow_test.dart` tiene un ejemplo (`_OtherEngine`). Un motor remoto solo recibe el `AdjustmentContext` y debe llamarse desde el backend (una Cloud Function), no desde la app; antes hay que volver a revisar MASVS-PRIVACY-1.
 
 ## Cuentas
 
