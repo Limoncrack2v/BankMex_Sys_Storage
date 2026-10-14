@@ -93,6 +93,8 @@ Cuentas de prueba del seed (contraseña `bamx1234`):
 - Nutriólogo: `nutriologo@bamx.test`
 - Solicitud de staff pendiente de aprobar: `solicitud.staff@bamx.test`
 
+El seed también carga el catálogo de recetas (`tool/catalog_recipes.mjs`, la misma fuente que `./scripts/seed_catalog.sh`), una entrega programada de 16 productos con cuota, un plan de comidas guardado y 27 familias sin cuenta con entregas y 6 meses de consumo para "Estadísticas". El detalle está al inicio de `tool/seed_emulators.mjs`.
+
 En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `northamerica-south1`:
 
 ```sh
