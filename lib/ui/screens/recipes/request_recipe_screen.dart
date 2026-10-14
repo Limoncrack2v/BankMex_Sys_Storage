@@ -571,6 +571,10 @@ class _SuggestionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final recipe = suggestion.scaled;
     final urgency = suggestion.urgency;
+    final reason = Text(
+      suggestion.reason,
+      style: AppText.nunito(14, 21, color: AppColors.textMuted),
+    );
 
     return Material(
       color: AppColors.surface,
@@ -604,36 +608,25 @@ class _SuggestionCard extends StatelessWidget {
                   const SizedBox(height: 8),
                   RecipeMeta(recipe),
                   const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          suggestion.reason,
-                          style: AppText.nunito(
-                            14,
-                            21,
-                            color: AppColors.textMuted,
-                          ),
+                  // Sin nada de la despensa siempre diría "Fresco".
+                  if (!suggestion.usesPantry)
+                    reason
+                  else
+                    PillRow(
+                      gap: 12,
+                      leading: reason,
+                      trailing: Pill(
+                        label: urgency.label,
+                        background: urgency.background,
+                        foreground: urgency.foreground,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
                         ),
+                        fontSize: 13,
+                        lineHeight: 19.5,
                       ),
-                      // Sin nada de la despensa siempre diría "Fresco".
-                      if (suggestion.usesPantry) ...[
-                        const SizedBox(width: 12),
-                        Pill(
-                          label: urgency.label,
-                          background: urgency.background,
-                          foreground: urgency.foreground,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          fontSize: 13,
-                          lineHeight: 19.5,
-                        ),
-                      ],
-                    ],
-                  ),
+                    ),
                   if (suggestion.fitsPantry) ...[
                     const SizedBox(height: 8),
                     const Pill.success(label: 'Tienes todos los ingredientes'),

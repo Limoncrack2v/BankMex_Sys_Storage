@@ -367,10 +367,8 @@ class _SavedPlanBanner extends StatelessWidget {
   }
 }
 
-/// Un día del plan guardado, con el mismo cuadro del día que las tarjetas del
-/// plan sugerido. Sin [urgency] es un día sin receta que mostrar. La acción
-/// ("Cambiar") va debajo del texto y no junto a la píldora, para que quepa
-/// con letra grande.
+/// Un día del plan guardado, con el cuadro del día del plan sugerido. Sin
+/// [urgency] es un día sin receta que mostrar; la acción va hasta abajo.
 class _PlanDayCard extends StatelessWidget {
   const _PlanDayCard({
     required this.date,
@@ -407,6 +405,37 @@ class _PlanDayCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final urgency = this.urgency;
     final action = this.action;
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: AppText.baloo(
+            18,
+            22.5,
+            weight: FontWeight.w600,
+            color: onTap == null ? AppColors.textMuted : AppColors.text,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          message,
+          style: AppText.nunito(14, 21, color: AppColors.textMuted),
+        ),
+        if (hasAllergens) ...[
+          const SizedBox(height: 2),
+          Text(
+            'Contiene alérgenos de tu familia',
+            style: AppText.nunito(
+              14,
+              21,
+              weight: FontWeight.w700,
+              color: AppColors.dangerText,
+            ),
+          ),
+        ],
+      ],
+    );
 
     return Material(
       color: AppColors.surface,
@@ -426,52 +455,28 @@ class _PlanDayCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: AppText.baloo(
-                        18,
-                        22.5,
-                        weight: FontWeight.w600,
-                        color: onTap == null
-                            ? AppColors.textMuted
-                            : AppColors.text,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      message,
-                      style: AppText.nunito(14, 21, color: AppColors.textMuted),
-                    ),
-                    if (hasAllergens) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Contiene alérgenos de tu familia',
-                        style: AppText.nunito(
-                          14,
-                          21,
-                          weight: FontWeight.w700,
-                          color: AppColors.dangerText,
+                    if (urgency == null)
+                      text
+                    else
+                      PillRow(
+                        gap: 12,
+                        leading: text,
+                        trailing: Pill(
+                          label: urgency.label,
+                          background: urgency.background,
+                          foreground: urgency.foreground,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          fontSize: 13,
+                          lineHeight: 19.5,
                         ),
                       ),
-                    ],
                     if (action != null) ...[const SizedBox(height: 2), action],
                   ],
                 ),
               ),
-              if (urgency != null) ...[
-                const SizedBox(width: 12),
-                Pill(
-                  label: urgency.label,
-                  background: urgency.background,
-                  foreground: urgency.foreground,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  fontSize: 13,
-                  lineHeight: 19.5,
-                ),
-              ],
             ],
           ),
         ),

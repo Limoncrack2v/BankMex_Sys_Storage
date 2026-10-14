@@ -125,39 +125,34 @@ class _LeftoverCard extends StatelessWidget {
       shape: _shape,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    productDisplayName(item.productId),
-                    style: AppText.baloo(18, 22.5, weight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    remainingLabel(leftover.remaining, item.unit),
-                    style: AppText.nunito(16, 24, weight: FontWeight.w700),
-                  ),
-                  Text(
-                    usage,
-                    style: AppText.nunito(14, 21, color: AppColors.textMuted),
-                  ),
-                ],
+        child: PillRow(
+          gap: 12,
+          leading: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                productDisplayName(item.productId),
+                style: AppText.baloo(18, 22.5, weight: FontWeight.w600),
               ),
-            ),
-            const SizedBox(width: 12),
-            Pill(
-              label: expirationLabel(days),
-              background: urgency.background,
-              foreground: urgency.foreground,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              fontSize: 13,
-              lineHeight: 19.5,
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                remainingLabel(leftover.remaining, item.unit),
+                style: AppText.nunito(16, 24, weight: FontWeight.w700),
+              ),
+              Text(
+                usage,
+                style: AppText.nunito(14, 21, color: AppColors.textMuted),
+              ),
+            ],
+          ),
+          trailing: Pill(
+            label: expirationLabel(days),
+            background: urgency.background,
+            foreground: urgency.foreground,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            fontSize: 13,
+            lineHeight: 19.5,
+          ),
         ),
       ),
     );

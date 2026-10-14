@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'helpers/large_text.dart' show expectNoBrokenWords;
+
 final today = DateTime(2026, 10, 14);
 var _nextId = 0;
 
@@ -743,5 +745,16 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('with even larger text the pills wrap instead of overflowing', (
+    tester,
+  ) async {
+    for (final scale in [1.35, 1.5]) {
+      await pumpView(tester, textScale: scale);
+      expect(find.text('Tienes todos los ingredientes'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expectNoBrokenWords(tester);
+    }
   });
 }

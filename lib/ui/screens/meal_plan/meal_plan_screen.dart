@@ -518,44 +518,50 @@ class _DayCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.recipe.name,
-                      style: AppText.baloo(18, 22.5, weight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      entry.reason,
-                      style: AppText.nunito(14, 21, color: AppColors.textMuted),
-                    ),
-                    if (hasAllergens) ...[
+                child: PillRow(
+                  gap: 12,
+                  leading: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.recipe.name,
+                        style: AppText.baloo(18, 22.5, weight: FontWeight.w600),
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                        'Contiene alérgenos de tu familia',
+                        entry.reason,
                         style: AppText.nunito(
                           14,
                           21,
-                          weight: FontWeight.w700,
-                          color: AppColors.dangerText,
+                          color: AppColors.textMuted,
                         ),
                       ),
+                      if (hasAllergens) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Contiene alérgenos de tu familia',
+                          style: AppText.nunito(
+                            14,
+                            21,
+                            weight: FontWeight.w700,
+                            color: AppColors.dangerText,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
+                  trailing: Pill(
+                    label: entry.urgency.label,
+                    background: entry.urgency.background,
+                    foreground: entry.urgency.foreground,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    fontSize: 13,
+                    lineHeight: 19.5,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Pill(
-                label: entry.urgency.label,
-                background: entry.urgency.background,
-                foreground: entry.urgency.foreground,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                fontSize: 13,
-                lineHeight: 19.5,
               ),
             ],
           ),

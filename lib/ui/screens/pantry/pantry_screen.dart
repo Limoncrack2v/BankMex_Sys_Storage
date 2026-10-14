@@ -302,48 +302,38 @@ class _ProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          entry.name,
-                          style: AppText.baloo(
-                            19,
-                            23.75,
-                            weight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          foodTypeLabel(item.type),
-                          style: AppText.nunito(
-                            15,
-                            22.5,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ],
+              PillRow(
+                leading: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.name,
+                      style: AppText.baloo(19, 23.75, weight: FontWeight.w600),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Pill(
-                    label: expirationLabel(entry.days),
-                    icon: AppIcons.urgencyClock,
-                    iconSize: 14,
-                    gap: 4,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 4,
+                    Text(
+                      foodTypeLabel(item.type),
+                      style: AppText.nunito(
+                        15,
+                        22.5,
+                        color: AppColors.textMuted,
+                      ),
                     ),
-                    fontSize: 13,
-                    lineHeight: 19.5,
-                    background: urgency.background,
-                    foreground: urgency.foreground,
+                  ],
+                ),
+                trailing: Pill(
+                  label: expirationLabel(entry.days),
+                  icon: AppIcons.urgencyClock,
+                  iconSize: 14,
+                  gap: 4,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 4,
                   ),
-                ],
+                  fontSize: 13,
+                  lineHeight: 19.5,
+                  background: urgency.background,
+                  foreground: urgency.foreground,
+                ),
               ),
               const SizedBox(height: 12),
               Row(
