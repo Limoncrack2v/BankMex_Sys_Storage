@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bank_storage_app/data/models/member.dart';
 import 'package:bank_storage_app/data/models/pantry_item.dart';
+import 'package:bank_storage_app/ui/formatting.dart';
 import 'package:bank_storage_app/ui/models/expiration_urgency.dart';
 import 'package:bank_storage_app/ui/models/recipe.dart';
 import 'package:bank_storage_app/ui/sample_data.dart';
@@ -430,25 +431,28 @@ void main() {
         'Sopa de lentejas',
         'Sopa de pasta con verduras',
         'Frijoles de la olla',
-        'Avena con fruta',
+        // Ronda nueva: la leche y el jitomate ya caducaron, ya nada urgente.
+        'Arroz con atún',
       ]);
+      // Los días que quedan se cuentan desde la fecha de cada tarjeta: el
+      // jamón caduca en 3 días desde hoy, pero el martes ya le queda 2.
       expect(plan.map((e) => e.reason), [
         'Usa Leche entera (caduca mañana)\nTe faltan 2 ingredientes',
-        'Usa Jamón de pavo (caduca en 3 días)\nTe faltan 2 ingredientes',
-        'Usa Jitomate (caduca en 5 días)\nTe faltan 2 ingredientes',
-        'Usa Jitomate (caduca en 5 días)\nTe faltan 3 ingredientes',
-        'Usa Jitomate (caduca en 5 días)\nTe faltan 3 ingredientes',
+        'Usa Jamón de pavo (caduca en 2 días)\nTe faltan 2 ingredientes',
+        'Usa Jitomate (caduca en 3 días)\nTe faltan 2 ingredientes',
+        'Usa Jitomate (caduca en 2 días)\nTe faltan 3 ingredientes',
+        'Usa Jitomate (caduca mañana)\nTe faltan 4 ingredientes',
         'Con productos de tu despensa',
-        'Usa Leche entera (caduca mañana)\nTe faltan 2 ingredientes',
+        'Te faltan 3 ingredientes',
       ]);
       expect(plan.map((e) => e.urgency), [
         ExpirationUrgency.urgent,
         ExpirationUrgency.urgent,
-        ExpirationUrgency.soon,
-        ExpirationUrgency.soon,
-        ExpirationUrgency.soon,
-        ExpirationUrgency.fresh,
         ExpirationUrgency.urgent,
+        ExpirationUrgency.urgent,
+        ExpirationUrgency.urgent,
+        ExpirationUrgency.fresh,
+        ExpirationUrgency.fresh,
       ]);
     });
 
@@ -617,4 +621,335 @@ void main() {
       );
     });
   });
+
+  group('buildMealPlan día por día', () {
+    final conLeche = recipe(const [
+      RecipeIngredient('Leche entera', 0.2, FoodUnit.l),
+    ], name: 'Con leche');
+    final conArroz = recipe(const [
+      RecipeIngredient('Arroz', 0.2, FoodUnit.kg),
+    ], name: 'Con arroz');
+    final conFrijol = recipe(const [
+      RecipeIngredient('Frijol', 0.2, FoodUnit.kg),
+    ], name: 'Con frijol');
+    final conJitomate = recipe(const [
+      RecipeIngredient('Jitomate', 0.2, FoodUnit.kg),
+    ], name: 'Con jitomate');
+
+    test('un producto que caduca el día 1 no sale en el motivo de ninguna '
+        'tarjeta posterior (14 días y 3 recetas)', () {
+      final plan = buildMealPlan(
+        [conLeche, conArroz, conFrijol],
+        [
+          item('Leche entera', 5, FoodUnit.l, days: 1),
+          item('Arroz', 5, FoodUnit.kg, days: 200),
+          item('Frijol', 5, FoodUnit.kg, days: 90),
+        ],
+        today: today,
+        days: 14,
+      );
+
+      expect(plan, hasLength(14));
+      expect(plan.first.recipe, same(conLeche));
+      expect(plan.first.reason, 'Usa Leche entera (caduca mañana)');
+      expect(plan.first.urgency, ExpirationUrgency.urgent);
+      // La receta con leche sale varias veces, pero solo la primera puede
+      // nombrar la leche: el resto de los días ya caducó.
+      final laterMilk = plan.skip(1).where((e) => e.recipe == conLeche);
+      expect(laterMilk.length, greaterThanOrEqualTo(3));
+      for (final entry in laterMilk) {
+        expect(entry.reason, 'Te falta 1 ingrediente', reason: '${entry.date}');
+        expect(entry.urgency, ExpirationUrgency.fresh);
+      }
+      for (final entry in plan.skip(1)) {
+        expect(entry.reason, isNot(contains('Leche')), reason: '${entry.date}');
+      }
+    });
+
+    test('"caduca mañana" y "caduca en N días" se cuentan desde la fecha de '
+        'la tarjeta, igual que Urgente / Pronto', () {
+      final plan = buildMealPlan(
+        [conJitomate, conArroz],
+        [
+          item('Jitomate', 10, FoodUnit.kg, days: 5),
+          item('Arroz', 10, FoodUnit.kg, days: 100),
+        ],
+        today: today,
+      );
+
+      expect(plan.map((e) => e.recipe.name), [
+        'Con jitomate',
+        'Con arroz',
+        'Con jitomate',
+        'Con arroz',
+        'Con jitomate',
+        'Con arroz',
+        'Con jitomate',
+      ]);
+      expect(plan.map((e) => e.reason), [
+        'Usa Jitomate (caduca en 5 días)',
+        'Con productos de tu despensa',
+        'Usa Jitomate (caduca en 3 días)',
+        'Con productos de tu despensa',
+        'Usa Jitomate (caduca mañana)',
+        'Con productos de tu despensa',
+        // El jitomate caducó el sábado: el domingo ya no se nombra.
+        'Te falta 1 ingrediente',
+      ]);
+      expect(plan.map((e) => e.urgency), [
+        ExpirationUrgency.soon,
+        ExpirationUrgency.fresh,
+        ExpirationUrgency.urgent,
+        ExpirationUrgency.fresh,
+        ExpirationUrgency.urgent,
+        ExpirationUrgency.fresh,
+        ExpirationUrgency.fresh,
+      ]);
+    });
+
+    test('un producto con "caduca hoy" lo dice solo en su último día', () {
+      final plan = buildMealPlan(
+        [conJitomate, conArroz],
+        [
+          item('Jitomate', 10, FoodUnit.kg, days: 4),
+          item('Arroz', 10, FoodUnit.kg, days: 100),
+        ],
+        today: today,
+      );
+
+      expect(plan[0].reason, 'Usa Jitomate (caduca en 4 días)');
+      expect(plan[2].reason, 'Usa Jitomate (caduca en 2 días)');
+      expect(plan[4].reason, 'Usa Jitomate (caduca hoy)');
+      expect(plan[4].urgency, ExpirationUrgency.urgent);
+      expect(plan[6].reason, 'Te falta 1 ingrediente');
+    });
+
+    test('con 14 días ninguna tarjeta nombra un producto caducado ni se '
+        'equivoca en los días que le quedan', () {
+      final octubre13 = DateTime(2026, 10, 13);
+      final pantry = [
+        item('Leche entera', 1, FoodUnit.l, days: 1, registered: octubre13),
+        item('Jamón de pavo', 2, FoodUnit.kg, days: 3, registered: octubre13),
+        item('Jitomate', 3, FoodUnit.kg, days: 5, registered: octubre13),
+        item('Plátano', 20, FoodUnit.piece, days: 6, registered: octubre13),
+        item('Arroz', 5, FoodUnit.kg, days: 200, registered: octubre13),
+        item('Frijol', 5, FoodUnit.kg, days: 90, registered: octubre13),
+        item('Avena', 2, FoodUnit.kg, days: 60, registered: octubre13),
+      ];
+
+      final plan = buildMealPlan(
+        SampleData.recipes,
+        pantry,
+        today: octubre13,
+        days: 14,
+      );
+
+      expect(plan, hasLength(14));
+      final named = RegExp(r'^Usa (.+) \((.+)\)$', multiLine: true);
+      var cardsWithProduct = 0;
+      for (final entry in plan) {
+        for (final match in named.allMatches(entry.reason)) {
+          cardsWithProduct++;
+          final left = pantry
+              .where((p) => productDisplayName(p.productId) == match.group(1))
+              .map((p) => p.daysLeftOn(entry.date))
+              .toList();
+          // Es un producto de la despensa que sigue vigente en esa fecha y la
+          // frase coincide con los días que le quedan en esa fecha.
+          expect(left, isNotEmpty);
+          expect(
+            left.where((days) => days >= 0).map(_expiresPhrase),
+            contains(match.group(2)),
+            reason: '${entry.date}: ${entry.reason}',
+          );
+        }
+      }
+      expect(cardsWithProduct, greaterThanOrEqualTo(5));
+      // La leche caduca el 14: el 19 y el 25 ya no pueden nombrarla.
+      final byDay = {for (final e in plan) e.date.day: e};
+      expect(byDay[19]!.reason, isNot(contains('Leche')));
+      expect(byDay[25]!.reason, isNot(contains('Leche')));
+    });
+
+    test('lo que los días anteriores ya usaron no se promete otra vez', () {
+      final lecheAgotada = buildMealPlan(
+        [
+          recipe(const [RecipeIngredient('Leche entera', 1, FoodUnit.l)]),
+          conArroz,
+        ],
+        [
+          item('Leche entera', 1, FoodUnit.l, days: 6),
+          item('Arroz', 10, FoodUnit.kg, days: 100),
+        ],
+        today: today,
+        days: 4,
+      );
+      final conSobrante = buildMealPlan(
+        [
+          recipe(const [RecipeIngredient('Leche entera', 1, FoodUnit.l)]),
+          conArroz,
+        ],
+        [
+          item('Leche entera', 2, FoodUnit.l, days: 6),
+          item('Arroz', 10, FoodUnit.kg, days: 100),
+        ],
+        today: today,
+        days: 4,
+      );
+
+      expect(lecheAgotada[0].reason, 'Usa Leche entera (caduca en 6 días)');
+      // El lunes se bebió el litro entero: el miércoles no queda leche.
+      expect(lecheAgotada[2].reason, 'Te falta 1 ingrediente');
+      expect(lecheAgotada[2].urgency, ExpirationUrgency.fresh);
+      // Con 2 litros sí queda, y los días que le quedan son los del miércoles.
+      expect(conSobrante[2].reason, 'Usa Leche entera (caduca en 4 días)');
+    });
+
+    test('un día sin nada usable elige la receta con menos faltantes y no '
+        'inventa un producto', () {
+      final dosFaltantes = recipe(const [
+        RecipeIngredient('Arroz', 0.2, FoodUnit.kg),
+        RecipeIngredient('Frijol', 0.2, FoodUnit.kg),
+      ], name: 'Dos faltantes');
+      final tresFaltantes = recipe(const [
+        RecipeIngredient('Arroz', 0.2, FoodUnit.kg),
+        RecipeIngredient('Frijol', 0.2, FoodUnit.kg),
+        RecipeIngredient('Atún', 1, FoodUnit.can),
+      ], name: 'Tres faltantes');
+
+      final plan = buildMealPlan(
+        [conLeche, tresFaltantes, dosFaltantes],
+        [item('Leche entera', 5, FoodUnit.l, days: 0)],
+        today: today,
+        days: 4,
+      );
+
+      expect(plan.map((e) => e.recipe.name), [
+        'Con leche',
+        'Dos faltantes',
+        'Tres faltantes',
+        // Ronda nueva: la leche caducó hoy, así que ya no cuenta.
+        'Con leche',
+      ]);
+      expect(plan.map((e) => e.reason), [
+        'Usa Leche entera (caduca hoy)',
+        'Te faltan 2 ingredientes',
+        'Te faltan 3 ingredientes',
+        'Te falta 1 ingrediente',
+      ]);
+      expect(plan.map((e) => e.urgency), [
+        ExpirationUrgency.urgent,
+        ExpirationUrgency.fresh,
+        ExpirationUrgency.fresh,
+        ExpirationUrgency.fresh,
+      ]);
+    });
+
+    test('no repite la receta del día anterior aunque al empezar otra ronda '
+        'sea la mejor', () {
+      final plan = buildMealPlan(
+        [conLeche, conArroz],
+        [
+          item('Leche entera', 5, FoodUnit.l, days: 1),
+          item('Arroz', 5, FoodUnit.kg, days: 100),
+        ],
+        today: today,
+        days: 4,
+      );
+
+      // El miércoles la leche ya caducó y "Con arroz" es la única receta con
+      // algo que usar, pero salió el martes: toca "Con leche".
+      expect(plan.map((e) => e.recipe.name), [
+        'Con leche',
+        'Con arroz',
+        'Con leche',
+        'Con arroz',
+      ]);
+      expect(plan[2].reason, 'Te falta 1 ingrediente');
+    });
+
+    test('con la despensa vacía todos los días dicen solo lo que falta', () {
+      final plan = buildMealPlan(
+        SampleData.recipes,
+        const [],
+        today: today,
+        days: 14,
+      );
+
+      for (final entry in plan) {
+        expect(entry.reason, isNot(contains('Usa')));
+        expect(entry.urgency, ExpirationUrgency.fresh);
+      }
+    });
+
+    test('una receta no se repite dos días seguidos y cada ronda las trae '
+        'todas', () {
+      final pantries = <List<PantryItem>>[
+        const [],
+        [
+          item('Leche entera', 1, FoodUnit.l, days: 1),
+          item('Jitomate', 1, FoodUnit.kg, days: 5),
+          item('Arroz', 2, FoodUnit.kg, days: 200),
+        ],
+      ];
+      for (final pantry in pantries) {
+        final plan = buildMealPlan(
+          SampleData.recipes,
+          pantry,
+          today: today,
+          days: 14,
+        );
+        final names = plan.map((e) => e.recipe.name).toList();
+
+        for (var i = 1; i < names.length; i++) {
+          expect(names[i], isNot(names[i - 1]), reason: 'día $i');
+        }
+        final total = SampleData.recipes.length;
+        expect(names.take(total).toSet(), hasLength(total));
+        expect(names.skip(total).take(total).toSet(), hasLength(total));
+      }
+      // Con una sola receta no hay de otra: se repite.
+      final unica = buildMealPlan([conArroz], const [], today: today, days: 3);
+      expect(unica.map((e) => e.recipe), [
+        same(conArroz),
+        same(conArroz),
+        same(conArroz),
+      ]);
+    });
+
+    test('cuenta los días de calendario al cruzar de mes, de año y de 29 de '
+        'febrero', () {
+      for (final start in [
+        DateTime(2026, 9, 28, 23, 30),
+        DateTime(2026, 12, 29, 8),
+        DateTime(2028, 2, 27, 23, 59),
+      ]) {
+        final day = DateTime(start.year, start.month, start.day);
+        final plan = buildMealPlan(
+          [conLeche, conArroz],
+          [
+            item('Leche entera', 10, FoodUnit.l, days: 5, registered: day),
+            item('Arroz', 10, FoodUnit.kg, days: 100, registered: day),
+          ],
+          today: start,
+        );
+
+        expect(plan.map((e) => e.date), [
+          for (var offset = 0; offset < 7; offset++)
+            DateTime(day.year, day.month, day.day + offset),
+        ], reason: '$start');
+        // La leche sale los días 0, 2, 4 y 6 y caduca el día 5.
+        expect(plan[0].reason, 'Usa Leche entera (caduca en 5 días)');
+        expect(plan[2].reason, 'Usa Leche entera (caduca en 3 días)');
+        expect(plan[4].reason, 'Usa Leche entera (caduca mañana)');
+        expect(plan[6].reason, 'Te falta 1 ingrediente', reason: '$start');
+      }
+    });
+  });
 }
+
+String _expiresPhrase(int days) => switch (days) {
+  0 => 'caduca hoy',
+  1 => 'caduca mañana',
+  _ => 'caduca en $days días',
+};

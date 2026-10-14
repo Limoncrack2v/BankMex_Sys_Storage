@@ -36,8 +36,8 @@ Recipe recipe(List<RecipeIngredient> ingredients) => Recipe(
   steps: const ['Paso 1.'],
 );
 
-MealPlanEntry entry(Recipe recipe) => MealPlanEntry(
-  date: today,
+MealPlanEntry entry(Recipe recipe, {DateTime? date}) => MealPlanEntry(
+  date: date ?? today,
   day: 'Lun',
   recipe: recipe,
   reason: '',
@@ -342,10 +342,64 @@ void main() {
             reason: leftover.item.productId,
           );
         }
-        // Avena con fruta sale el lunes y el domingo (0.15 kg cada vez): el domingo
-        // solo quedan 0.05 kg y se acaban.
+        // Avena con fruta sale dos veces (0.15 kg cada vez): la segunda solo
+        // quedan 0.05 kg y se acaban.
         expect(of(leftovers, pantry.last).status, LeftoverStatus.usedUp);
       },
     );
+
+    test('una receta de un día posterior a la caducidad ya no usa el producto',
+        () {
+      final leche = item('Leche entera', 1, FoodUnit.l, days: 2);
+      final conLeche = recipe(const [
+        RecipeIngredient('Leche entera', 0.4, FoodUnit.l),
+      ]);
+
+      final leftover = planLeftovers(
+        [
+          entry(conLeche),
+          entry(conLeche, date: today.add(const Duration(days: 2))),
+          // Ya caducó: no se cocina con ella aunque la receta la pida.
+          entry(conLeche, date: today.add(const Duration(days: 3))),
+        ],
+        [leche],
+        today: today,
+      ).single;
+
+      expect(leftover.used, closeTo(0.8, 1e-9));
+      expect(leftover.remaining, closeTo(0.2, 1e-9));
+      expect(leftover.status, LeftoverStatus.partlyUsed);
+    });
+
+    test('concuerda con las tarjetas de un plan de 14 días', () {
+      final conLeche = recipe(const [
+        RecipeIngredient('Leche entera', 0.5, FoodUnit.l),
+      ]);
+      final conArroz = recipe(const [
+        RecipeIngredient('Arroz', 0.2, FoodUnit.kg),
+      ]);
+      final leche = item('Leche entera', 3, FoodUnit.l, days: 3);
+      final arroz = item('Arroz', 5, FoodUnit.kg, days: 200);
+      final pantry = [leche, arroz];
+
+      final plan = buildMealPlan(
+        [conLeche, conArroz],
+        pantry,
+        today: today,
+        days: 14,
+      );
+      final leftovers = planLeftovers(plan, pantry, today: today);
+
+      // La leche solo se nombra mientras sirve (hoy y pasado mañana, que le
+      // queda 1 día); las demás veces que sale la receta ya caducó.
+      final milkCards = plan.where((e) => e.reason.contains('Leche'));
+      expect(milkCards.map((e) => e.date.day), [21, 23]);
+      expect(plan.where((e) => e.recipe == conLeche), hasLength(7));
+      expect(of(leftovers, leche).used, closeTo(0.5 * milkCards.length, 1e-9));
+      expect(of(leftovers, leche).remaining, closeTo(2, 1e-9));
+      // El arroz alcanza para los 7 días que sale la receta.
+      final riceCards = plan.where((e) => e.recipe == conArroz).length;
+      expect(of(leftovers, arroz).used, closeTo(0.2 * riceCards, 1e-9));
+    });
   });
 }
