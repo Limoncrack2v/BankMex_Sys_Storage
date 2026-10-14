@@ -22,6 +22,7 @@ import '../domain/name_normalizer.dart';
 import '../domain/nutrition_targets.dart';
 import '../domain/pantry_recipe_filter.dart';
 import '../domain/portion_adjuster.dart';
+import '../domain/recipe_adjustment.dart';
 import '../domain/recipe_catalog.dart';
 import '../domain/recipe_planner.dart';
 import '../domain/unit_converter.dart';
@@ -123,10 +124,7 @@ class BankStorageFacade {
   ///
   /// Los tres métodos que guardan son async para que un error de validación
   /// llegue como Future fallido y el formulario lo muestre.
-  Future<Recipe> updateRecipe(
-    Recipe recipe, {
-    required Recipe previous,
-  }) async {
+  Future<Recipe> updateRecipe(Recipe recipe, {required Recipe previous}) async {
     if (recipe.id.isEmpty) {
       throw ArgumentError('updateRecipe requires an id');
     }
@@ -209,7 +207,7 @@ class BankStorageFacade {
     if (recipe == null || recipe.status != RecipeStatus.approved) return null;
     final profile = await _profile(familyId);
     final suggestion = await planner.suggestAdjustment(
-      family: profile,
+      household: AdjustmentContext.forHousehold(profile),
       recipe: recipe,
     );
     final existing = await adjustments.listForRecipe(familyId, recipeId);
@@ -225,6 +223,21 @@ class BankStorageFacade {
       }
     }
     if (suggestion == null || existing.any(isCurrent)) return null;
+    // El id del documento es único por familia, receta, versión y tamaño: una
+    // ya decidida con ese id (aprobada o rechazada) se queda, y la sugerencia
+    // nueva no se puede guardar (p. ej. si cambiaron las alergias con el mismo
+    // tamaño de hogar).
+    final id = RecipeAdjustment.documentId(
+      familyId: familyId,
+      recipeId: recipeId,
+      baseSignature: suggestion.baseSignature,
+      householdSize: suggestion.householdSize,
+    );
+    if (existing.any(
+      (a) => a.documentKey == id && a.status != AdjustmentStatus.pending,
+    )) {
+      return null;
+    }
     return adjustments.create(
       RecipeAdjustment.pending(familyId: familyId, suggestion: suggestion),
     );

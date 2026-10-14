@@ -90,13 +90,29 @@ Map<String, Map<String, Object?>> stored({
   'createdAt': now(),
 };
 
-/// Crea la adaptación como la app: createdAt es la hora del servidor.
+/// El id que exigen las reglas y que usa la app: familia, receta, huella de
+/// la receta y tamaño del hogar (RecipeAdjustment.documentId).
+String idOf(Map<String, Map<String, Object?>> fields) {
+  final family = (fields['familyId']?['referenceValue'] as String?)
+      ?.split('/')
+      .last;
+  return '${family}_${fields['recipeId']?['stringValue']}_'
+      '${fields['baseSignature']?['stringValue']}_'
+      '${fields['householdSize']?['integerValue']}';
+}
+
+/// Crea la adaptación como la app: con su id y con createdAt como la hora del
+/// servidor.
 Future<int> create(
   Db db,
   Map<String, Map<String, Object?>> fields, {
-  String id = 'a1',
+  String? id,
 }) => db.commit([
-  setWrite('adjustments/$id', fields, requestTimeFields: ['createdAt']),
+  setWrite(
+    'adjustments/${id ?? idOf(fields)}',
+    fields,
+    requestTimeFields: ['createdAt'],
+  ),
 ]);
 
 Db fam1() => Db.user('fam1');
@@ -133,6 +149,7 @@ void main() {
     await admin.setDoc('families/famB', family('fam2'));
     await admin.setDoc('recipes/r1', recipe('approved'));
     await admin.setDoc('recipes/r2', recipe('pending'));
+    await admin.setDoc('recipes/r3', recipe('approved'));
   });
 
   group('la familia crea la sugerencia', () {
@@ -238,11 +255,21 @@ void main() {
         {
           'changes': arr([change(reason: '')]),
         },
-        {'recipeId': str('a/b')},
       ];
       for (final fields in cases) {
         await assertDenied(create(fam1(), adjustment(change_: fields)));
       }
+    });
+
+    test('una receta con diagonal no se acepta', () async {
+      // El id no puede llevar "/": se prueba con un id válido que no coincide.
+      await assertDenied(
+        create(
+          fam1(),
+          adjustment(change_: {'recipeId': str('a/b')}),
+          id: 'famA_a_b_abcdef12_4',
+        ),
+      );
     });
 
     test('el máximo de cambios e ingredientes cabe y uno más no', () async {
@@ -263,10 +290,10 @@ void main() {
           fam1(),
           adjustment(
             change_: {
+              'baseSignature': str('abcdef13'),
               'changes': arr([for (var i = 0; i < 7; i++) change()]),
             },
           ),
-          id: 'a2',
         ),
       );
       await assertDenied(
@@ -274,13 +301,90 @@ void main() {
           fam1(),
           adjustment(
             change_: {
+              'baseSignature': str('abcdef14'),
               'ingredients': arr([for (var i = 0; i < 11; i++) ingredient()]),
             },
           ),
-          id: 'a3',
         ),
       );
     });
+  });
+
+  group('el id del documento limita las pendientes', () {
+    test('el id es familia, receta, huella y tamaño del hogar', () async {
+      expect(idOf(adjustment()), 'famA_r1_abcdef12_4');
+      await assertAllowed(create(fam1(), adjustment()));
+      expect(await adminDoc('adjustments/famA_r1_abcdef12_4'), isNotNull);
+    });
+
+    test('un id que no coincide se deniega', () async {
+      for (final id in [
+        'a1',
+        'famA_r1_abcdef12_5',
+        'famA_r2_abcdef12_4',
+        'famA_r1_abcdef13_4',
+        'famA_r1_abcdef12',
+        'famB_r1_abcdef12_4',
+      ]) {
+        await assertDenied(create(fam1(), adjustment(), id: id));
+      }
+    });
+
+    test('el id de otra familia se deniega', () async {
+      // famB usa el id que le tocaría a famA: no coincide con su familyId.
+      await assertDenied(
+        create(
+          fam2(),
+          adjustment(change_: {'familyId': ref('families/famB')}),
+          id: 'famA_r1_abcdef12_4',
+        ),
+      );
+      // Con su propio id, sí.
+      await assertAllowed(
+        create(fam2(), adjustment(change_: {'familyId': ref('families/famB')})),
+      );
+    });
+
+    test('crear dos veces el mismo id se deniega', () async {
+      await assertAllowed(create(fam1(), adjustment()));
+      await assertDenied(create(fam1(), adjustment()));
+      expect(await adminDocs('adjustments'), hasLength(1));
+    });
+
+    test('con otra huella o otro tamaño de hogar es otro documento', () async {
+      await assertAllowed(create(fam1(), adjustment()));
+      await assertAllowed(
+        create(fam1(), adjustment(change_: {'baseSignature': str('abcdef13')})),
+      );
+      await assertAllowed(
+        create(fam1(), adjustment(change_: {'householdSize': integer(5)})),
+      );
+      await assertAllowed(
+        create(fam1(), adjustment(change_: {'recipeId': str('r3')})),
+      );
+      expect(await adminDocs('adjustments'), hasLength(4));
+    });
+
+    test('una pendiente retirada se puede volver a sugerir', () async {
+      await assertAllowed(create(fam1(), adjustment()));
+      await assertAllowed(fam1().deleteDoc('adjustments/famA_r1_abcdef12_4'));
+      await assertAllowed(create(fam1(), adjustment()));
+    });
+
+    test(
+      'una ya decidida no se puede volver a crear con el mismo id',
+      () async {
+        await Db.admin().setDoc(
+          'adjustments/famA_r1_abcdef12_4',
+          stored(status: 'rejected'),
+        );
+        await assertDenied(create(fam1(), adjustment()));
+        // Después de cambiar el tamaño del hogar sí hay una sugerencia nueva.
+        await assertAllowed(
+          create(fam1(), adjustment(change_: {'householdSize': integer(5)})),
+        );
+      },
+    );
   });
 
   group('quién la lee', () {

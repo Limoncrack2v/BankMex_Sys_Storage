@@ -106,6 +106,37 @@ String recipeSignature(Recipe recipe) {
   return hash.toRadixString(16).padLeft(8, '0');
 }
 
+/// Lo único que un motor de ajuste recibe de un hogar: cuántos son, cuántas
+/// porciones de adulto equivalen y a qué alérgenos hay alergia. No lleva
+/// nombres, edades ni pesos de los integrantes (MASVS-PRIVACY-1): quien lo
+/// construye ([AdjustmentContext.forHousehold], en el dispositivo) los usa
+/// para calcular las porciones y no los suelta. Un motor remoto futuro
+/// recibiría solo esto, igual que [NutritionTargets] recibe el objetivo
+/// calórico y la lista de exclusión.
+class AdjustmentContext {
+  const AdjustmentContext({
+    required this.householdSize,
+    required this.portions,
+    required this.allergies,
+  });
+
+  /// Integrantes del hogar (adultos y niños).
+  final int householdSize;
+
+  /// Porciones de adulto que come el hogar (los niños cuentan menos según su
+  /// edad y peso).
+  final double portions;
+
+  final List<Allergy> allergies;
+
+  factory AdjustmentContext.forHousehold(FamilyProfile family) =>
+      AdjustmentContext(
+        householdSize: family.adults + family.children.length,
+        portions: PortionAdjuster.familyServingFactor(family),
+        allergies: AllergenFilter.allergiesOf(family),
+      );
+}
+
 /// El algoritmo por reglas. Una IA lo puede reemplazar detrás de
 /// [RecipePlanner.suggestAdjustment] sin cambiar a quien lo usa.
 class RecipeAdjustmentRules {
@@ -163,18 +194,16 @@ class RecipeAdjustmentRules {
   /// no se puede adaptar y el plan la deja fuera).
   static RecipeAdjustmentSuggestion? suggest(
     Recipe recipe,
-    FamilyProfile family,
+    AdjustmentContext household,
   ) {
-    final allergies = AllergenFilter.allergiesOf(family);
-    final householdSize = family.adults + family.children.length;
+    final allergies = household.allergies;
+    final householdSize = household.householdSize;
     if (householdSize <= 0) return null;
 
     final base = recipe.servings > 0
         ? recipe.servings
         : kRecipeBaseServings.round();
-    final servings = PortionAdjuster.familyServingFactor(family)
-        .round()
-        .clamp(1, 99);
+    final servings = household.portions.round().clamp(1, 99);
     final scale = servings / base;
 
     final changes = <AdjustmentChange>[];

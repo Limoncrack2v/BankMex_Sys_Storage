@@ -11,6 +11,11 @@ import 'package:bank_storage_app/data/repositories/recipe_repository.dart';
 import 'package:bank_storage_app/domain/models/recipe.dart' as domain;
 import 'package:bank_storage_app/domain/models/recipe_adjustment.dart';
 import 'package:bank_storage_app/domain/recipe_adjustment.dart';
+import 'package:bank_storage_app/domain/recipe_planner.dart';
+import 'package:bank_storage_app/domain/models/family_profile.dart';
+import 'package:bank_storage_app/domain/models/pantry_item.dart'
+    as domain_pantry;
+import 'package:bank_storage_app/domain/meal_plan_generator.dart';
 import 'package:bank_storage_app/ui/models/recipe.dart' as ui;
 import 'package:bank_storage_app/ui/models/recipe_adjustments.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/meal_plan_screen.dart';
@@ -190,6 +195,82 @@ void main() {
   // BankStorageFacade
   // -------------------------------------------------------------------------
 
+  group('the engine can be replaced', () {
+    test(
+      'another RecipePlanner decides, with no change in the facade',
+      () async {
+        final planner = _OtherEngine();
+        final fake = _Fakes(members: dairyHousehold, planner: planner);
+
+        final created = await fake.facade.suggestAdjustment(
+          familyId: 'famA',
+          recipeId: 'r1',
+        );
+
+        // Lo que se guarda es lo que sugirió el otro motor.
+        expect(created, isNotNull);
+        final stored = fake.adjustments.created.single;
+        expect(stored.summary, 'Sugerido por otro motor');
+        expect(stored.ingredients.single.productName, 'Bebida de coco');
+        expect(stored.status, AdjustmentStatus.pending);
+      },
+    );
+
+    test(
+      'the other engine gets the household without names, ages or weights',
+      () async {
+        final planner = _OtherEngine();
+        await _Fakes(
+          members: dairyHousehold,
+          planner: planner,
+        ).facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+
+        final household = planner.received!;
+        expect(household.householdSize, 4);
+        expect(household.allergies, [Allergy.dairy]);
+        expect(household.portions, 4);
+        // El contexto solo tiene esos tres datos.
+        final text = household.toString();
+        expect(text, isNot(contains('Ana')));
+      },
+    );
+
+    test(
+      'an engine with nothing to suggest leaves the family as it is',
+      () async {
+        final fake = _Fakes(
+          members: dairyHousehold,
+          planner: _OtherEngine(none: true),
+        );
+
+        expect(
+          await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1'),
+          isNull,
+        );
+        expect(fake.adjustments.created, isEmpty);
+      },
+    );
+  });
+
+  group('AdjustmentContext', () {
+    test('has the size, the portions and the allergies of the household', () {
+      final context = AdjustmentContext.forHousehold(
+        const FamilyProfile(
+          id: 'famA',
+          authUid: 'famA',
+          adults: 2,
+          children: [],
+          dietaryRestrictions: ['dairy', 'diabetes'],
+        ),
+      );
+
+      expect(context.householdSize, 2);
+      expect(context.portions, 2);
+      // Una enfermedad no es una alergia.
+      expect(context.allergies, [Allergy.dairy]);
+    });
+  });
+
   group('BankStorageFacade adjustments', () {
     test(
       'suggests a pending adaptation for a household with an allergy',
@@ -266,6 +347,74 @@ void main() {
         expect(fake.adjustments.created, hasLength(2));
       },
     );
+
+    test(
+      'the id is one per family, recipe, version and household size',
+      () async {
+        final fake = _Fakes(members: dairyHousehold);
+        await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+
+        final signature = recipeSignature(domainRecipe());
+        expect(fake.adjustments.created.single.id, 'famA_r1_${signature}_4');
+      },
+    );
+
+    test('after a rejection, a bigger household suggests again', () async {
+      final fake = _Fakes(members: dairyHousehold);
+      await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+      fake.adjustments.setStatus(AdjustmentStatus.rejected);
+
+      fake.household.members = [...dairyHousehold, member('Eva')];
+      final again = await fake.facade.suggestAdjustment(
+        familyId: 'famA',
+        recipeId: 'r1',
+      );
+
+      expect(again, isNotNull);
+      expect(fake.adjustments.created.map((a) => a.householdSize), [4, 5]);
+      expect(fake.adjustments.created.last.id, endsWith('_5'));
+    });
+
+    test('after a rejection, an edited recipe suggests again', () async {
+      final fake = _Fakes(members: dairyHousehold);
+      await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+      fake.adjustments.setStatus(AdjustmentStatus.rejected);
+
+      fake.recipes.stored = domainRecipe(rice: 0.5);
+      final again = await fake.facade.suggestAdjustment(
+        familyId: 'famA',
+        recipeId: 'r1',
+      );
+
+      expect(again, isNotNull);
+      expect(fake.adjustments.created, hasLength(2));
+      expect(
+        fake.adjustments.created.map((a) => a.baseSignature).toSet(),
+        hasLength(2),
+      );
+    });
+
+    test('a decided adjustment with the same id is not overwritten', () async {
+      // Otra alergia con el mismo tamaño de hogar y la misma receta daría el
+      // mismo id: el documento ya decidido se queda y no se intenta crear.
+      final fake = _Fakes(members: dairyHousehold);
+      await fake.facade.suggestAdjustment(familyId: 'famA', recipeId: 'r1');
+      fake.adjustments.setStatus(AdjustmentStatus.approved);
+
+      fake.household.members = [
+        member('Ana', allergies: [Allergy.dairy, Allergy.gluten]),
+        member('Beto'),
+        member('Carla'),
+        member('Dario'),
+      ];
+      final again = await fake.facade.suggestAdjustment(
+        familyId: 'famA',
+        recipeId: 'r1',
+      );
+
+      expect(again, isNull);
+      expect(fake.adjustments.created, hasLength(1));
+    });
 
     test('nothing to change means no suggestion', () async {
       final fake = _Fakes(
@@ -494,7 +643,7 @@ class _FakeFamilies extends Fake implements FamilyRepository {
 class _FakeMembers extends Fake implements MemberRepository {
   _FakeMembers(this.members);
 
-  final List<Member> members;
+  List<Member> members;
 
   @override
   Stream<List<Member>> watchAllMembers(String familyId) =>
@@ -519,7 +668,6 @@ class _FakeAdjustments extends Fake implements AdjustmentRepository {
   final created = <RecipeAdjustment>[];
   final deleted = <String>[];
   final calls = <String>[];
-  var _next = 1;
 
   void setStatus(AdjustmentStatus status) {
     for (var i = 0; i < created.length; i++) {
@@ -542,7 +690,7 @@ class _FakeAdjustments extends Fake implements AdjustmentRepository {
   @override
   Future<RecipeAdjustment> create(RecipeAdjustment adjustment) async {
     final saved = RecipeAdjustment(
-      id: 'a${_next++}',
+      id: adjustment.documentKey,
       familyId: adjustment.familyId,
       recipeId: adjustment.recipeId,
       baseSignature: adjustment.baseSignature,
@@ -587,13 +735,18 @@ class _FakeAdjustments extends Fake implements AdjustmentRepository {
 }
 
 class _Fakes {
-  _Fakes({required List<Member> members, domain.Recipe? recipe})
-    : recipes = _FakeRecipes()..stored = recipe ?? domainRecipe(),
-      adjustments = _FakeAdjustments() {
+  _Fakes({
+    required List<Member> members,
+    domain.Recipe? recipe,
+    RecipePlanner? planner,
+  }) : recipes = _FakeRecipes()..stored = recipe ?? domainRecipe(),
+       household = _FakeMembers(members),
+       adjustments = _FakeAdjustments() {
     facade = BankStorageFacade(
+      planner: planner,
       families: _FakeFamilies(),
       pantry: _FakePantry(),
-      members: _FakeMembers(members),
+      members: household,
       recipes: recipes,
       mealPlans: _FakeMealPlans(),
       adjustments: adjustments,
@@ -602,6 +755,64 @@ class _Fakes {
   }
 
   final _FakeRecipes recipes;
+  final _FakeMembers household;
   final _FakeAdjustments adjustments;
   late final BankStorageFacade facade;
+}
+
+/// Un motor distinto del de reglas: la fachada y las pantallas no cambian.
+class _OtherEngine implements RecipePlanner {
+  _OtherEngine({this.none = false});
+
+  final bool none;
+  AdjustmentContext? received;
+
+  @override
+  Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
+    required AdjustmentContext household,
+    required domain.Recipe recipe,
+  }) async {
+    received = household;
+    if (none) return null;
+    return RecipeAdjustmentSuggestion(
+      recipeId: recipe.id,
+      baseSignature: recipeSignature(recipe),
+      householdSize: household.householdSize,
+      servings: 4,
+      ingredients: const [
+        domain.RecipeIngredient(
+          productName: 'Bebida de coco',
+          quantity: 1,
+          unit: 'l',
+        ),
+      ],
+      changes: const [
+        AdjustmentChange(
+          kind: AdjustmentChange.kindSubstitution,
+          reason: 'alergia a lácteos',
+          from: 'Leche entera',
+          to: 'Bebida de coco',
+        ),
+      ],
+      summary: 'Sugerido por otro motor',
+    );
+  }
+
+  @override
+  Future<domain.Recipe?> suggestRecipe({
+    required FamilyProfile family,
+    required List<domain_pantry.PantryItem> pantryItems,
+    required List<domain.Recipe> recipes,
+    DateTime? now,
+  }) async => null;
+
+  @override
+  Future<MealPlanGeneration> planDays({
+    required FamilyProfile family,
+    required List<domain_pantry.PantryItem> pantryItems,
+    required List<domain.Recipe> recipes,
+    required int days,
+    DateTime? startDate,
+    DateTime? now,
+  }) => throw UnimplementedError();
 }

@@ -18,9 +18,12 @@ class AdjustmentRepository {
   DocumentReference<Map<String, dynamic>> _familyRef(String familyId) =>
       _db.doc(FirestorePaths.familyDoc(familyId));
 
-  /// Guarda una sugerencia pendiente de [adjustment.familyId].
+  /// Guarda una sugerencia pendiente de [adjustment.familyId], con el id
+  /// [RecipeAdjustment.documentKey] que exigen las reglas: si ya existe una
+  /// igual (de esa familia, receta, versión y tamaño de hogar), Firestore la
+  /// rechaza.
   Future<RecipeAdjustment> create(RecipeAdjustment adjustment) async {
-    final ref = _col.doc();
+    final ref = _col.doc(adjustment.documentKey);
     await ref.set({
       ...adjustment.toMap(),
       'familyId': _familyRef(adjustment.familyId),

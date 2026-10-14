@@ -314,6 +314,27 @@ void main() {
       },
     );
 
+    test('the id of an adjustment is RecipeAdjustment.documentId', () {
+      // El orden de las partes en la regla de crear es el del id de Dart.
+      final rule = RegExp(
+        r"adjustmentId == request\.resource\.data\.familyId\[4\] \+ '_'\s*"
+        r"\+ request\.resource\.data\.recipeId \+ '_'\s*"
+        r"\+ request\.resource\.data\.baseSignature \+ '_'\s*"
+        r"\+ string\(request\.resource\.data\.householdSize\)",
+      ).firstMatch(rules);
+
+      expect(rule, isNotNull);
+      expect(
+        RecipeAdjustment.documentId(
+          familyId: 'famA',
+          recipeId: 'r1',
+          baseSignature: 'abcdef12',
+          householdSize: 4,
+        ),
+        'famA_r1_abcdef12_4',
+      );
+    });
+
     test('the nutritionist writes only review fields of an adjustment', () {
       final review = body('nutritionistReviewsAdjustment');
       final fields = lists(review, r'affectedKeys\(\)\.hasOnly');

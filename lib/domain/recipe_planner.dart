@@ -36,11 +36,15 @@ abstract interface class RecipePlanner {
   });
 
   /// Los cambios que conviene hacerle a [recipe] (una receta aprobada) para el
-  /// hogar de [family]: porciones y sustitución de alérgenos, con el motivo de
-  /// cada uno. Null si no hay nada que cambiar o si no se puede adaptar. Es
-  /// solo una sugerencia: nada se aplica hasta que el nutriólogo la aprueba.
+  /// hogar descrito por [household]: porciones y sustitución de alérgenos, con
+  /// el motivo de cada uno. Null si no hay nada que cambiar o si no se puede
+  /// adaptar. Es solo una sugerencia: nada se aplica hasta que el nutriólogo
+  /// la aprueba.
+  ///
+  /// Recibe [AdjustmentContext] y no el perfil de la familia: un motor remoto
+  /// no recibe nombres, edades ni pesos de los integrantes.
   Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
-    required FamilyProfile family,
+    required AdjustmentContext household,
     required Recipe recipe,
   });
 }
@@ -91,7 +95,7 @@ class RuleBasedRecipePlanner implements RecipePlanner {
 
   @override
   Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
-    required FamilyProfile family,
+    required AdjustmentContext household,
     required Recipe recipe,
-  }) async => RecipeAdjustmentRules.suggest(recipe, family);
+  }) async => RecipeAdjustmentRules.suggest(recipe, household);
 }

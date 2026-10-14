@@ -65,6 +65,24 @@ class RecipeAdjustment {
   static const int maxSummaryLength = 300;
   static const int maxReasonLength = 300;
 
+  /// El id del documento: uno por familia, receta, versión de la receta y
+  /// tamaño del hogar. firestore.rules lo exige al crear, así que una familia
+  /// no puede llenar la cola del nutriólogo con sugerencias repetidas: crear
+  /// el mismo id otra vez es una actualización, y la familia no actualiza.
+  static String documentId({
+    required String familyId,
+    required String recipeId,
+    required String baseSignature,
+    required int householdSize,
+  }) => '${familyId}_${recipeId}_${baseSignature}_$householdSize';
+
+  String get documentKey => documentId(
+    familyId: familyId,
+    recipeId: recipeId,
+    baseSignature: baseSignature,
+    householdSize: householdSize,
+  );
+
   /// La sugerencia de [RecipeAdjustmentRules] como adaptación nueva, pendiente.
   factory RecipeAdjustment.pending({
     required String familyId,

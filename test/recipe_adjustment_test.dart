@@ -35,6 +35,13 @@ FamilyProfile family({
   dietaryRestrictions: restrictions,
 );
 
+/// El algoritmo con el hogar como lo recibe: sin nombres, edades ni pesos.
+RecipeAdjustmentSuggestion? suggest(Recipe recipe, FamilyProfile family) =>
+    RecipeAdjustmentRules.suggest(
+      recipe,
+      AdjustmentContext.forHousehold(family),
+    );
+
 void main() {
   final base = recipe([('Arroz', 0.4), ('Leche entera', 1)]);
 
@@ -42,21 +49,18 @@ void main() {
     test(
       'the household of the recipe without allergies gets no suggestion',
       () {
-        expect(RecipeAdjustmentRules.suggest(base, family()), isNull);
+        expect(suggest(base, family()), isNull);
       },
     );
 
     test('a household with no members gets no suggestion', () {
-      expect(RecipeAdjustmentRules.suggest(base, family(adults: 0)), isNull);
+      expect(suggest(base, family(adults: 0)), isNull);
     });
   });
 
   group('portions', () {
     test('the servings follow the household and the ingredients scale', () {
-      final suggestion = RecipeAdjustmentRules.suggest(
-        base,
-        family(adults: 2),
-      )!;
+      final suggestion = suggest(base, family(adults: 2))!;
 
       expect(suggestion.servings, 2);
       expect(suggestion.householdSize, 2);
@@ -66,7 +70,7 @@ void main() {
     });
 
     test('children count as part of the household and of the portions', () {
-      final suggestion = RecipeAdjustmentRules.suggest(
+      final suggestion = suggest(
         base,
         family(
           adults: 2,
@@ -85,10 +89,7 @@ void main() {
 
   group('allergens', () {
     test('milk is replaced by an oat drink for a dairy allergy', () {
-      final suggestion = RecipeAdjustmentRules.suggest(
-        base,
-        family(restrictions: const ['dairy']),
-      )!;
+      final suggestion = suggest(base, family(restrictions: const ['dairy']))!;
 
       expect(suggestion.ingredients.map((i) => i.productName), [
         'Arroz',
@@ -103,7 +104,7 @@ void main() {
     });
 
     test('the summary says what changed and why in one line', () {
-      final suggestion = RecipeAdjustmentRules.suggest(
+      final suggestion = suggest(
         base,
         family(adults: 2, restrictions: const ['dairy']),
       )!;
@@ -119,7 +120,7 @@ void main() {
     test('the substitute never carries another allergen of the household', () {
       // Bebida de avena sirve con lácteos; con gluten también (la avena lleva
       // gluten en la lista), así que se toma la siguiente: de arroz.
-      final suggestion = RecipeAdjustmentRules.suggest(
+      final suggestion = suggest(
         base,
         family(restrictions: const ['dairy', 'gluten']),
       )!;
@@ -128,7 +129,7 @@ void main() {
     });
 
     test('every allergen the recipe has is replaced', () {
-      final suggestion = RecipeAdjustmentRules.suggest(
+      final suggestion = suggest(
         recipe([('Pasta', 0.3), ('Queso', 0.1), ('Huevos', 0.1)]),
         family(restrictions: const ['gluten', 'dairy', 'egg']),
       )!;
@@ -146,18 +147,12 @@ void main() {
     });
 
     test('a household without that allergy keeps the ingredient', () {
-      expect(
-        RecipeAdjustmentRules.suggest(
-          base,
-          family(restrictions: const ['peanut']),
-        ),
-        isNull,
-      );
+      expect(suggest(base, family(restrictions: const ['peanut'])), isNull);
     });
 
     test('a chronic condition alone does not change the recipe', () {
       expect(
-        RecipeAdjustmentRules.suggest(
+        suggest(
           recipe([('Azúcar', 0.1)]),
           family(restrictions: const ['diabetes']),
         ),
@@ -182,11 +177,11 @@ void main() {
           'egg': 'Huevo',
           'soy': 'Tofu',
         };
-        final suggestion = RecipeAdjustmentRules.suggest(
+        final suggestion = suggest(
           recipe([(names[allergy]!, 0.1)]),
           family(restrictions: [allergy]),
         )!;
-        final remaining = RecipeAdjustmentRules.suggest(
+        final remaining = suggest(
           recipe([
             for (final ingredient in suggestion.ingredients)
               (ingredient.productName, 0.1),
@@ -223,7 +218,9 @@ void main() {
     test('suggestAdjustment goes through the interface', () async {
       const RecipePlanner planner = RuleBasedRecipePlanner();
       final suggestion = await planner.suggestAdjustment(
-        family: family(restrictions: const ['dairy']),
+        household: AdjustmentContext.forHousehold(
+          family(restrictions: const ['dairy']),
+        ),
         recipe: base,
       );
 

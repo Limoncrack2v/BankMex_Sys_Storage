@@ -608,8 +608,16 @@ service cloud.firestore {
     match /adjustments/{adjustmentId} {
       allow read: if isNutritionist()
         || (request.auth != null && isFamilyOwner(resource.data.familyId[4]));
+      // El id es uno por familia, receta, versión de la receta y tamaño del
+      // hogar (RecipeAdjustment.documentId): una familia no puede llenar la
+      // cola del nutriólogo, porque crear el mismo id otra vez es una
+      // actualización y la familia no actualiza.
       allow create: if isFamilyOwner(request.resource.data.familyId[4])
         && validAdjustment(request.resource.data)
+        && adjustmentId == request.resource.data.familyId[4] + '_'
+          + request.resource.data.recipeId + '_'
+          + request.resource.data.baseSignature + '_'
+          + string(request.resource.data.householdSize)
         && get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.status == 'approved';
       allow update: if isNutritionist()
         && recentlySignedIn()

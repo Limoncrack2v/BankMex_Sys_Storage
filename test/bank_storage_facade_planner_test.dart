@@ -102,7 +102,7 @@ class _Planner implements RecipePlanner {
 
   @override
   Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
-    required FamilyProfile family,
+    required AdjustmentContext household,
     required Recipe recipe,
   }) async => null;
 
