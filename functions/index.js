@@ -4,12 +4,13 @@
 // families/{familyId}/pantryItems: firestore.rules lo prohíbe y solo esta
 // función los crea, con el Admin SDK, cuando una entrega queda confirmada.
 const { initializeApp } = require('firebase-admin/app');
-const { FieldValue, getFirestore } = require('firebase-admin/firestore');
+const { getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 
-const { pantryItemsFor, pantryItemId, handoverTime } = require('./pantry');
-const { nextDeliveryDate } = require('./next_delivery');
+const { pantryItemsFor, pantryItemId, handoverTime, TIME_ZONE } = require('./pantry');
+const { refreshNextDelivery, recomputeStaleNextDeliveries } = require('./next_delivery_sync');
 
 initializeApp();
 const db = getFirestore();
@@ -107,6 +108,8 @@ async function stockDelivery(deliveryRef, serverTime) {
  * Si no hay, el campo se borra.
  * Las familias no pueden leer deliveries (tienen cuotas, justificaciones 
  * y notas del staff); por eso se copia solo la fecha.
+ * Solo corre al escribir una entrega; si el día de una programada pasa sin
+ * que se escriba, lo corrige recomputeStaleNextDelivery (abajo).
  */
 exports.syncNextDelivery = onDocumentWritten(
   {
@@ -131,23 +134,45 @@ exports.syncNextDelivery = onDocumentWritten(
     const familyIds = new Set([before?.familyId, after?.familyId].filter(Boolean));
 
     for (const familyId of familyIds) {
-      await refreshNextDelivery(familyId);
+      await refreshNextDelivery(db, familyId);
     }
   },
 );
 
-async function refreshNextDelivery(familyId) {
-  const deliveries = await db.collection('deliveries')
-    .where('familyId', '==', familyId)
-    .where('status', '==', 'scheduled')
-    .get();
-
-  const scheduled = deliveries.docs.map((doc) => doc.data());
-  const nextDate = nextDeliveryDate(scheduled, new Date());
-
-  const familyRef = db.collection('families').doc(familyId);
-
-  if (!(await familyRef.get()).exists) return;
-
-  await familyRef.update({ nextDeliveryDate: nextDate ?? FieldValue.delete() });
-}
+/**
+ * Todos los días a las 00:15 de Guadalajara recalcula nextDeliveryDate de las
+ * familias que lo tienen antes de hoy: syncNextDelivery solo corre cuando se
+ * escribe una entrega, así que si el día de una programada pasa sin marcarla
+ * entregada ni cancelada, la familia se quedaba con esa fecha.
+ *
+ * Región: Cloud Scheduler no está disponible en northamerica-south1 (donde
+ * están los triggers de Firestore de arriba), y firebase deploy crea el job
+ * de Scheduler en la región de la función. us-south1 (Dallas) es la región
+ * de Scheduler más cercana a Guadalajara; esta función solo escribe en
+ * Firestore, no necesita estar en la región de la base de datos.
+ *
+ * Reintentos: la función es idempotente (solo toca familias que siguen con
+ * fecha pasada), así que reintentar es seguro. Si alguna familia falla se
+ * lanza un error al final para que Scheduler reintente; el reintento solo
+ * trabaja con las que quedaron pendientes. Termina antes de la corrida de
+ * mañana: 3 reintentos con 1 a 10 minutos de espera.
+ */
+exports.recomputeStaleNextDelivery = onSchedule(
+  {
+    schedule: '15 0 * * *',
+    timeZone: TIME_ZONE,
+    region: 'us-south1',
+    // Scheduler espera la respuesta hasta timeoutSeconds (mínimo 180 s).
+    timeoutSeconds: 300,
+    retryCount: 3,
+    minBackoffSeconds: 60,
+    maxBackoffSeconds: 600,
+  },
+  async () => {
+    const result = await recomputeStaleNextDeliveries(db, new Date());
+    logger.info('nextDeliveryDate recalculado', result);
+    if (result.failed > 0) {
+      throw new Error(`${result.failed} familias sin recalcular nextDeliveryDate`);
+    }
+  },
+);

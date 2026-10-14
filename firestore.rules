@@ -7,6 +7,11 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "staff";
     }
 
+    function isNutritionist() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "nutritionist";
+    }
+
     function isFamilyOwner(familyId) {
       return request.auth != null
         && get(/databases/$(database)/documents/families/$(familyId)).data.authUid == request.auth.uid;
@@ -43,7 +48,7 @@ service cloud.firestore {
         && data.name.size() <= 100
         && data.email is string
         && data.email.size() <= 254
-        && data.role in ['staff', 'family']
+        && data.role in ['staff', 'family', 'nutritionist']
         && data.createdAt is timestamp;
     }
 
@@ -246,14 +251,17 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Solo el staff crea perfiles (así nadie puede asignarse el rol staff).
+      // Solo el staff crea perfiles
+      // (así nadie puede asignarse el rol staff o de nutriólogo).
       allow create: if isStaff() && validUserProfile(request.resource.data);
       allow read: if request.auth != null && userId == request.auth.uid;
     }
 
-    // Catálogo global. El staff publica y edita; la familia solo lee approved.
+    // Catálogo global. El staff publica y edita; la familia solo lee approved
+    // y el nutriólogo solo lee pending y no escribe
     match /recipes/{recipeId} {
       allow read: if isStaff()
+        || (isNutritionist() && resource.data.status == 'pending')
         || (request.auth != null && resource.data.status == 'approved');
       allow create, update, delete: if isStaff();
     }
