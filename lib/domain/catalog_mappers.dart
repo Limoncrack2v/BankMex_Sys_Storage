@@ -6,6 +6,7 @@ import '../ui/models/recipe.dart' as ui;
 import '../ui/theme/app_assets.dart';
 import 'models/child_profile.dart';
 import 'models/family_profile.dart';
+import 'recipe_adjustment.dart';
 import 'models/pantry_item.dart' as domain;
 import 'models/recipe.dart' as domain;
 
@@ -101,6 +102,7 @@ abstract final class CatalogMappers {
   static ui.Recipe recipeToUi(domain.Recipe recipe) {
     return ui.Recipe(
       id: recipe.id,
+      signature: recipeSignature(recipe),
       name: recipe.name,
       image: recipe.image.isEmpty ? AppImages.sopaDeLentejas : recipe.image,
       minutes: recipe.prepTimeMinutes,
@@ -117,6 +119,9 @@ abstract final class CatalogMappers {
       steps: recipe.steps,
     );
   }
+
+  /// La unidad de un ingrediente de receta (acepta "lata", "pieza", ...).
+  static data.FoodUnit foodUnit(String unit) => _unit(unit);
 
   static data.FoodUnit _unit(String unit) {
     final key = unit.trim().toLowerCase();

@@ -34,6 +34,8 @@ class RecipeIngredient {
 class Recipe {
   const Recipe({
     this.id = '',
+    this.signature = '',
+    this.adaptation,
     required this.name,
     required this.image,
     required this.minutes,
@@ -46,6 +48,14 @@ class Recipe {
   /// El id de la receta en el catálogo (recipes/{id}); vacío en las recetas de
   /// muestra. Es lo que se guarda en un plan de comidas (mealPlans).
   final String id;
+
+  /// [recipeSignature] de la receta del catálogo; sirve para saber si una
+  /// adaptación aprobada todavía es de esta versión de la receta.
+  final String signature;
+
+  /// El resumen de la adaptación aprobada que ya trae esta receta (qué cambió
+  /// y por qué), o null si es la receta del catálogo tal cual.
+  final String? adaptation;
   final String name;
   final String image;
   final int minutes;
@@ -254,6 +264,8 @@ Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
   final factor = target / recipe.servings;
   return Recipe(
     id: recipe.id,
+    signature: recipe.signature,
+    adaptation: recipe.adaptation,
     name: recipe.name,
     image: recipe.image,
     minutes: recipe.minutes,

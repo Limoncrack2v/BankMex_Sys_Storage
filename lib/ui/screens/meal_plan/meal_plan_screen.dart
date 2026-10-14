@@ -6,15 +6,18 @@ import '../../../data/catalog_source.dart';
 import '../../../data/models/family.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/adjustment_repository.dart';
 import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/meal_plan_repository.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
 import '../../../domain/meal_plan_length.dart';
 import '../../../domain/models/meal_plan.dart';
+import '../../../domain/models/recipe_adjustment.dart';
 import '../../formatting.dart';
 import '../../models/meal_plan_record.dart';
 import '../../models/recipe.dart';
+import '../../models/recipe_adjustments.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
@@ -40,6 +43,7 @@ class MealPlanScreen extends StatefulWidget {
     this.members,
     this.catalog,
     this.family,
+    this.adjustments,
     this.loadPlan,
     this.savePlan,
   });
@@ -52,6 +56,10 @@ class MealPlanScreen extends StatefulWidget {
   final Stream<List<Member>>? members;
   final Stream<List<Recipe>>? catalog;
   final Stream<Family?>? family;
+
+  /// Las adaptaciones aprobadas de la familia: se arma el plan con la receta
+  /// adaptada solo si el nutriólogo ya la aprobó; si no, con la receta base.
+  final Stream<List<RecipeAdjustment>>? adjustments;
   final Future<MealPlan?> Function(String familyId)? loadPlan;
   final Future<MealPlan> Function(MealPlan plan)? savePlan;
 
@@ -63,6 +71,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   late Stream<List<PantryItem>> _pantry;
   late Stream<List<Member>> _members;
   late Stream<List<Recipe>> _catalog;
+  late Stream<List<RecipeAdjustment>> _adjustments;
 
   // El hogar trae nextDeliveryDate (lo escribe syncNextDelivery): al ser un
   // stream, el plan se alarga o se acorta en vivo si el staff programa o
@@ -95,6 +104,9 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     _members =
         widget.members ?? MemberRepository().watchAllMembers(widget.familyId);
     _catalog = widget.catalog ?? watchApprovedCatalogRecipes();
+    _adjustments =
+        widget.adjustments ??
+        AdjustmentRepository().watchApproved(widget.familyId);
     _family = widget.family ?? FamilyRepository().watchFamily(widget.familyId);
     _stored = null;
     _storedLoaded = false;
@@ -206,15 +218,22 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                 builder: (context, family) => StreamBuilder<List<Member>>(
                   stream: _members,
                   builder: (context, members) =>
-                      StreamBuilder<List<PantryItem>>(
-                        stream: _pantry,
-                        builder: (context, pantry) => _buildPlan(
-                          context,
-                          pantry,
-                          members,
-                          recipes,
-                          family.data?.nextDeliveryDate,
-                        ),
+                      StreamBuilder<List<RecipeAdjustment>>(
+                        stream: _adjustments,
+                        builder: (context, adjustments) =>
+                            StreamBuilder<List<PantryItem>>(
+                              stream: _pantry,
+                              builder: (context, pantry) => _buildPlan(
+                                context,
+                                pantry,
+                                members,
+                                recipes,
+                                adjustments.hasError
+                                    ? const []
+                                    : adjustments.data ?? const [],
+                                family.data?.nextDeliveryDate,
+                              ),
+                            ),
                       ),
                 ),
               );
@@ -230,6 +249,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     AsyncSnapshot<List<PantryItem>> snapshot,
     AsyncSnapshot<List<Member>> membersSnapshot,
     List<Recipe> catalog,
+    List<RecipeAdjustment> adjustments,
     DateTime? nextDelivery,
   ) {
     if (snapshot.hasError) {
@@ -261,7 +281,16 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       );
     }
     // Las recetas que chocan con una alergia del hogar no entran al plan.
-    final recipes = recipesSafeForHousehold(catalog, members);
+    // La receta adaptada solo si el nutriólogo ya la aprobó (y las que siguen
+    // chocando con una alergia se quedan fuera del plan).
+    final recipes = recipesSafeForHousehold(
+      applyAdjustments(
+        catalog,
+        adjustments,
+        householdSize: householdSizeOf(members),
+      ),
+      members,
+    );
     final pantry = snapshot.data;
     if (pantry == null) {
       return const Center(

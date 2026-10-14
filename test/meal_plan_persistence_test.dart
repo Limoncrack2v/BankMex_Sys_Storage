@@ -114,6 +114,7 @@ Future<void> pump(
           members: Stream.value(members),
           catalog: Stream.value(recipes ?? catalog),
           family: Stream.value(family(nextDelivery: nextDelivery)),
+          adjustments: Stream.value(const []),
           loadPlan: store.load,
           savePlan: store.save,
         ),

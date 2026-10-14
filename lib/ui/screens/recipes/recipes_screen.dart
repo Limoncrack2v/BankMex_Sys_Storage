@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../data/catalog_source.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/adjustment_repository.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
+import '../../../domain/models/recipe_adjustment.dart';
 import '../../models/recipe.dart';
+import '../../models/recipe_adjustments.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -41,6 +44,7 @@ class RecipesScreen extends StatefulWidget {
     this.pantry,
     this.members,
     this.catalog,
+    this.adjustments,
   });
 
   final String familyId;
@@ -51,6 +55,10 @@ class RecipesScreen extends StatefulWidget {
   final Stream<List<Member>>? members;
   final Stream<List<Recipe>>? catalog;
 
+  /// Las adaptaciones aprobadas de la familia: la receta que ve es la
+  /// adaptada solo si el nutriólogo ya la aprobó; si no, la receta base.
+  final Stream<List<RecipeAdjustment>>? adjustments;
+
   @override
   State<RecipesScreen> createState() => _RecipesScreenState();
 }
@@ -60,6 +68,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
   late Stream<List<PantryItem>> _pantry;
   late Stream<List<Member>> _members;
   late Stream<List<Recipe>> _catalog;
+  late Stream<List<RecipeAdjustment>> _adjustments;
 
   @override
   void initState() {
@@ -80,6 +89,9 @@ class _RecipesScreenState extends State<RecipesScreen> {
     _members =
         widget.members ?? MemberRepository().watchAllMembers(widget.familyId);
     _catalog = widget.catalog ?? watchApprovedCatalogRecipes();
+    _adjustments =
+        widget.adjustments ??
+        AdjustmentRepository().watchApproved(widget.familyId);
   }
 
   @override
@@ -122,17 +134,36 @@ class _RecipesScreenState extends State<RecipesScreen> {
               }
               return StreamBuilder<List<Member>>(
                 stream: _members,
-                builder: (context, members) => StreamBuilder<List<PantryItem>>(
-                  stream: _pantry,
-                  builder: (context, pantry) => _buildList(
-                    context,
-                    pantry,
-                    members.hasError ? const [] : members.data ?? const [],
-                    recipes,
-                    allergiesKnown: members.hasData,
-                    allergiesFailed: members.hasError,
-                  ),
-                ),
+                builder: (context, members) =>
+                    StreamBuilder<List<RecipeAdjustment>>(
+                      stream: _adjustments,
+                      builder: (context, adjustments) {
+                        final household = members.hasError
+                            ? const <Member>[]
+                            : members.data ?? const <Member>[];
+                        // Si las adaptaciones no se pueden leer, se ve la
+                        // receta base (que sigue pasando por el filtro de
+                        // alergias).
+                        final adapted = applyAdjustments(
+                          recipes,
+                          adjustments.hasError
+                              ? const []
+                              : adjustments.data ?? const [],
+                          householdSize: householdSizeOf(household),
+                        );
+                        return StreamBuilder<List<PantryItem>>(
+                          stream: _pantry,
+                          builder: (context, pantry) => _buildList(
+                            context,
+                            pantry,
+                            household,
+                            adapted,
+                            allergiesKnown: members.hasData,
+                            allergiesFailed: members.hasError,
+                          ),
+                        );
+                      },
+                    ),
               );
             },
           ),

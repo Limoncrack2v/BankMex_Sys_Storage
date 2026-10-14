@@ -121,20 +121,4 @@ class RecipeAdjustment {
     'summary': summary,
     'status': status.name,
   };
-
-  /// La receta de la adaptación: la [base] con los ingredientes y las porciones
-  /// ajustados. Es la que ve la familia cuando está aprobada.
-  Recipe applyTo(Recipe base) => base.copyWith(
-    ingredients: ingredients,
-    servings: servings,
-  );
-
-  /// Si esta adaptación sirve hoy para [base] y un hogar de [currentSize]: está
-  /// aprobada, es de esa receta, la receta no se editó desde que se sugirió y
-  /// el hogar no cambió de tamaño.
-  bool appliesTo(Recipe base, {required int currentSize}) =>
-      status == AdjustmentStatus.approved &&
-      recipeId == base.id &&
-      baseSignature == recipeSignature(base) &&
-      householdSize == currentSize;
 }

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/firestore_paths.dart';
 import '../data/models/family.dart';
 import '../data/models/pantry_item.dart';
+import '../data/repositories/adjustment_repository.dart';
 import '../data/repositories/family_repository.dart';
 import '../data/repositories/meal_plan_repository.dart';
 import '../data/repositories/member_repository.dart';
@@ -15,6 +16,7 @@ import '../domain/meal_plan_length.dart';
 import '../domain/models/consumption_waste_stats.dart';
 import '../domain/models/family_profile.dart';
 import '../domain/models/pantry_item.dart' as domain;
+import '../domain/models/recipe_adjustment.dart';
 import '../domain/models/recipe.dart';
 import '../domain/name_normalizer.dart';
 import '../domain/nutrition_targets.dart';
@@ -39,6 +41,7 @@ class BankStorageFacade {
     MemberRepository? members,
     RecipeRepository? recipes,
     MealPlanRepository? mealPlans,
+    AdjustmentRepository? adjustments,
     FirebaseFirestore? firestore,
     RecipePlanner? planner,
   }) : families = families ?? FamilyRepository(),
@@ -48,6 +51,7 @@ class BankStorageFacade {
        _db = firestore ?? FirebaseFirestore.instance {
     this.recipes = recipes ?? RecipeRepository(_db);
     this.mealPlans = mealPlans ?? MealPlanRepository(_db);
+    this.adjustments = adjustments ?? AdjustmentRepository(_db);
   }
 
   final FamilyRepository families;
@@ -56,6 +60,7 @@ class BankStorageFacade {
   final RecipePlanner planner;
   late final RecipeRepository recipes;
   late final MealPlanRepository mealPlans;
+  late final AdjustmentRepository adjustments;
   final FirebaseFirestore _db;
 
   Future<Family> _family(String familyId) async {
@@ -189,6 +194,69 @@ class BankStorageFacade {
       throw StateError('Recipe $recipeId is not pending review');
     }
     return existing;
+  }
+
+  /// Sugiere cómo adaptar [recipeId] (aprobada) al hogar de [familyId]: la
+  /// guarda como una adaptación pendiente que solo el nutriólogo puede aprobar.
+  /// No hace nada si ya hay una igual (pendiente, aprobada o rechazada) o si
+  /// no hay nada que cambiar. Una pendiente vieja (la receta o el hogar
+  /// cambiaron) se retira. Regresa la que creó, o null.
+  Future<RecipeAdjustment?> suggestAdjustment({
+    required String familyId,
+    required String recipeId,
+  }) async {
+    final recipe = await recipes.getById(recipeId);
+    if (recipe == null || recipe.status != RecipeStatus.approved) return null;
+    final profile = await _profile(familyId);
+    final suggestion = await planner.suggestAdjustment(
+      family: profile,
+      recipe: recipe,
+    );
+    final existing = await adjustments.listForRecipe(familyId, recipeId);
+
+    bool isCurrent(RecipeAdjustment a) =>
+        suggestion != null &&
+        a.baseSignature == suggestion.baseSignature &&
+        a.householdSize == suggestion.householdSize &&
+        a.summary == suggestion.summary;
+    for (final old in existing) {
+      if (old.status == AdjustmentStatus.pending && !isCurrent(old)) {
+        await adjustments.delete(old.id);
+      }
+    }
+    if (suggestion == null || existing.any(isCurrent)) return null;
+    return adjustments.create(
+      RecipeAdjustment.pending(familyId: familyId, suggestion: suggestion),
+    );
+  }
+
+  /// Solo el nutriólogo, con inicio de sesión reciente (firestore.rules).
+  Future<void> approveAdjustment(
+    String adjustmentId, {
+    required String reviewerUid,
+  }) => adjustments.approve(adjustmentId, reviewerUid: reviewerUid);
+
+  /// Solo el nutriólogo, con inicio de sesión reciente. El motivo es
+  /// obligatorio.
+  Future<void> rejectAdjustment(
+    String adjustmentId, {
+    required String reviewerUid,
+    required String reason,
+  }) {
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('Escribe el motivo del rechazo');
+    }
+    if (trimmed.length > RecipeAdjustment.maxReasonLength) {
+      throw ArgumentError(
+        'El motivo lleva máximo ${RecipeAdjustment.maxReasonLength} caracteres',
+      );
+    }
+    return adjustments.reject(
+      adjustmentId,
+      reviewerUid: reviewerUid,
+      reason: trimmed,
+    );
   }
 
   Future<List<Recipe>> filterRecipesByPantry(String familyId) async {

@@ -48,6 +48,7 @@ Future<void> _pump(
           pantry: pantry,
           members: Stream.value(members),
           catalog: Stream.value(catalog),
+          adjustments: Stream.value(const []),
         ),
       ),
     ),
