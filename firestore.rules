@@ -114,56 +114,6 @@ service cloud.firestore {
         && (data.localTimestamp is timestamp && data.localTimestamp <= request.time + duration.value(5, 'm'));
     }
 
-    // Un producto de una entrega (DeliveryItem.toMap), con los mismos límites
-    // que DeliveryItem.validate y invalidReason (functions/pantry.js), salvo
-    // el tope de la cantidad (PantryItem.maxQuantity): no cabe en el
-    // presupuesto de expresiones de una reasignación con cuota y
-    // justificación, y lo siguen aplicando DeliveryItem.validate e
-    // invalidReason, que no deja pasar a la despensa un producto que lo
-    // exceda. Si falta un campo o no tiene el tipo esperado, la evaluación
-    // falla y la escritura se rechaza. type y unit son los valores de
-    // FoodType y FoodUnit (lib/data/models/pantry_item.dart) y de FOOD_TYPES y
-    // FOOD_UNITS (functions/pantry.js); se revisan juntos como "tipo/unidad"
-    // para gastar menos expresiones.
-    function validDeliveryItem(item) {
-      return item.productId.matches('(?s).{1,100}')
-        && (item.type + '/' + item.unit).matches('(grain|legume|canned|dairy|produce|protein|beverage|other)/(kg|g|l|ml|piece|can|pack)')
-        && item.quantity > 0
-        && item.expirationDate is timestamp;
-    }
-
-    // Las reglas no tienen ciclos ni recursión: cada producto se revisa por su
-    // índice, y el producto k solo se evalúa si hay más de k (dentro de la
-    // guarda del anterior). Cada solicitud tiene un tope de expresiones
-    // (1000), y cada producto gasta unas 60: por eso el máximo es 16, igual
-    // que Delivery.maxItems. El margen es corto: medido en el emulador caben
-    // 11 condiciones triviales más en validDelivery, unos 1.5 productos. No
-    // solo subir el tope: cualquier condición nueva en la creación o en la
-    // reasignación de una entrega obliga a repetir las pruebas del máximo en
-    // test_emulator/rules_deliveries_test.dart (grupo 'cantidad máxima de
-    // productos' y las pruebas 'se reasigna una entrega con el máximo de
-    // productos' y 'se reasigna el máximo con cuota y justificación').
-    function validDeliveryItems(items) {
-      let n = items.size();
-      return items is list && n >= 1 && n <= 16
-        && validDeliveryItem(items[0])
-        && (n <= 1 || validDeliveryItem(items[1])
-          && (n <= 2 || validDeliveryItem(items[2])
-            && (n <= 3 || validDeliveryItem(items[3])
-              && (n <= 4 || validDeliveryItem(items[4])
-                && (n <= 5 || validDeliveryItem(items[5])
-                  && (n <= 6 || validDeliveryItem(items[6])
-                    && (n <= 7 || validDeliveryItem(items[7])
-                      && (n <= 8 || validDeliveryItem(items[8])
-                        && (n <= 9 || validDeliveryItem(items[9])
-                          && (n <= 10 || validDeliveryItem(items[10])
-                            && (n <= 11 || validDeliveryItem(items[11])
-                              && (n <= 12 || validDeliveryItem(items[12])
-                                && (n <= 13 || validDeliveryItem(items[13])
-                                  && (n <= 14 || validDeliveryItem(items[14])
-                                    && (n <= 15 || validDeliveryItem(items[15]))))))))))))))));
-    }
-
     function validDelivery(data) {
       return data.keys().hasOnly(['familyId', 'familyName', 'deliveryDate', 'packages', 'recoveryFee', 'justification', 'status', 'notes', 'items', 'createdAt', 'reassignedFrom', 'deviceId', 'localTimestamp'])
         && data.keys().hasAll(['familyId', 'familyName', 'deliveryDate', 'packages', 'status', 'items', 'createdAt', 'deviceId', 'localTimestamp'])
@@ -178,7 +128,7 @@ service cloud.firestore {
         && (!('recoveryFee' in data) || ('justification' in data && data.justification.trim().size() > 0))
         && data.status in ['scheduled', 'delivered', 'cancelled']
         && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
-        && validDeliveryItems(data.items)
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 100
         && data.createdAt is timestamp
         && (!('reassignedFrom' in data) || (data.reassignedFrom is string
           && data.reassignedFrom.size() > 0 && data.reassignedFrom.size() <= 128))
