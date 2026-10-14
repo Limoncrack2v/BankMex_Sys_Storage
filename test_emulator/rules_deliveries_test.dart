@@ -4,6 +4,8 @@
 // Uso: flutter test test_emulator/rules_deliveries_test.dart
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bank_storage_app/data/models/delivery.dart';
+
 import 'support/emulator.dart';
 
 // ---------------------------------------------------------------------------
@@ -343,6 +345,287 @@ void main() {
     });
   });
 
+  group('productos de la entrega', () {
+    const maxItems = Delivery.maxItems;
+
+    // Una entrega con [count] productos válidos.
+    Map<String, Map<String, Object?>> withItems(
+      int count, [
+      Map<String, Map<String, Object?>> extra = const {},
+    ]) => delivery({
+      'items': arr([for (var i = 0; i < count; i++) mapValue(deliveryItem)]),
+      ...extra,
+    });
+
+    // Una entrega con un solo producto, el de prueba con [changes].
+    Map<String, Map<String, Object?>> withItem(
+      Map<String, Map<String, Object?>> changes,
+    ) => delivery({
+      'items': arr([
+        mapValue({...deliveryItem, ...changes}),
+      ]),
+    });
+
+    // Una entrega de [Delivery.maxItems] productos donde solo el que está en
+    // [index] cambia.
+    Map<String, Map<String, Object?>> withBadItemAt(
+      int index,
+      Map<String, Map<String, Object?>> changes,
+    ) => delivery({
+      'items': arr([
+        for (var i = 0; i < maxItems; i++)
+          mapValue(i == index ? {...deliveryItem, ...changes} : deliveryItem),
+      ]),
+    });
+
+    Future<void> denied(Map<String, Map<String, Object?>> data) =>
+        assertDenied(staff().setDoc('deliveries/new', data));
+
+    test('un producto con todos los campos válidos', () async {
+      await assertAllowed(
+        staff().setDoc('deliveries/new', withItem({'quantity': number(0.5)})),
+      );
+    });
+
+    test('cada tipo de alimento, uno por producto', () async {
+      const types = [
+        'grain',
+        'legume',
+        'canned',
+        'dairy',
+        'produce',
+        'protein',
+        'beverage',
+        'other',
+      ];
+      await assertAllowed(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({
+            'items': arr([
+              for (final type in types)
+                mapValue({...deliveryItem, 'type': str(type)}),
+            ]),
+          }),
+        ),
+      );
+    });
+
+    test('cada unidad, una por producto', () async {
+      const units = ['kg', 'g', 'l', 'ml', 'piece', 'can', 'pack'];
+      await assertAllowed(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({
+            'items': arr([
+              for (final unit in units)
+                mapValue({...deliveryItem, 'unit': str(unit)}),
+            ]),
+          }),
+        ),
+      );
+    });
+
+    test('cantidad en el límite (1,000,000) y nombre de 100 caracteres', () async {
+      await assertAllowed(
+        staff().setDoc(
+          'deliveries/new',
+          withItem({
+            'quantity': integer(1000000),
+            'productId': str('a' * 100),
+          }),
+        ),
+      );
+    });
+
+    test('tipo desconocido rechazado', () async {
+      await denied(withItem({'type': str('gold')}));
+    });
+
+    test('el tipo distingue mayúsculas y no acepta texto de más', () async {
+      await denied(withItem({'type': str('Grain')}));
+      await denied(withItem({'type': str('grains')}));
+      await denied(withItem({'type': str('')}));
+    });
+
+    test('tipo y unidad no se pueden repartir el separador', () async {
+      await denied(withItem({'type': str('grain/kg'), 'unit': str('')}));
+      await denied(withItem({'type': str('grain/'), 'unit': str('/kg')}));
+    });
+
+    test('tipo que no es texto rechazado', () async {
+      await denied(withItem({'type': integer(1)}));
+    });
+
+    test('unidad desconocida rechazada', () async {
+      await denied(withItem({'unit': str('lb')}));
+    });
+
+    test('unidad que no es texto o falta rechazada', () async {
+      await denied(withItem({'unit': integer(1)}));
+      await denied(
+        delivery({
+          'items': arr([mapValue({...deliveryItem}..remove('unit'))]),
+        }),
+      );
+    });
+
+    test('cantidad 0 rechazada', () async {
+      await denied(withItem({'quantity': integer(0)}));
+    });
+
+    test('cantidad negativa rechazada', () async {
+      await denied(withItem({'quantity': integer(-1)}));
+      await denied(withItem({'quantity': number(-0.5)}));
+    });
+
+    // El tope de la cantidad no cabe en el presupuesto de expresiones de las
+    // reglas (ver validDeliveryItem): lo aplican DeliveryItem.validate y
+    // invalidReason en functions/pantry.js, que no agrega el producto a la
+    // despensa.
+    test('cantidad mayor a 1,000,000 aceptada: el tope no está en las reglas', () async {
+      await assertAllowed(
+        staff().setDoc('deliveries/new', withItem({'quantity': integer(1000001)})),
+      );
+    });
+
+    test('cantidad que no es número o falta rechazada', () async {
+      await denied(withItem({'quantity': str('2')}));
+      await denied(withItem({'quantity': boolean(true)}));
+      await denied(withItem({'quantity': ts(DateTime.utc(2026))}));
+      await denied(
+        delivery({
+          'items': arr([mapValue({...deliveryItem}..remove('quantity'))]),
+        }),
+      );
+    });
+
+    test('sin expirationDate rechazado', () async {
+      await denied(
+        delivery({
+          'items': arr([mapValue({...deliveryItem}..remove('expirationDate'))]),
+        }),
+      );
+    });
+
+    test('expirationDate que no es fecha rechazado', () async {
+      await denied(withItem({'expirationDate': str('2026-10-01')}));
+      await denied(withItem({'expirationDate': integer(20261001)}));
+    });
+
+    test('nombre vacío, de más de 100 caracteres o sin texto rechazado', () async {
+      await denied(withItem({'productId': str('')}));
+      await denied(withItem({'productId': str('a' * 101)}));
+      await denied(withItem({'productId': integer(7)}));
+      await denied(
+        delivery({
+          'items': arr([mapValue({...deliveryItem}..remove('productId'))]),
+        }),
+      );
+    });
+
+    test('producto que no es un mapa rechazado', () async {
+      await denied(delivery({'items': arr([str('Arroz')])}));
+      await denied(delivery({'items': arr([integer(1)])}));
+    });
+
+    test('lista de productos que no es lista rechazada', () async {
+      await denied(delivery({'items': str('Arroz')}));
+      await denied(delivery({'items': mapValue(deliveryItem)}));
+    });
+
+    group('cantidad máxima de productos', () {
+      test('$maxItems productos, con todos los campos opcionales', () async {
+        await assertAllowed(
+          staff().setDoc(
+            'deliveries/new',
+            withItems(maxItems, {
+              'recoveryFee': integer(25),
+              'justification': str('Nivel de ingreso'),
+              'notes': str('Todo bien'),
+              'status': str('delivered'),
+            }),
+          ),
+        );
+      });
+
+      test('${maxItems + 1} productos válidos rechazados', () async {
+        await denied(withItems(maxItems + 1));
+      });
+
+      test('100 productos válidos rechazados', () async {
+        await denied(withItems(100));
+      });
+
+      test('uno inválido al inicio de $maxItems rechazado', () async {
+        await denied(withBadItemAt(0, {'quantity': integer(0)}));
+      });
+
+      test('uno inválido en medio de $maxItems rechazado', () async {
+        await denied(withBadItemAt(8, {'type': str('gold')}));
+      });
+
+      test('uno inválido al final de $maxItems rechazado', () async {
+        await denied(withBadItemAt(maxItems - 1, {'unit': str('lb')}));
+      });
+
+      test('el último producto de $maxItems se revisa por cada campo', () async {
+        final last = maxItems - 1;
+        await denied(withBadItemAt(last, {'quantity': integer(0)}));
+        await denied(withBadItemAt(last, {'productId': str('a' * 101)}));
+        await denied(withBadItemAt(last, {'expirationDate': str('x')}));
+      });
+    });
+
+    group('una entrega que ya existe', () {
+      // Entregas de antes de las reglas nuevas: validDelivery solo corre al
+      // crear, así que cambiar su estado sigue siendo posible aunque tengan
+      // más productos que el máximo de ahora.
+      Future<void> seedLegacy({
+        int count = 100,
+        Map<String, Map<String, Object?>> item = const {},
+      }) => Db.admin().setDoc(
+        'deliveries/del1',
+        delivery({
+          'items': arr([
+            for (var i = 0; i < count; i++)
+              mapValue({...deliveryItem, ...item}),
+          ]),
+        }),
+      );
+
+      test('con 100 productos se puede marcar como entregada', () async {
+        await seedLegacy();
+        await assertAllowed(
+          staff().updateDoc('deliveries/del1', {
+            'status': str('delivered'),
+            ...restamp(),
+          }),
+        );
+      });
+
+      test('con 100 productos se puede cancelar', () async {
+        await seedLegacy();
+        await assertAllowed(
+          staff().updateDoc('deliveries/del1', {
+            'status': str('cancelled'),
+            ...restamp(),
+          }),
+        );
+      });
+
+      test('con un producto inválido se puede cancelar', () async {
+        await seedLegacy(count: 2, item: {'type': str('gold')});
+        await assertAllowed(
+          staff().updateDoc('deliveries/del1', {
+            'status': str('cancelled'),
+            ...restamp(),
+          }),
+        );
+      });
+    });
+  });
+
   group('reasignar entrega', () {
     // Batch de DeliveryRepository.reassignDelivery: la nueva para famB + la
     // original (del1, de famA) marcada como reasignada. Va en batch porque la
@@ -474,6 +757,45 @@ void main() {
           ...restamp(),
         }),
       );
+    });
+
+    // La entrega nueva pasa por validDelivery como cualquier otra: copiar los
+    // productos de la original no la exime.
+    Map<String, Map<String, Object?>> itemsOf(int count) => {
+      'items': arr([for (var i = 0; i < count; i++) mapValue(deliveryItem)]),
+    };
+
+    test('se reasigna una entrega con el máximo de productos', () async {
+      final items = itemsOf(Delivery.maxItems);
+      await Db.admin().setDoc('deliveries/del1', delivery(items));
+      await assertAllowed(reassign(staff(), next: items));
+    });
+
+    test('se reasigna el máximo con cuota y justificación', () async {
+      final items = {
+        ...itemsOf(Delivery.maxItems),
+        'recoveryFee': integer(250),
+        'justification': str('Nivel de ingreso'),
+      };
+      await Db.admin().setDoc('deliveries/del1', delivery(items));
+      await assertAllowed(reassign(staff(), next: items));
+    });
+
+    test('no se reasigna una entrega con más del máximo de productos', () async {
+      final items = itemsOf(Delivery.maxItems + 1);
+      await Db.admin().setDoc('deliveries/del1', delivery(items));
+      await assertDenied(reassign(staff(), next: items));
+    });
+
+    test('no se reasigna una entrega con un producto inválido', () async {
+      final items = {
+        'items': arr([
+          mapValue(deliveryItem),
+          mapValue({...deliveryItem, 'type': str('gold')}),
+        ]),
+      };
+      await Db.admin().setDoc('deliveries/del1', delivery(items));
+      await assertDenied(reassign(staff(), next: items));
     });
 
     test('la nueva se puede entregar después', () async {

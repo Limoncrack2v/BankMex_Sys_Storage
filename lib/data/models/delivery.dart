@@ -67,7 +67,12 @@ class DeliveryItem {
 
 class Delivery {
   static const int maxPackages = 100;
-  static const int maxItems = 100;
+
+  /// Mismo tope que validDeliveryItems en firestore.rules: las reglas revisan
+  /// cada producto por su índice y una solicitud solo puede evaluar 1000
+  /// expresiones, así que no pueden aceptar más sin dejar de revisarlos.
+  /// Las dos despensas estándar juntas suman 16 (tool/standard_baskets.mjs).
+  static const int maxItems = 16;
   static const int maxFamilyNameLength = 100;
 
   final String deliveryId;
