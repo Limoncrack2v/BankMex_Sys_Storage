@@ -1,0 +1,31 @@
+# Dependabot abre un PR por semana con las actualizaciones de cada grupo.
+# Los avisos de seguridad los revisa aparte .github/workflows/dependency-scan.yml.
+version: 2
+updates:
+  # Paquetes de Flutter y Dart (pubspec.yaml y pubspec.lock).
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Mexico_City
+
+  # Paquetes de la Cloud Function (functions/package.json y package-lock.json).
+  - package-ecosystem: npm
+    directory: /functions
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Mexico_City
+
+  # Las acciones de los workflows están fijadas a un commit; Dependabot
+  # actualiza ese commit cuando sale una versión nueva.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Mexico_City

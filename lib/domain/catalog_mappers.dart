@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../data/models/member.dart' as data;
 import '../data/models/pantry_item.dart' as data;
 import '../ui/models/recipe.dart' as ui;
@@ -12,10 +14,7 @@ abstract final class CatalogMappers {
   static domain.PantryItem pantryToDomain(
     data.PantryItem item, {
     required String familyId,
-    DateTime? now,
   }) {
-    final clock = now ?? DateTime.now();
-    final today = DateTime(clock.year, clock.month, clock.day);
     return domain.PantryItem(
       id: item.pantryItemId,
       familyId: familyId,
@@ -23,11 +22,47 @@ abstract final class CatalogMappers {
       name: item.productId,
       quantity: item.quantity,
       unit: item.unit.name,
-      expirationDate: today.add(Duration(days: item.daysUntilExpiration)),
+      // daysUntilExpiration se cuenta desde que la familia recibió el
+      // producto (localTimestamp), no desde hoy.
+      expirationDate: item.localTimestamp.add(
+        Duration(days: item.daysUntilExpiration),
+      ),
       category: item.type.name,
       originalQuantity: item.quantity,
       consumedQuantity: 0,
       status: domain.PantryItemStatus.available,
+    );
+  }
+
+  /// Un documento de families/{id}/consumptionLogs para las estadísticas.
+  /// Con `reason: 'expired'` es desperdicio: cuenta como lo que caducó en la
+  /// despensa, con la fecha en que se desechó. Sin `reason` (registros
+  /// anteriores) o con 'consumed' es consumo.
+  static domain.PantryItem consumptionLogToDomain(
+    String logId,
+    Map<String, dynamic> log, {
+    required String familyId,
+    DateTime? now,
+  }) {
+    final productId = log['productId'] as String? ?? '';
+    final quantity = (log['quantity'] as num?)?.toDouble() ?? 0;
+    final at = (log['at'] as Timestamp?)?.toDate() ?? now ?? DateTime.now();
+    final wasted = log['reason'] == 'expired';
+    return domain.PantryItem(
+      id: logId,
+      familyId: familyId,
+      productId: productId,
+      name: productId,
+      quantity: wasted ? quantity : 0,
+      unit: log['unit'] as String? ?? 'g',
+      expirationDate: at,
+      category: log['category'] as String? ?? '',
+      originalQuantity: quantity,
+      consumedQuantity: wasted ? 0 : quantity,
+      status: wasted
+          ? domain.PantryItemStatus.expiredUnused
+          : domain.PantryItemStatus.consumed,
+      consumedAt: wasted ? null : at,
     );
   }
 

@@ -133,6 +133,59 @@ void main() {
       );
     });
 
+    // Mismo batch que PantryRepository.registerConsumption: el descuento y
+    // su registro en consumptionLogs (PantryRepository.consumptionLog).
+    Map<String, Map<String, Object?>> consumptionLog(String reason) => {
+      'productId': str('Arroz'),
+      'quantity': number(0.5),
+      'unit': str('kg'),
+      'category': str('grain'),
+      'at': now(),
+      'deviceId': str('dev'),
+      'reason': str(reason),
+    };
+
+    test('familia descuenta y deja su registro en un batch', () async {
+      await assertAllowed(
+        fam1().commit([
+          updateWrite(p, {'quantity': const Increment(-0.5)}),
+          setWrite(
+            'families/famA/consumptionLogs/log1',
+            consumptionLog('consumed'),
+          ),
+        ]),
+      );
+      final log = await adminDoc('families/famA/consumptionLogs/log1');
+      expect(fieldValue(log, 'quantity'), 0.5);
+      expect(fieldValue(log, 'reason'), 'consumed');
+    });
+
+    test(
+      'familia desecha un caducado y lo registra como desperdicio',
+      () async {
+        await assertAllowed(
+          fam1().commit([
+            deleteWrite(p),
+            setWrite(
+              'families/famA/consumptionLogs/log2',
+              consumptionLog('expired'),
+            ),
+          ]),
+        );
+      },
+    );
+
+    test('otra familia no registra consumo en esta despensa', () async {
+      await assertDenied(
+        fam2().commit([
+          setWrite(
+            'families/famA/consumptionLogs/log3',
+            consumptionLog('consumed'),
+          ),
+        ]),
+      );
+    });
+
     test('increment que deja 0 rechazado (debe borrarse)', () async {
       // 2 - 2 = 0, y la regla pide quantity > 0: el producto agotado se borra.
       await assertDenied(

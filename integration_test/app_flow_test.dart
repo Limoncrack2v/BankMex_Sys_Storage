@@ -146,6 +146,7 @@ void main() {
       await _waitFor(tester, _primaryButton('Aprobar solicitud'));
       expect(find.textContaining('¿Aprobar a $newStaffName'), findsOneWidget);
       await _tapButton(tester, _primaryButton('Aprobar solicitud'));
+      await _confirmIdentityIfAsked(tester, _password);
       await _waitFor(tester, find.text('Solicitud aprobada'));
       await shot('02c_solicitud_aprobada');
       await _tap(tester, find.text('Listo'));
@@ -166,6 +167,7 @@ void main() {
       await _enter(tester, _passwordField(), _password);
       await shot('03_registrar_cuenta');
       await _tapButton(tester, _primaryButton('Crear cuenta'));
+      await _confirmIdentityIfAsked(tester, _password);
       await _waitFor(
         tester,
         find.text('Cuenta creada'),
@@ -174,8 +176,10 @@ void main() {
       await shot('04_cuenta_creada');
       await _tap(tester, find.text('Listo'));
 
-      // 3. Entrega ya entregada con un producto y su caducidad.
+      // 3. Entrega ya entregada con un producto y su caducidad. La familia
+      // nueva tiene la cuota estándar ($250), así que pide justificación.
       await _selectFamily(tester, stamp, familyName);
+      await _enter(tester, _justificationField(), 'Cuota estándar');
 
       await _tap(tester, _pickerIn('Fecha de entrega'));
       await _confirmDatePicker(tester);
@@ -196,6 +200,7 @@ void main() {
       // Una entrega programada que se reasigna a la Familia Ramírez (la
       // familia nueva ya no la recibe) y después se cancela.
       await _selectFamily(tester, stamp, familyName);
+      await _enter(tester, _justificationField(), 'Cuota estándar');
       await _tap(tester, _pickerIn('Fecha de entrega'));
       await _confirmDatePicker(tester);
       await _enter(tester, _fieldWithHint('Ej. Arroz'), 'Frijol');
@@ -239,6 +244,7 @@ void main() {
       await shot('07a_reasignar_entrega');
       await _tap(tester, ramirezOption);
       await _tapButton(tester, _primaryButton('Confirmar reasignación'));
+      await _confirmIdentityIfAsked(tester, _password);
       await _waitFor(tester, find.text('Entrega reasignada'));
       await shot('07b_entrega_reasignada');
       await _tap(tester, find.text('Listo'));
@@ -257,6 +263,7 @@ void main() {
         findsOneWidget,
       );
       await _tapButton(tester, _primaryButton('Cancelar entrega'));
+      await _confirmIdentityIfAsked(tester, _password);
       await _waitFor(tester, find.text('Entrega cancelada'));
       await _tap(tester, find.text('Listo'));
       await _waitForCount(tester, find.text('Cancelada'), cancelledBefore + 1);
@@ -400,6 +407,7 @@ void main() {
       );
       await shot('19_nueva_receta');
       await _tapButton(tester, _primaryButton('Guardar receta'));
+      await _confirmIdentityIfAsked(tester, _newPassword);
       await _waitFor(tester, find.text('Receta publicada'));
       await shot('20_receta_publicada');
       await _tap(tester, find.text('Listo'));
@@ -411,6 +419,7 @@ void main() {
       await _waitFor(tester, find.text('Editar receta'));
       await _enter(tester, _fieldIn('Minutos'), '25');
       await _tapButton(tester, _primaryButton('Guardar cambios'));
+      await _confirmIdentityIfAsked(tester, _newPassword);
       await _waitFor(tester, find.text('Cambios guardados'));
       await _tap(tester, find.text('Listo'));
       await _waitFor(tester, find.textContaining('25 min'));
@@ -503,6 +512,21 @@ Future<void> _signIn(WidgetTester tester, String email, String password) async {
   await _tapButton(tester, _primaryButton('Iniciar sesión'));
 }
 
+/// Las acciones sensibles del staff piden la contraseña cuando el inicio de
+/// sesión ya tiene 4 minutos o más. La corrida puede llegar ahí o no: si
+/// apareció el sheet, lo confirma; si no, no hace nada.
+Future<void> _confirmIdentityIfAsked(
+  WidgetTester tester,
+  String password,
+) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+  if (find.text('Confirma tu identidad').evaluate().isEmpty) return;
+  await _enter(tester, _passwordField().last, password);
+  await _tapButton(tester, _primaryButton('Confirmar'));
+}
+
 Future<void> _selectFamily(
   WidgetTester tester,
   int stamp,
@@ -522,6 +546,9 @@ Future<void> _selectFamily(
 }
 
 Finder _fieldWithHint(String hint) => find.widgetWithText(TextField, hint);
+
+Finder _justificationField() =>
+    _fieldWithHint('Motivo del monto (nivel de ingreso, tipo de entrega…)');
 
 Finder _passwordField() => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.obscureText,

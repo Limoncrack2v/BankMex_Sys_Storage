@@ -308,7 +308,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
     final count = size == 1 ? '1 integrante' : '$size integrantes';
     final byAge = householdPortions(members) != size
-        ? ', según su edad y peso'
+        ? ', según su edad, peso y salud'
         : '';
     return '$intro Ajustamos las porciones a tu hogar ($count$byAge).';
   }

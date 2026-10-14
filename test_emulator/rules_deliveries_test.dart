@@ -80,6 +80,10 @@ Map<String, Object?> restamp() => {'localTimestamp': ts(DateTime.now())};
 
 // Sesiones usadas en estos grupos.
 Db staff() => Db.user('staff1');
+// Cancelar y reasignar piden una sesión de menos de 5 minutos
+// (recentlySignedIn en firestore.rules); marcar como entregada no.
+Db staleStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 6));
+Db recentStaff() => Db.user('staff1', signedInAgo: const Duration(minutes: 4));
 Db fam1() => Db.user('fam1');
 
 /// Datos que existen antes de cada caso (el beforeEach del suite de Node, solo
@@ -153,7 +157,10 @@ void main() {
       await assertDenied(
         staff().setDoc(
           'deliveries/new',
-          delivery({'recoveryFee': integer(-1)}),
+          delivery({
+            'recoveryFee': integer(-1),
+            'justification': str('Nivel de ingreso'),
+          }),
         ),
       );
     });
@@ -175,6 +182,17 @@ void main() {
     test('staff marca como entregada', () async {
       await assertAllowed(
         staff().updateDoc('deliveries/del1', {
+          'status': str('delivered'),
+          ...restamp(),
+        }),
+      );
+    });
+
+    // La entrega se hace sin conexión: la escritura puede sincronizarse mucho
+    // después de iniciar sesión, y si se rechazara no se llenaría la despensa.
+    test('staff con sesión vieja sí marca como entregada', () async {
+      await assertAllowed(
+        staleStaff().updateDoc('deliveries/del1', {
           'status': str('delivered'),
           ...restamp(),
         }),
@@ -223,6 +241,15 @@ void main() {
     test('staff cancela una programada', () async {
       await assertAllowed(
         staff().updateDoc('deliveries/del1', {
+          'status': str('cancelled'),
+          ...restamp(),
+        }),
+      );
+    });
+
+    test('staff con sesión vieja no cancela', () async {
+      await assertDenied(
+        staleStaff().updateDoc('deliveries/del1', {
           'status': str('cancelled'),
           ...restamp(),
         }),
@@ -346,6 +373,23 @@ void main() {
       await assertAllowed(reassign(staff()));
     });
 
+    test('staff con sesión vieja no reasigna', () async {
+      await assertDenied(reassign(staleStaff()));
+    });
+
+    test('staff reciente cancela y reasigna', () async {
+      await assertAllowed(
+        recentStaff().updateDoc('deliveries/del1', {
+          'status': str('cancelled'),
+          ...restamp(),
+        }),
+      );
+      // del1 vuelve a quedar programada para poder reasignarla.
+      await clearFirestore();
+      await seed();
+      await assertAllowed(reassign(recentStaff()));
+    });
+
     test('la familia no puede reasignar', () async {
       await assertDenied(reassign(fam1()));
     });
@@ -441,6 +485,23 @@ void main() {
         }),
       );
     });
+
+    // La entrega nueva copia la cuota y la justificación de la original
+    // (DeliveryRepository.reassignDelivery) y pasa por validDelivery.
+    test('se reasigna una entrega con cuota y justificación', () async {
+      final quota = {
+        'recoveryFee': integer(250),
+        'justification': str('Cuota estándar'),
+      };
+      await Db.admin().setDoc('deliveries/del1', delivery(quota));
+      await assertAllowed(reassign(staff(), next: quota));
+    });
+
+    test('una con cuota sin justificación no se reasigna', () async {
+      final quota = {'recoveryFee': integer(250)};
+      await Db.admin().setDoc('deliveries/del1', delivery(quota));
+      await assertDenied(reassign(staff(), next: quota));
+    });
   });
 
   group('trazabilidad offline', () {
@@ -504,6 +565,48 @@ void main() {
           'localTimestamp': now(),
         }),
       );
+    });
+  });
+
+  group('cuota de recuperación', () {
+    test('cuota con justificación permitida', () async {
+      await assertAllowed(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({
+            'recoveryFee': integer(250),
+            'justification': str('Cuota estándar'),
+          }),
+        ),
+      );
+    });
+
+    test('cuota sin justificación rechazada', () async {
+      await assertDenied(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({'recoveryFee': integer(250)}),
+        ),
+      );
+    });
+
+    test('cuota con justificación en blanco rechazada', () async {
+      await assertDenied(
+        staff().setDoc(
+          'deliveries/new',
+          delivery({'recoveryFee': integer(250), 'justification': str('   ')}),
+        ),
+      );
+    });
+
+    test('cuota en cero también pide justificación', () async {
+      await assertDenied(
+        staff().setDoc('deliveries/new', delivery({'recoveryFee': integer(0)})),
+      );
+    });
+
+    test('exenta no pide justificación', () async {
+      await assertAllowed(staff().setDoc('deliveries/new', delivery()));
     });
   });
 }

@@ -69,9 +69,20 @@ List<double> quantities(Recipe recipe) =>
 
 void main() {
   group('householdPortions', () {
-    test('adults count 1 regardless of age or weight', () {
+    test('adults without obesity count 1 regardless of age or weight', () {
       expect(householdPortions([member('Ana'), member('Luis')]), 2);
       expect(householdPortions(const []), 0);
+    });
+
+    test('an adult with obesity counts their share of the kcal deficit', () {
+      // 2200 de 2700 kcal (sin edad ni peso).
+      expect(
+        householdPortions([
+          member('Ana'),
+          member('Luis', conditions: const [ChronicCondition.obesity]),
+        ]),
+        closeTo(1 + 2200 / 2700, 1e-9),
+      );
     });
 
     test('children count by age, and weight when known', () {
@@ -392,9 +403,9 @@ void main() {
     });
   });
 
-  group('buildWeeklyPlan', () {
+  group('buildMealPlan', () {
     test('puts first the recipes that use what expires sooner', () {
-      final plan = buildWeeklyPlan(SampleData.recipes, [
+      final plan = buildMealPlan(SampleData.recipes, [
         item('Leche entera', 1, FoodUnit.l, days: 1),
         item('Jamón de pavo', 0.5, FoodUnit.kg, days: 3),
         item('Jitomate', 1, FoodUnit.kg, days: 5),
@@ -442,7 +453,7 @@ void main() {
     });
 
     test('says "caduca hoy" and uses the most urgent matching item', () {
-      final plan = buildWeeklyPlan(
+      final plan = buildMealPlan(
         [SampleData.avenaConFruta],
         [
           item('Avena', 1, FoodUnit.kg, days: 60),
@@ -457,7 +468,7 @@ void main() {
     });
 
     test('ignores expired items', () {
-      final plan = buildWeeklyPlan(
+      final plan = buildMealPlan(
         [SampleData.avenaConFruta, SampleData.frijolesDeLaOlla],
         [
           item(
@@ -481,7 +492,7 @@ void main() {
     });
 
     test('with an empty pantry still lists 7 days with what is missing', () {
-      final plan = buildWeeklyPlan(SampleData.recipes, const [], today: today);
+      final plan = buildMealPlan(SampleData.recipes, const [], today: today);
 
       expect(plan, hasLength(7));
       expect(plan.map((e) => e.recipe.name), [
@@ -514,7 +525,7 @@ void main() {
       ], name: 'B');
 
       final thursday = DateTime(2026, 9, 24);
-      final plan = buildWeeklyPlan(
+      final plan = buildMealPlan(
         [a, b],
         [item('Frijol', 1, FoodUnit.kg, days: 2, registered: thursday)],
         today: thursday,
@@ -538,7 +549,47 @@ void main() {
         'Mar',
         'Mié',
       ]);
-      expect(buildWeeklyPlan(const [], const [], today: today), isEmpty);
+      expect(buildMealPlan(const [], const [], today: today), isEmpty);
+    });
+
+    test('a 14 day plan covers two weeks of consecutive dates', () {
+      final a = recipe(const [
+        RecipeIngredient('Arroz', 0.2, FoodUnit.kg),
+      ], name: 'A');
+      final b = recipe(const [
+        RecipeIngredient('Frijol', 0.2, FoodUnit.kg),
+      ], name: 'B');
+      final c = recipe(const [
+        RecipeIngredient('Avena', 0.2, FoodUnit.kg),
+      ], name: 'C');
+
+      // Empieza a media tarde de un jueves y cruza de septiembre a octubre.
+      final thursday = DateTime(2026, 9, 24, 17, 30);
+      final plan = buildMealPlan(
+        [a, b, c],
+        const [],
+        today: thursday,
+        days: 14,
+      );
+
+      expect(plan.map((e) => e.date), [
+        for (var day = 24; day <= 30; day++) DateTime(2026, 9, day),
+        for (var day = 1; day <= 7; day++) DateTime(2026, 10, day),
+      ]);
+      expect(plan.map((e) => e.day), [
+        'Jue', 'Vie', 'Sáb', 'Dom', 'Lun', 'Mar', 'Mié', //
+        'Jue', 'Vie', 'Sáb', 'Dom', 'Lun', 'Mar', 'Mié',
+      ]);
+      // Con 3 recetas se repiten en el mismo orden hasta llenar los 14 días.
+      expect(plan.map((e) => e.recipe.name).join(), 'ABCABCABCABCAB');
+    });
+
+    test('is 7 days long unless told otherwise', () {
+      final plan = buildMealPlan(SampleData.recipes, const [], today: today);
+
+      expect(plan, hasLength(7));
+      expect(plan.first.date, today);
+      expect(plan.last.date, DateTime(2026, 9, 27));
     });
 
     test('uses the portions of the recipes it receives', () {
@@ -549,7 +600,7 @@ void main() {
       ];
 
       expect(
-        buildWeeklyPlan(
+        buildMealPlan(
           [SampleData.avenaConFruta],
           pantry,
           today: today,
@@ -557,7 +608,7 @@ void main() {
         'Con productos de tu despensa',
       );
       expect(
-        buildWeeklyPlan(
+        buildMealPlan(
           [scaledRecipe(SampleData.avenaConFruta, 4)],
           pantry,
           today: today,

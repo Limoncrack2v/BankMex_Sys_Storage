@@ -21,6 +21,19 @@ class FamilyRepository {
   Future<void> updateFamily(String familyId, Map<String, dynamic> changes) =>
       _families.doc(familyId).update(changes);
 
+  /// Cambia solo los electrodomésticos del hogar, el único campo que la
+  /// familia puede editar de su documento (firestore.rules). [keep] son ids
+  /// ya guardados que esta versión de la app no conoce.
+  Future<void> updateAppliances(
+    String familyId,
+    List<String> appliances, {
+    Set<String> keep = const {},
+  }) async {
+    final error = Appliance.validateIds(appliances, keep: keep);
+    if (error != null) throw ArgumentError(error);
+    await updateFamily(familyId, {'appliances': appliances});
+  }
+
   Future<void> deleteFamily(String familyId) =>
       _families.doc(familyId).delete();
 
@@ -28,6 +41,20 @@ class FamilyRepository {
       .doc(familyId)
       .snapshots()
       .map((doc) => doc.exists ? Family.fromFirestore(doc) : null);
+
+  /// Igual que [watchFamily], pero indica si el documento tiene cambios que
+  /// siguen en el dispositivo (sin conexión) y aún no llegan al servidor.
+  Stream<({Family? family, bool pendingSync})> watchFamilyWithSyncStatus(
+    String familyId,
+  ) => _families
+      .doc(familyId)
+      .snapshots(includeMetadataChanges: true)
+      .map(
+        (doc) => (
+          family: doc.exists ? Family.fromFirestore(doc) : null,
+          pendingSync: doc.metadata.hasPendingWrites,
+        ),
+      );
 
   /// Familia cuya cuenta es [authUid]. Se consulta filtrando por authUid (y
   /// no con un get directo) para que la regla de lectura del dueño permita la
