@@ -12,6 +12,7 @@ import 'package:bank_storage_app/domain/models/family_profile.dart';
 import 'package:bank_storage_app/domain/models/meal_plan.dart';
 import 'package:bank_storage_app/domain/models/pantry_item.dart';
 import 'package:bank_storage_app/domain/models/recipe.dart';
+import 'package:bank_storage_app/domain/recipe_adjustment.dart';
 import 'package:bank_storage_app/domain/recipe_planner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,6 +99,12 @@ class _Planner implements RecipePlanner {
     suggestedFrom = recipes;
     return suggestion;
   }
+
+  @override
+  Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
+    required FamilyProfile family,
+    required Recipe recipe,
+  }) async => null;
 
   @override
   Future<MealPlanGeneration> planDays({

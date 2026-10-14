@@ -1,0 +1,235 @@
+import 'package:bank_storage_app/domain/models/child_profile.dart';
+import 'package:bank_storage_app/domain/models/family_profile.dart';
+import 'package:bank_storage_app/domain/models/recipe.dart';
+import 'package:bank_storage_app/domain/recipe_adjustment.dart';
+import 'package:bank_storage_app/domain/recipe_planner.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+Recipe recipe(
+  List<(String, double)> ingredients, {
+  int servings = 4,
+  String id = 'r1',
+}) => Recipe(
+  id: id,
+  name: 'Arroz con leche',
+  ingredients: [
+    for (final (name, quantity) in ingredients)
+      RecipeIngredient(productName: name, quantity: quantity, unit: 'kg'),
+  ],
+  steps: const ['Cocer'],
+  prepTimeMinutes: 30,
+  caloriesPerServing: 200,
+  status: RecipeStatus.approved,
+  servings: servings,
+);
+
+FamilyProfile family({
+  int adults = 4,
+  List<ChildProfile> children = const [],
+  List<String> restrictions = const [],
+}) => FamilyProfile(
+  id: 'famA',
+  authUid: 'famA',
+  adults: adults,
+  children: children,
+  dietaryRestrictions: restrictions,
+);
+
+void main() {
+  final base = recipe([('Arroz', 0.4), ('Leche entera', 1)]);
+
+  group('nothing to change', () {
+    test(
+      'the household of the recipe without allergies gets no suggestion',
+      () {
+        expect(RecipeAdjustmentRules.suggest(base, family()), isNull);
+      },
+    );
+
+    test('a household with no members gets no suggestion', () {
+      expect(RecipeAdjustmentRules.suggest(base, family(adults: 0)), isNull);
+    });
+  });
+
+  group('portions', () {
+    test('the servings follow the household and the ingredients scale', () {
+      final suggestion = RecipeAdjustmentRules.suggest(
+        base,
+        family(adults: 2),
+      )!;
+
+      expect(suggestion.servings, 2);
+      expect(suggestion.householdSize, 2);
+      expect(suggestion.ingredients.map((i) => i.quantity), [0.2, 0.5]);
+      expect(suggestion.changes, hasLength(1));
+      expect(suggestion.changes.single.kind, AdjustmentChange.kindPortions);
+    });
+
+    test('children count as part of the household and of the portions', () {
+      final suggestion = RecipeAdjustmentRules.suggest(
+        base,
+        family(
+          adults: 2,
+          children: const [
+            ChildProfile(age: 9, weight: 28),
+            ChildProfile(age: 5, weight: 19),
+          ],
+        ),
+      )!;
+
+      expect(suggestion.householdSize, 4);
+      // 2 adultos y 2 niños: menos de 4 porciones de adulto.
+      expect(suggestion.servings, lessThan(4));
+    });
+  });
+
+  group('allergens', () {
+    test('milk is replaced by an oat drink for a dairy allergy', () {
+      final suggestion = RecipeAdjustmentRules.suggest(
+        base,
+        family(restrictions: const ['dairy']),
+      )!;
+
+      expect(suggestion.ingredients.map((i) => i.productName), [
+        'Arroz',
+        'Bebida de avena',
+      ]);
+      final change = suggestion.changes.single;
+      expect(change.kind, AdjustmentChange.kindSubstitution);
+      expect(change.from, 'Leche entera');
+      expect(change.to, 'Bebida de avena');
+      expect(change.reason, 'alergia a lácteos');
+      expect(suggestion.servings, 4);
+    });
+
+    test('the summary says what changed and why in one line', () {
+      final suggestion = RecipeAdjustmentRules.suggest(
+        base,
+        family(adults: 2, restrictions: const ['dairy']),
+      )!;
+
+      expect(
+        suggestion.summary,
+        'Porciones ajustadas a 2 para tu hogar de 2 integrantes; se sustituye '
+        'leche entera por bebida de avena por alergia a lácteos',
+      );
+      expect(suggestion.summary.contains('\n'), isFalse);
+    });
+
+    test('the substitute never carries another allergen of the household', () {
+      // Bebida de avena sirve con lácteos; con gluten también (la avena lleva
+      // gluten en la lista), así que se toma la siguiente: de arroz.
+      final suggestion = RecipeAdjustmentRules.suggest(
+        base,
+        family(restrictions: const ['dairy', 'gluten']),
+      )!;
+
+      expect(suggestion.ingredients.last.productName, 'Bebida de arroz');
+    });
+
+    test('every allergen the recipe has is replaced', () {
+      final suggestion = RecipeAdjustmentRules.suggest(
+        recipe([('Pasta', 0.3), ('Queso', 0.1), ('Huevos', 0.1)]),
+        family(restrictions: const ['gluten', 'dairy', 'egg']),
+      )!;
+
+      expect(suggestion.ingredients.map((i) => i.productName), [
+        'Fideo de arroz',
+        'Tofu',
+        'Tofu',
+      ]);
+      expect(suggestion.changes.map((c) => c.reason), [
+        'alergia a gluten',
+        'alergia a lácteos',
+        'alergia a huevo',
+      ]);
+    });
+
+    test('a household without that allergy keeps the ingredient', () {
+      expect(
+        RecipeAdjustmentRules.suggest(
+          base,
+          family(restrictions: const ['peanut']),
+        ),
+        isNull,
+      );
+    });
+
+    test('a chronic condition alone does not change the recipe', () {
+      expect(
+        RecipeAdjustmentRules.suggest(
+          recipe([('Azúcar', 0.1)]),
+          family(restrictions: const ['diabetes']),
+        ),
+        isNull,
+      );
+    });
+
+    test('no suggestion keeps an allergen in its ingredients', () {
+      for (final allergy in [
+        'dairy',
+        'gluten',
+        'peanut',
+        'shellfish',
+        'egg',
+        'soy',
+      ]) {
+        final names = {
+          'dairy': 'Leche',
+          'gluten': 'Harina',
+          'peanut': 'Cacahuate',
+          'shellfish': 'Camarones',
+          'egg': 'Huevo',
+          'soy': 'Tofu',
+        };
+        final suggestion = RecipeAdjustmentRules.suggest(
+          recipe([(names[allergy]!, 0.1)]),
+          family(restrictions: [allergy]),
+        )!;
+        final remaining = RecipeAdjustmentRules.suggest(
+          recipe([
+            for (final ingredient in suggestion.ingredients)
+              (ingredient.productName, 0.1),
+          ]),
+          family(restrictions: [allergy]),
+        );
+        expect(remaining, isNull, reason: allergy);
+      }
+    });
+  });
+
+  group('recipeSignature', () {
+    test('is the same for the same recipe and changes when it is edited', () {
+      expect(
+        recipeSignature(base),
+        recipeSignature(recipe([('Arroz', 0.4), ('Leche entera', 1)])),
+      );
+      expect(
+        recipeSignature(base),
+        isNot(recipeSignature(recipe([('Arroz', 0.5), ('Leche entera', 1)]))),
+      );
+      expect(
+        recipeSignature(base),
+        isNot(recipeSignature(recipe([('Arroz', 0.4)]))),
+      );
+    });
+
+    test('is 8 hex characters', () {
+      expect(recipeSignature(base), matches(RegExp(r'^[0-9a-f]{8}$')));
+    });
+  });
+
+  group('RecipePlanner', () {
+    test('suggestAdjustment goes through the interface', () async {
+      const RecipePlanner planner = RuleBasedRecipePlanner();
+      final suggestion = await planner.suggestAdjustment(
+        family: family(restrictions: const ['dairy']),
+        recipe: base,
+      );
+
+      expect(suggestion, isNotNull);
+      expect(suggestion!.recipeId, 'r1');
+      expect(suggestion.baseSignature, recipeSignature(base));
+    });
+  });
+}
