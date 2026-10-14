@@ -142,18 +142,21 @@ class PantryRepository {
           .snapshots()
           .map((snapshot) => snapshot.docs.map(_parseOrThrow).toList());
 
-  /// La despensa de una familia, leída una vez (para las estadísticas del
-  /// staff). Un producto que no se pueda leer se omite.
+  /// La despensa de una familia, leída una vez del servidor (para las
+  /// estadísticas del staff): sin conexión falla en lugar de regresar lo que
+  /// haya en la caché. Un producto que no se pueda leer se omite.
   Future<List<PantryItem>> getPantryItems(String familyId) async {
-    final snapshot = await _pantryItems(familyId).get();
+    final snapshot = await _pantryItems(familyId)
+        .get(const GetOptions(source: Source.server));
     return [
       for (final doc in snapshot.docs)
         ?_tryParse(doc, PantryItem.fromFirestore),
     ];
   }
 
-  /// Los registros de consumptionLogs de una familia desde [since]. Un
-  /// registro que no se pueda leer se omite en lugar de romper las
+  /// Los registros de consumptionLogs de una familia desde [since], leídos
+  /// del servidor: sin conexión falla en lugar de regresar los que haya en la
+  /// caché. Un registro que no se pueda leer se omite en lugar de romper las
   /// estadísticas.
   Future<List<ConsumptionLog>> getConsumptionLogs(
     String familyId, {
@@ -164,7 +167,7 @@ class PantryRepository {
         .doc(familyId)
         .collection(FirestorePaths.consumptionLogs)
         .where('at', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
-        .get();
+        .get(const GetOptions(source: Source.server));
     return [
       for (final doc in snapshot.docs)
         ?_tryParse(doc, ConsumptionLog.fromFirestore),

@@ -158,16 +158,17 @@ class DeliveryRepository {
     });
   }
 
-  /// Las entregas con fecha de entrega desde [since], leídas una vez (para las
-  /// estadísticas). Se filtra solo por fecha para no necesitar un índice
-  /// compuesto; el estado lo revisa quien las use.
+  /// Las entregas con fecha de entrega desde [since], leídas una vez del
+  /// servidor (para las estadísticas): sin conexión falla en lugar de regresar
+  /// las que haya en la caché. Se filtra solo por fecha para no necesitar un
+  /// índice compuesto; el estado lo revisa quien las use.
   Future<List<Delivery>> getDeliveriesSince(DateTime since) async {
     final snapshot = await _deliveries
         .where(
           'deliveryDate',
           isGreaterThanOrEqualTo: Timestamp.fromDate(since),
         )
-        .get();
+        .get(const GetOptions(source: Source.server));
     return snapshot.docs.map(_parseOrThrow).toList();
   }
 

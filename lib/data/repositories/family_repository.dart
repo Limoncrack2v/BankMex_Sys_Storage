@@ -82,10 +82,13 @@ class FamilyRepository {
         ),
   );
 
-  /// Todas las familias registradas, leídas una vez (sin orden). Solo staff.
-  /// Un documento que no se pueda leer se omite.
+  /// Todas las familias registradas, leídas una vez del servidor (sin orden).
+  /// Solo staff. Sin conexión falla en lugar de regresar las que haya en la
+  /// caché. Un documento que no se pueda leer se omite.
   Future<List<Family>> getAllFamilies() async {
-    final snapshot = await _families.get();
+    final snapshot = await _families.get(
+      const GetOptions(source: Source.server),
+    );
     return [for (final doc in snapshot.docs) ?_tryParse(doc)];
   }
 
