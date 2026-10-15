@@ -276,7 +276,7 @@ void main() {
         steps: [],
       );
 
-      expect(planServings(const [], party), MealPlanEdits.maxServings);
+      expect(planServings(const [], party), MealPlanMeal.maxServings);
     });
   });
 
@@ -350,6 +350,6 @@ void main() {
       for (final e in shown) e.recipe.id,
     ]);
     expect(plan.meals.map((m) => m.servings), everyElement(2));
-    expect(MealPlanEdits.problem(plan), isNull);
+    expect(plan.validate(), isNull);
   });
 }

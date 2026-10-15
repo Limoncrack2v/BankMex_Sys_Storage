@@ -51,7 +51,7 @@ void main() {
         for (var i = 0; i < 7; i++) 'rec_$i',
       ]);
       expect(plan.meals.map((m) => m.servings), everyElement(3.4));
-      expect(MealPlanEdits.problem(plan), isNull);
+      expect(plan.validate(), isNull);
     });
 
     test('a 14 day plan can cross into the next month', () {
@@ -101,6 +101,17 @@ void main() {
       // Las recetas de ejemplo sin id y un hogar sin porciones.
       expect(() => create(meal(day(0), recipeId: '')), throwsArgumentError);
       expect(() => create(meal(day(0), servings: 0)), throwsArgumentError);
+      // Con el motivo de MealPlan.validate (los límites de las reglas).
+      expect(
+        () => create(meal(day(0), servings: MealPlanMeal.maxServings + 1)),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            'Comida 1: Las porciones deben ser mayores a 0 y de hasta 100',
+          ),
+        ),
+      );
     });
 
     test('refuses plans shorter than 1 day or longer than 14', () {
@@ -158,87 +169,5 @@ void main() {
     expect(MealPlanEdits.mealOn(plan, today)?.recipeId, 'rec_a');
     expect(MealPlanEdits.mealOn(plan, day(2))?.recipeId, 'rec_c');
     expect(MealPlanEdits.mealOn(plan, day(1)), isNull);
-  });
-
-  group('MealPlanEdits.problem', () {
-    MealPlan withMeal(MealPlanMeal meal) => planFrom(day(0), meals: [meal]);
-
-    test('a full 14 day plan is valid', () {
-      final plan = planFrom(
-        day(0),
-        days: 14,
-        meals: [for (var i = 0; i < 14; i++) meal(day(i), recipeId: 'rec_$i')],
-      );
-
-      expect(MealPlanEdits.problem(plan), isNull);
-    });
-
-    test('at most 14 meals', () {
-      final plan = planFrom(
-        day(0),
-        days: 14,
-        meals: [for (var i = 0; i < 15; i++) meal(day(i % 14))],
-      );
-
-      expect(MealPlanEdits.problem(plan), contains('14 comidas'));
-    });
-
-    test('each meal inside the range, its end included', () {
-      expect(MealPlanEdits.problem(withMeal(meal(day(7)))), isNull);
-      expect(
-        MealPlanEdits.problem(withMeal(meal(day(8)))),
-        'Comida 1: La fecha de la comida está fuera del rango del plan',
-      );
-      expect(MealPlanEdits.problem(withMeal(meal(day(-1)))), isNotNull);
-    });
-
-    test('the id of a recipe document', () {
-      expect(
-        MealPlanEdits.problem(withMeal(meal(day(0), recipeId: ''))),
-        isNotNull,
-      );
-      expect(
-        MealPlanEdits.problem(withMeal(meal(day(0), recipeId: 'recipes/a'))),
-        isNotNull,
-      );
-      expect(
-        MealPlanEdits.problem(withMeal(meal(day(0), recipeId: 'a' * 128))),
-        isNull,
-      );
-      expect(
-        MealPlanEdits.problem(withMeal(meal(day(0), recipeId: 'a' * 129))),
-        isNotNull,
-      );
-    });
-
-    test('servings over 0 and up to 100', () {
-      for (final servings in [0.0, -1.0, 100.5, double.nan]) {
-        expect(
-          MealPlanEdits.problem(withMeal(meal(day(0), servings: servings))),
-          isNotNull,
-          reason: '$servings',
-        );
-      }
-      expect(
-        MealPlanEdits.problem(withMeal(meal(day(0), servings: 100))),
-        isNull,
-      );
-      expect(
-        MealPlanEdits.problem(withMeal(meal(day(0), servings: 0.2))),
-        isNull,
-      );
-    });
-
-    test('a range that ends before it starts', () {
-      final plan = MealPlan(
-        id: 'plan',
-        familyId: 'famA',
-        dateRangeStart: day(1),
-        dateRangeEnd: day(0),
-        meals: const [],
-      );
-
-      expect(MealPlanEdits.problem(plan), isNotNull);
-    });
   });
 }

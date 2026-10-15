@@ -137,7 +137,7 @@ void main() {
         'rec_6',
       ]);
       expect(MealPlanEdits.mealOn(changed, day(3)), isNull);
-      expect(MealPlanEdits.problem(changed), isNull);
+      expect(changed.validate(), isNull);
     });
 
     test('a free day stays free', () {
@@ -155,7 +155,7 @@ void main() {
       }
 
       expect(changed.meals, isEmpty);
-      expect(MealPlanEdits.problem(changed), isNull);
+      expect(changed.validate(), isNull);
     });
   });
 
@@ -284,7 +284,17 @@ void main() {
         meals: [for (var i = 0; i < 15; i++) meal(i % 14, 'rec_$i')],
       );
 
-      await expectLater(repository.updateMeals(zero), throwsArgumentError);
+      // Con el motivo de MealPlan.validate, que la vista muestra.
+      await expectLater(
+        repository.updateMeals(zero),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            'Comida 1: Las porciones deben ser mayores a 0 y de hasta 100',
+          ),
+        ),
+      );
       await expectLater(repository.updateMeals(tooMany), throwsArgumentError);
     });
 

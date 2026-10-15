@@ -188,7 +188,7 @@ class SavedPlanView extends StatelessWidget {
     final cards = <Widget>[];
     for (
       var day = first;
-      day.isBefore(end) && cards.length < MealPlanEdits.maxMeals;
+      day.isBefore(end) && cards.length < MealPlan.maxMeals;
       day = DateTime(day.year, day.month, day.day + 1)
     ) {
       final meal = MealPlanEdits.mealOn(plan, day);

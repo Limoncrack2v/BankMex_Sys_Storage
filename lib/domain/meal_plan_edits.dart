@@ -1,4 +1,3 @@
-import 'meal_plan_length.dart';
 import 'models/meal_plan.dart';
 
 /// El plan de comidas que guarda una familia (mealPlans/{planId}). Son
@@ -6,18 +5,8 @@ import 'models/meal_plan.dart';
 ///
 /// Las fechas son medianoche local, como en el plan de la pantalla y en
 /// MealPlanGenerator, y dateRangeEnd es el día siguiente al último del plan.
+/// Los límites son los de [MealPlan.validate].
 abstract final class MealPlanEdits {
-  /// Un plan abarca 7 o 14 días ([MealPlanLength]) con a lo más una comida
-  /// por día.
-  static const maxMeals = MealPlanLength.biweekly;
-
-  /// Porciones de una comida: más de 0 y hasta este tope.
-  static const maxServings = 100.0;
-
-  /// recipeId es el id de un documento de recipes: de 1 a este número de
-  /// caracteres y sin "/".
-  static const maxRecipeIdLength = 128;
-
   static DateTime dateOnly(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
@@ -49,19 +38,19 @@ abstract final class MealPlanEdits {
   /// Plan nuevo de [familyId] de [days] días desde el día de [start], aún sin
   /// id. Las comidas quedan a medianoche y en orden: si dos caen el mismo día
   /// se queda la primera y las que caen fuera del plan se descartan. Lanza
-  /// ArgumentError si [days] no va de 1 a [maxMeals] o si alguna comida no se
-  /// puede guardar ([problem]).
+  /// ArgumentError si [days] no va de 1 a [MealPlan.maxMeals] o si alguna
+  /// comida no se puede guardar ([MealPlan.validate]).
   static MealPlan create({
     required String familyId,
     required DateTime start,
     required int days,
     required List<MealPlanMeal> meals,
   }) {
-    if (days < 1 || days > maxMeals) {
+    if (days < 1 || days > MealPlan.maxMeals) {
       throw ArgumentError.value(
         days,
         'days',
-        'Un plan abarca de 1 a $maxMeals días',
+        'Un plan abarca de 1 a ${MealPlan.maxMeals} días',
       );
     }
     final first = dateOnly(start);
@@ -100,7 +89,8 @@ abstract final class MealPlanEdits {
 
   /// [plan] con [recipeId] en [date]: reemplaza la comida de ese día o llena
   /// un día libre; los demás días no cambian. Lanza ArgumentError si [date]
-  /// no es un día del plan o si la comida no se puede guardar ([problem]).
+  /// no es un día del plan o si la comida no se puede guardar
+  /// ([MealPlan.validate]).
   static MealPlan withRecipe(
     MealPlan plan,
     DateTime date, {
@@ -141,48 +131,8 @@ abstract final class MealPlanEdits {
         meals: meals,
       );
 
-  /// Null si [plan] se puede guardar; si no, el motivo. El rango va en orden
-  /// y tiene a lo más [maxMeals] comidas, cada una dentro del rango, con el id
-  /// de una receta (de 1 a [maxRecipeIdLength] caracteres, sin "/") y
-  /// porciones mayores a 0 y de hasta [maxServings].
-  static String? problem(MealPlan plan) {
-    if (plan.dateRangeEnd.isBefore(plan.dateRangeStart)) {
-      return 'El plan termina antes de empezar';
-    }
-    if (plan.meals.length > maxMeals) {
-      return 'Un plan no puede tener más de $maxMeals comidas';
-    }
-    for (var i = 0; i < plan.meals.length; i++) {
-      final error = _mealProblem(plan.meals[i], plan);
-      if (error != null) return 'Comida ${i + 1}: $error';
-    }
-    return null;
-  }
-
-  static String? _mealProblem(MealPlanMeal meal, MealPlan plan) {
-    if (meal.date.isBefore(plan.dateRangeStart) ||
-        meal.date.isAfter(plan.dateRangeEnd)) {
-      return 'La fecha de la comida está fuera del rango del plan';
-    }
-    final recipeId = meal.recipeId;
-    if (recipeId.isEmpty) return 'La receta de la comida es obligatoria';
-    if (recipeId.runes.length > maxRecipeIdLength) {
-      return 'El id de la receta no puede tener más de $maxRecipeIdLength '
-          'caracteres';
-    }
-    if (recipeId.contains('/')) {
-      return 'El id de la receta no puede contener "/"';
-    }
-    final servings = meal.servings;
-    if (!servings.isFinite || servings <= 0 || servings > maxServings) {
-      return 'Las porciones deben ser mayores a 0 y de hasta '
-          '${maxServings.toInt()}';
-    }
-    return null;
-  }
-
   static void _check(MealPlan plan) {
-    final error = problem(plan);
+    final error = plan.validate();
     if (error != null) throw ArgumentError(error);
   }
 }
