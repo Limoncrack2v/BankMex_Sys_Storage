@@ -84,6 +84,7 @@ Los datos de los emuladores (cuentas de Auth y documentos de Firestore) se guard
 
 - La primera vez la carpeta no existe: los emuladores inician vacíos y se crea al cerrarlos.
 - Para empezar de cero, cierra los emuladores y borra `exported-dev-data/`.
+- Los datos del seed dependen del día en que se corre (el plan de 14 días, lo que caduca, «este mes» de Estadísticas): vuelve a correrlo para refrescarlos. Cada corrida también deja en `exported-dev-data/` las 27 familias de Estadísticas, sus entregas y sus consumos; para quitarlas, borra la carpeta.
 - Está en `.gitignore` y **nunca** se sube al repo: incluye las cuentas de Auth del emulador.
 
 Cuentas de prueba del seed (contraseña `bamx1234`):

@@ -590,7 +590,9 @@ async function seed() {
         deliveryItem(item, addDays(fullDeliveryOn, item[4])),
       ),
     ),
-    createdAt: ts(now),
+    // Un segundo después de seed-delivery-2: la tabla del staff ordena por
+    // createdAt y un empate no tiene orden fijo.
+    createdAt: ts(new Date(now.getTime() + 1000)),
     deviceId: str(DEVICE_ID),
     localTimestamp: ts(now),
   });
@@ -660,7 +662,7 @@ async function seed() {
   );
   if (removedItems) {
     console.log(
-      `  Se quitaron de la despensa ${removedItems} producto(s) de una entrega anterior de seed-delivery-2.`,
+      `  Se quitaron de la despensa ${removedItems} producto(s) de una entrega anterior de seed-delivery-2 o seed-delivery-3.`,
     );
   }
   if (!functionsRunning) {
