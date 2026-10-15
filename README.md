@@ -116,6 +116,7 @@ El contenido fijo de cada despensa del banco está en `standardBaskets/{basketId
 
 - La única fuente es `tool/standard_baskets.mjs`. `node tool/seed_emulators.mjs` las carga en los emuladores y `./scripts/seed_standard_baskets.sh` en el proyecto real (pide confirmación).
 - Solo el staff las lee; ningún cliente las escribe.
+- En el formulario de entregas, el staff elige una o más despensas estándar y la lista de productos se llena con sus cantidades por el número de despensas, y con la caducidad contada desde la fecha de entrega. La entrega guarda los productos reales (`items`): el staff puede quitar o cambiar los que faltaron ese día, y si ya editó la lista, cambiar las despensas, la fecha o el número de despensas no la sobrescribe sin avisar. Sin conexión ni copia local de las despensas, los productos se capturan a mano como siempre.
 
 La fecha de la próxima entrega de la familia (`families/{familyId}.nextDeliveryDate`) la mantienen dos funciones; ningún cliente la escribe:
 
