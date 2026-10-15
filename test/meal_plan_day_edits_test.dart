@@ -160,21 +160,21 @@ void main() {
   });
 
   group('planOptionsFor', () {
-    test('ranks the recipes as the plan does, counting from today', () {
+    const recipes = [
+      SampleData.sopaDeLentejas,
+      SampleData.avenaConFruta,
+      SampleData.frijolesDeLaOlla,
+    ];
+
+    test('ranks the recipes as the plan does, counting from that day', () {
       final pantry = [
         item('Leche entera', 1, FoodUnit.l, 1),
         item('Plátano', 4, FoodUnit.piece, 3),
         item('Lenteja', 1, FoodUnit.kg, 5),
       ];
-      final recipes = [
-        SampleData.sopaDeLentejas,
-        SampleData.avenaConFruta,
-        SampleData.frijolesDeLaOlla,
-      ];
 
-      final today = planOptionsFor(recipes, pantry, day(0), today: day(0));
-      // Lo que caduca se cuenta desde hoy: el viernes 16 se ve igual.
-      final friday = planOptionsFor(recipes, pantry, day(2), today: day(0));
+      final today = planOptionsFor(recipes, pantry, day(0));
+      final friday = planOptionsFor(recipes, pantry, day(2));
 
       expect(today.map((e) => e.recipe.name), [
         'Avena con fruta',
@@ -183,11 +183,73 @@ void main() {
       ]);
       expect(
         today.first.reason,
+        buildMealPlan(recipes, pantry, today: day(0)).first.reason,
+      );
+      expect(
+        today.first.reason,
         startsWith('Usa Leche entera (caduca mañana)'),
       );
-      expect(friday.map((e) => e.recipe), today.map((e) => e.recipe));
-      expect(friday.map((e) => e.reason), today.map((e) => e.reason));
+      // El viernes 16 la leche ya caducó y a los plátanos les queda 1 día.
+      expect(friday.first.reason, startsWith('Usa Plátano (caduca mañana)'));
+      expect(friday[1].reason, startsWith('Usa Lenteja (caduca en 3 días)'));
       expect(friday.map((e) => e.date), everyElement(day(2)));
+    });
+
+    test('sees what the earlier days of the plan use', () {
+      final pantry = [
+        item('Leche entera', 1, FoodUnit.l, 6),
+        item('Plátano', 4, FoodUnit.piece, 3),
+        item('Lenteja', 0.25, FoodUnit.kg, 5),
+      ];
+      // Avena el miércoles y el jueves: se acaban la leche y los plátanos.
+      final wednesday = planEntryFor(SampleData.avenaConFruta, day(0), pantry);
+      final thursday = planEntryFor(
+        SampleData.avenaConFruta,
+        day(1),
+        pantry,
+        earlier: [wednesday],
+      );
+
+      final friday = planOptionsFor(
+        recipes,
+        pantry,
+        day(2),
+        earlier: [wednesday, thursday],
+      );
+
+      expect(friday.map((e) => e.recipe.name), [
+        'Sopa de lentejas',
+        'Frijoles de la olla',
+        'Avena con fruta',
+      ]);
+      expect(friday.last.reason, 'Te faltan 3 ingredientes');
+      // Sin esos días la avena aún tendría plátanos.
+      expect(
+        planOptionsFor(recipes, pantry, day(2)).first.reason,
+        startsWith('Usa Plátano (caduca mañana)'),
+      );
+    });
+
+    test('each day of the suggested plan has its card among the options', () {
+      final pantry = [
+        item('Leche entera', 1, FoodUnit.l, 6),
+        item('Plátano', 4, FoodUnit.piece, 3),
+        item('Lenteja', 0.25, FoodUnit.kg, 5),
+        item('Frijol', 1, FoodUnit.kg, 4),
+      ];
+      final plan = buildMealPlan(recipes, pantry, today: day(0), days: 14);
+
+      for (var i = 0; i < plan.length; i++) {
+        final options = planOptionsFor(
+          recipes,
+          pantry,
+          plan[i].date,
+          earlier: plan.sublist(0, i),
+        );
+        final card = options.singleWhere((e) => e.recipe == plan[i].recipe);
+        expect(card.reason, plan[i].reason, reason: '${plan[i].date}');
+        expect(card.urgency, plan[i].urgency, reason: '${plan[i].date}');
+      }
     });
   });
 

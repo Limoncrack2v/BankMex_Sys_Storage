@@ -126,6 +126,7 @@ class SavedPlanView extends StatelessWidget {
     BuildContext context,
     DateTime day,
     MealPlanMeal? meal,
+    List<MealPlanEntry> earlier,
     Future<void> Function(MealPlan plan) save,
   ) {
     final options = planOptionsFor(
@@ -135,7 +136,7 @@ class SavedPlanView extends StatelessWidget {
       ],
       pantry,
       day,
-      today: today,
+      earlier: earlier,
     );
     showEditPlanDaySheet(
       context,
@@ -181,7 +182,8 @@ class SavedPlanView extends StatelessWidget {
         : start;
 
     final save = onSaveMeals;
-    // Lo que se va a cocinar de hoy en adelante, para "Lo que te sobra".
+    // Lo que se va a cocinar de hoy en adelante, en orden: lo usan los días
+    // siguientes, como en el plan sugerido, y "Lo que te sobra".
     final entries = <MealPlanEntry>[];
     final cards = <Widget>[];
     for (
@@ -191,9 +193,10 @@ class SavedPlanView extends StatelessWidget {
     ) {
       final meal = MealPlanEdits.mealOn(plan, day);
       final recipe = meal == null ? null : byId[meal.recipeId];
+      final earlier = List.of(entries);
       final edit = save == null
           ? null
-          : () => _editDay(context, day, meal, save);
+          : () => _editDay(context, day, meal, earlier, save);
       if (meal == null) {
         cards.add(
           _PlanDayCard(
@@ -233,7 +236,7 @@ class SavedPlanView extends StatelessWidget {
           scaledForHousehold(recipe, members),
           day,
           pantry,
-          today: today,
+          earlier: earlier,
         );
         entries.add(entry);
         cards.add(

@@ -20,12 +20,14 @@ import 'package:bank_storage_app/ui/theme/app_theme.dart';
 /// Miércoles a media mañana.
 final today = DateTime(2026, 10, 14, 9, 30);
 
-final pantry = [
-  for (final (name, quantity, unit, days) in [
-    ('Leche entera', 1.0, FoodUnit.l, 1),
-    ('Arroz', 2.0, FoodUnit.kg, 200),
-    ('Lenteja', 1.0, FoodUnit.kg, 10),
-  ])
+final pantry = pantryOf([
+  ('Leche entera', 1.0, FoodUnit.l, 1),
+  ('Arroz', 2.0, FoodUnit.kg, 200),
+  ('Lenteja', 1.0, FoodUnit.kg, 10),
+]);
+
+List<PantryItem> pantryOf(List<(String, double, FoodUnit, int)> items) => [
+  for (final (name, quantity, unit, days) in items)
     PantryItem(
       pantryItemId: 'item-$name',
       productId: name,
@@ -92,6 +94,7 @@ Future<Writes> pumpSaved(
   bool canEdit = true,
   List<String> appliances = const [],
   List<Member>? household,
+  List<PantryItem>? items,
 }) async {
   final writes = Writes();
   await tester.pumpWidget(
@@ -103,7 +106,7 @@ Future<Writes> pumpSaved(
           pendingSync: false,
           recipes: SampleData.recipes,
           members: household ?? members,
-          pantry: pantry,
+          pantry: items ?? pantry,
           today: today,
           appliances: appliances,
           onOpenRecipe: (_) {},
@@ -131,6 +134,17 @@ Future<void> openDay(WidgetTester tester, String action) async {
   await tester.scrollUntilVisible(find.text(action).first, 200);
   await tester.pumpAndSettle();
   await tester.tap(find.text(action).first);
+  await tester.pumpAndSettle();
+}
+
+/// Abre el día cuya acción TalkBack lee como [label].
+Future<void> openDayNamed(WidgetTester tester, String label) async {
+  final action = find.byWidgetPredicate(
+    (widget) => widget is Semantics && widget.properties.label == label,
+  );
+  await tester.scrollUntilVisible(action, 200);
+  await tester.pumpAndSettle();
+  await tester.tap(action);
   await tester.pumpAndSettle();
 }
 
@@ -301,19 +315,51 @@ void main() {
       expect(find.text('Elegiste la receta del viernes 16.'), findsOneWidget);
     });
 
-    testWidgets('the options count what expires from today, like the plan', (
+    testWidgets('the options count what expires on that day, like the plan', (
       tester,
     ) async {
       await pumpSaved(tester);
 
-      // La leche caduca mañana, también en las opciones del viernes.
-      await openDay(tester, 'Elegir receta');
-
-      expect(find.text('Viernes 16 de octubre'), findsOneWidget);
+      // La leche caduca el jueves: el viernes ya no sale.
+      await openDayNamed(tester, 'Cambiar la receta del jueves 15');
+      expect(find.text('Jueves 15 de octubre'), findsOneWidget);
       expect(
-        inSheet(find.textContaining('Usa Leche entera (caduca mañana)')),
+        inSheet(find.textContaining('Usa Leche entera (caduca hoy)')),
         findsOneWidget,
       );
+      await tester.tap(find.byTooltip('Cerrar'));
+      await tester.pumpAndSettle();
+
+      await openDay(tester, 'Elegir receta');
+      expect(find.text('Viernes 16 de octubre'), findsOneWidget);
+      expect(inSheet(find.textContaining('Leche entera')), findsNothing);
+    });
+
+    testWidgets('the options see what the days before use, like the plan', (
+      tester,
+    ) async {
+      // Justo la lenteja de una sopa, que el plan tiene el jueves.
+      await pumpSaved(
+        tester,
+        items: pantryOf([
+          ('Lenteja', 0.125, FoodUnit.kg, 5),
+          ('Arroz', 2.0, FoodUnit.kg, 200),
+        ]),
+      );
+
+      await openDayNamed(tester, 'Cambiar la receta del jueves 15');
+      expect(find.text('Jueves 15 de octubre'), findsOneWidget);
+      expect(
+        inSheet(find.textContaining('Usa Lenteja (caduca en 4 días)')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byTooltip('Cerrar'));
+      await tester.pumpAndSettle();
+
+      // Le quedan 3 días, pero la sopa del jueves ya se la acabó.
+      await openDay(tester, 'Elegir receta');
+      expect(find.text('Viernes 16 de octubre'), findsOneWidget);
+      expect(inSheet(find.textContaining('Usa Lenteja')), findsNothing);
     });
 
     testWidgets('recipes with family allergens or a missing appliance go '

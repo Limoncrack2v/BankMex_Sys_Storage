@@ -977,9 +977,9 @@ List<PlanLeftover> planLeftovers(
 }
 
 /// La despensa mientras se cocina el plan día por día. La comparten
-/// [buildMealPlan] (para elegir cada día contra lo que queda) y
-/// [planLeftovers] (para contar lo que sobra), de modo que las dos cuentas no
-/// pueden separarse.
+/// [buildMealPlan] (para elegir cada día contra lo que queda), el plan
+/// guardado ([planEntryFor]) y [planLeftovers] (para contar lo que sobra), de
+/// modo que las cuentas no pueden separarse.
 class _PantryReplay {
   _PantryReplay(List<PantryItem> pantry)
     : original = [
@@ -1037,35 +1037,49 @@ PantryItem _withQuantity(PantryItem item, double quantity) => PantryItem(
 // ---------------------------------------------------------------------------
 // Plan guardado.
 
-/// La tarjeta de [recipe] el día [date] de un plan guardado. Como en
-/// [buildMealPlan], lo que caduca se cuenta desde hoy, no desde [date].
+/// La tarjeta de [recipe] el día [date] de un plan guardado, como en
+/// [buildMealPlan]: con la despensa de esa fecha, sin lo que usa [earlier].
 MealPlanEntry planEntryFor(
   Recipe recipe,
   DateTime date,
   List<PantryItem> pantry, {
-  DateTime? today,
+  List<MealPlanEntry> earlier = const [],
 }) {
   final day = DateTime(date.year, date.month, date.day);
-  final ranked = _rankRecipe(recipe, 0, pantry, today ?? DateTime.now());
-  return _planEntry(ranked, day);
+  final left = _pantryAfter(earlier, pantry, day);
+  return _planEntry(_rankRecipe(recipe, 0, left, day), day);
 }
 
 /// Abreviatura del día de [date], como en las tarjetas del plan ("Mié").
 String planDayLabel(DateTime date) => _weekdays[date.weekday - 1];
 
-/// [recipes] para elegir la de [date] en un plan guardado, en el orden de
-/// [buildMealPlan] y, como en él, con lo que caduca contado desde hoy.
+/// [recipes] para elegir la de [date] en un plan guardado, en el orden en que
+/// [buildMealPlan] las ve ese día (ver [planEntryFor]).
 List<MealPlanEntry> planOptionsFor(
   List<Recipe> recipes,
   List<PantryItem> pantry,
   DateTime date, {
-  DateTime? today,
+  List<MealPlanEntry> earlier = const [],
 }) {
   final day = DateTime(date.year, date.month, date.day);
-  final now = today ?? DateTime.now();
+  final left = _pantryAfter(earlier, pantry, day);
   final ranked = [
     for (var i = 0; i < recipes.length; i++)
-      _rankRecipe(recipes[i], i, pantry, now),
+      _rankRecipe(recipes[i], i, left, day),
   ]..sort(_compareRanked);
   return [for (final recipe in ranked) _planEntry(recipe, day)];
+}
+
+/// [pantry] después de cocinar en orden las tarjetas de [earlier] de antes de
+/// [day] ([_PantryReplay]). Los días libres no tienen tarjeta.
+List<PantryItem> _pantryAfter(
+  List<MealPlanEntry> earlier,
+  List<PantryItem> pantry,
+  DateTime day,
+) {
+  final replay = _PantryReplay(pantry);
+  for (final entry in earlier) {
+    if (entry.date.isBefore(day)) replay.cook(entry.recipe, entry.date);
+  }
+  return replay.current;
 }

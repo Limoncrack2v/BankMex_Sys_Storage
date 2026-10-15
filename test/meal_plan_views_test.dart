@@ -62,6 +62,7 @@ Future<List<MealPlan>> pumpSuggested(
   bool canSave = true,
   List<String> warnings = const [],
   List<Member>? household,
+  List<PantryItem>? items,
 }) async {
   final saved = <MealPlan>[];
   await pumpView(
@@ -70,7 +71,7 @@ Future<List<MealPlan>> pumpSuggested(
       familyId: 'famA',
       recipes: recipes,
       members: household ?? members,
-      pantry: pantry,
+      pantry: items ?? pantry,
       nextDelivery: null,
       warnings: warnings,
       clock: () => today,
@@ -122,6 +123,7 @@ Future<List<Recipe>> pumpSaved(
   bool pendingSync = false,
   DateTime? now,
   bool catalogFailed = false,
+  List<PantryItem>? items,
 }) async {
   final opened = <Recipe>[];
   await pumpView(
@@ -131,7 +133,7 @@ Future<List<Recipe>> pumpSaved(
       pendingSync: pendingSync,
       recipes: SampleData.recipes,
       members: members,
-      pantry: pantry,
+      pantry: items ?? pantry,
       today: now ?? today,
       catalogFailed: catalogFailed,
       onOpenRecipe: opened.add,
@@ -389,10 +391,10 @@ void main() {
       expect(find.textContaining('ya no está en el catálogo'), findsNothing);
     });
 
-    testWidgets('a card counts what expires from today, like the suggestion', (
+    testWidgets('a card counts what expires on its date, like the suggestion', (
       tester,
     ) async {
-      // La leche caduca mañana, también en la tarjeta del jueves.
+      // La leche caduca el jueves: en su tarjeta caduca hoy.
       await pumpSaved(
         tester,
         plan: savedPlan(meals: [meal(15, 'rec_avena_fruta')]),
@@ -400,10 +402,79 @@ void main() {
 
       expect(find.text('JUE'), findsOneWidget);
       expect(
-        find.textContaining('Usa Leche entera (caduca mañana)'),
+        find.textContaining('Usa Leche entera (caduca hoy)'),
         findsOneWidget,
       );
-      expect(find.textContaining('caduca hoy'), findsNothing);
+      expect(find.textContaining('caduca mañana'), findsNothing);
+    });
+
+    testWidgets('a card counts what the days before it use, like the '
+        'suggestion', (tester) async {
+      // Lenteja para dos sopas. El jueves libre y la receta borrada del
+      // viernes no usan nada.
+      await pumpSaved(
+        tester,
+        items: [
+          item('Lenteja', 0.25, FoodUnit.kg, 5),
+          item('Arroz', 2, FoodUnit.kg, 200),
+        ],
+        plan: savedPlan(
+          meals: [
+            meal(14, 'rec_sopa_lentejas'),
+            meal(16, 'rec_borrada'),
+            meal(17, 'rec_sopa_lentejas'),
+            meal(18, 'rec_sopa_lentejas'),
+          ],
+        ),
+      );
+
+      expect(
+        find.text('Usa Lenteja (caduca en 5 días)\nTe faltan 3 ingredientes'),
+        findsOneWidget,
+      );
+      final saturday = find.text(
+        'Usa Lenteja (caduca en 2 días)\nTe faltan 3 ingredientes',
+      );
+      await tester.scrollUntilVisible(saturday, 300);
+      expect(saturday, findsOneWidget);
+      // El sábado se acaba la lenteja que quedaba.
+      final sunday = find.text('Te faltan 4 ingredientes');
+      await tester.scrollUntilVisible(sunday, 300);
+      expect(sunday, findsOneWidget);
+      final usedUp = find.text('El plan usa por completo: Lenteja.');
+      await tester.scrollUntilVisible(usedUp, 300);
+      expect(usedUp, findsOneWidget);
+    });
+
+    testWidgets('a plan saved right away shows the cards of the suggestion', (
+      tester,
+    ) async {
+      // Alto para que se construyan todas las tarjetas.
+      tester.view.physicalSize = const Size(800, 5000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      // El jitomate se acaba a media semana.
+      final items = [
+        item('Leche entera', 1, FoodUnit.l, 3),
+        item('Plátano', 4, FoodUnit.piece, 4),
+        item('Lenteja', 0.25, FoodUnit.kg, 6),
+        item('Jitomate', 0.3, FoodUnit.kg, 5),
+        item('Arroz', 2, FoodUnit.kg, 200),
+        item('Frijol', 0.2, FoodUnit.kg, 90),
+      ];
+      final reason = RegExp('^(Usa |Te falta|Con productos)');
+      List<String> reasons() => [
+        for (final text in tester.widgetList<Text>(find.byType(Text)))
+          if (reason.hasMatch(text.data ?? '')) text.data!,
+      ];
+
+      final saved = await pumpSuggested(tester, items: items);
+      final suggested = reasons();
+      await tapSave(tester);
+      await pumpSaved(tester, plan: saved.single, items: items);
+
+      expect(suggested, hasLength(7));
+      expect(reasons(), suggested);
     });
 
     testWidgets('tapping a day opens the original recipe', (tester) async {
