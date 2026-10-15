@@ -422,23 +422,39 @@ void main() {
       expect(find.text('Publicada'), findsWidgets);
       await shot('21_catalogo');
 
-      await _tap(tester, find.text('Editar').first);
+      // El seed carga el catálogo: se edita la tarjeta de esta receta, no la
+      // primera de la lista.
+      final recipeCard = find.ancestor(
+        of: find.text(recipeName),
+        matching: find.byWidgetPredicate(
+          (widget) => widget.runtimeType.toString() == '_RecipeCard',
+        ),
+      );
+      final editRecipe = find.descendant(
+        of: recipeCard,
+        matching: find.text('Editar'),
+      );
+      await _tap(tester, editRecipe);
       await _waitFor(tester, find.text('Editar receta'));
       await _enter(tester, _fieldIn('Minutos'), '25');
       await _tapButton(tester, _primaryButton('Guardar cambios'));
       await _confirmIdentityIfAsked(tester, _newPassword);
       await _waitFor(tester, find.text('Cambios guardados'));
       await _tap(tester, find.text('Listo'));
-      await _waitFor(tester, find.textContaining('25 min'));
+      await _waitFor(
+        tester,
+        find.descendant(of: recipeCard, matching: find.textContaining('25 min')),
+      );
 
-      await _tap(tester, find.text('Editar').first);
+      await _tap(tester, editRecipe);
       await _waitFor(tester, find.text('Editar receta'));
       await _tap(tester, find.text('Eliminar receta'));
       await _waitFor(tester, find.textContaining('¿Eliminar «$recipeName»'));
       await _tap(tester, find.text('Eliminar'));
       await _waitFor(tester, find.text('Receta eliminada'));
       await _tap(tester, find.text('Listo'));
-      await _waitFor(tester, find.text('Aún no hay recetas en el catálogo.'));
+      await _waitFor(tester, _primaryButton('Nueva receta'));
+      expect(find.text(recipeName), findsNothing);
 
       await _tap(tester, find.byTooltip('Cuenta'));
       await _waitFor(tester, find.text(newStaffName));
