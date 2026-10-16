@@ -105,6 +105,43 @@ firebase deploy --only firestore:rules
 
 Si una entrega queda como entregada mientras la función no está desplegada, sus productos no llegan a la despensa y la app ya no puede volver a escribir esa entrega. Para recuperarla, después de desplegar la función edita cualquier campo de la entrega desde la consola de Firebase: la función se vuelve a disparar y la surte, porque no tiene `pantryStockedAt`.
 
+## Compilar para producción (Android)
+
+El application ID de Android es `mx.bamx.bankstorage` (antes `com.example.bank_storage_app`). Si tu `android/app/google-services.json` es de antes del cambio, vuelve a correr `flutterfire configure` (paso 2 de la configuración inicial): registra la app Android con el nuevo ID en `bank-storage-bamx` y regenera el archivo. Con el archivo viejo, Gradle falla con `No matching client found for package name 'mx.bamx.bankstorage'`.
+
+El APK de producción se firma con la llave de subida del equipo, no con la de debug: con la de debug, cualquiera que tenga una llave de debug podría reemplazar la app (MASVS-RESILIENCE-3).
+
+1. Pide la llave (`upload-keystore.jks`) y sus contraseñas a quien la custodia. Guárdala fuera del repo. Solo si el equipo aún no tiene una, créala una vez:
+
+   ```sh
+   keytool -genkey -v -keystore ~/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+   ```
+
+2. Crea `android/key.properties` (está en `.gitignore`; nunca lo subas):
+
+   ```properties
+   storePassword=<contraseña del keystore>
+   keyPassword=<contraseña de la llave>
+   keyAlias=upload
+   storeFile=/home/<usuario>/upload-keystore.jks
+   ```
+
+   Sin este archivo el release se firma con la llave de debug y Gradle lo avisa con `android/key.properties no existe`. Sirve para `flutter run --release`, pero ese APK no se distribuye.
+
+3. Compila con el código de Dart ofuscado. El release también pasa por R8 (`isMinifyEnabled`) para el código de Java/Kotlin:
+
+   ```sh
+   flutter build apk --release --obfuscate --split-debug-info=build/symbols
+   ```
+
+   `build/symbols` guarda los símbolos para leer los stack traces ofuscados (`flutter symbolize -i <trace> -d build/symbols/app.android-arm64.symbols`). Guárdalos junto con la versión que publicaste, en un lugar privado y fuera del repo; sin ellos no se pueden leer los errores de esa versión.
+
+4. Revisa que el APK esté firmado con la llave del equipo y no con la de debug (`CN=Android Debug`):
+
+   ```sh
+   $ANDROID_HOME/build-tools/<versión>/apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+   ```
+
 ## Despensa y entregas
 
 Ningún cliente, incluido el staff, crea productos en `families/{familyId}/pantryItems`; las reglas lo rechazan. El flujo es:
