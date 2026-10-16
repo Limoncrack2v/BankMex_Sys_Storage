@@ -8,10 +8,14 @@ import 'package:flutter/services.dart';
 import '../../../data/models/delivery.dart';
 import '../../../data/models/family.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/models/standard_basket.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/delivery_repository.dart';
 import '../../../data/repositories/family_repository.dart';
+import '../../../data/repositories/standard_basket_repository.dart';
 import '../../formatting.dart';
+import '../../models/basket_fill.dart';
+import '../../models/quota_proposal.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -21,7 +25,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
-import '../../models/quota_proposal.dart';
+import '../../widgets/standard_basket_selector.dart';
 import '../session/step_up_sheet.dart';
 
 /// Sin conexión, Firestore guarda el cambio en el dispositivo pero el commit
@@ -53,12 +57,14 @@ class DeliveriesScreen extends StatefulWidget {
 
 class _DeliveriesScreenState extends State<DeliveriesScreen> {
   late final Stream<List<Family>> _families;
+  late final Stream<List<StandardBasket>> _baskets;
   late final Stream<List<DeliveryWithSync>> _deliveries;
 
   @override
   void initState() {
     super.initState();
     _families = FamilyRepository().watchAllFamilies();
+    _baskets = StandardBasketRepository().watchStandardBaskets();
     _deliveries = DeliveryRepository().watchRecentDeliveries();
   }
 
@@ -77,7 +83,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
             onPressed: widget.onRegisterAccount,
           ),
           const SizedBox(height: 24),
-          _DeliveryForm(families: _families),
+          DeliveryForm(families: _families, baskets: _baskets),
           const SizedBox(height: 24),
           _DeliveriesTable(deliveries: _deliveries),
         ],
@@ -109,16 +115,22 @@ class _SectionTitle extends StatelessWidget {
 // Formulario
 // ---------------------------------------------------------------------------
 
-class _DeliveryForm extends StatefulWidget {
-  const _DeliveryForm({required this.families});
+/// Público solo para probarlo con widget tests: recibe sus datos como
+/// streams, así que no necesita Firebase.
+@visibleForTesting
+class DeliveryForm extends StatefulWidget {
+  const DeliveryForm({super.key, required this.families, required this.baskets});
 
   final Stream<List<Family>> families;
 
+  /// Despensas estándar con las que se llenan los productos.
+  final Stream<List<StandardBasket>> baskets;
+
   @override
-  State<_DeliveryForm> createState() => _DeliveryFormState();
+  State<DeliveryForm> createState() => _DeliveryFormState();
 }
 
-class _DeliveryFormState extends State<_DeliveryForm> {
+class _DeliveryFormState extends State<DeliveryForm> {
   final _familyText = TextEditingController();
   final _packages = TextEditingController(text: '1');
   final _fee = TextEditingController();
@@ -143,8 +155,33 @@ class _DeliveryFormState extends State<_DeliveryForm> {
   bool _saving = false;
   String? _error;
 
+  late final StreamSubscription<List<StandardBasket>> _basketsSub;
+  List<StandardBasket>? _baskets;
+  bool _basketsError = false;
+  final _selectedBaskets = <String>{};
+
+  /// Lo que llenaron las despensas la última vez: si la lista sigue igual, el
+  /// staff no la ha editado y se puede volver a llenar sin perder nada.
+  List<ProductLine> _filledLines = const [];
+
+  /// Cambió algo (despensas, fecha o número) cuando la lista ya estaba
+  /// editada: no se tocó y se avisa (basketFillOn).
+  bool _basketsStale = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _basketsSub = widget.baskets.listen(
+      _onBaskets,
+      onError: (Object _) {
+        if (mounted) setState(() => _basketsError = true);
+      },
+    );
+  }
+
   @override
   void dispose() {
+    _basketsSub.cancel();
     _familyText.dispose();
     _packages.dispose();
     _fee.dispose();
@@ -257,6 +294,74 @@ class _DeliveryFormState extends State<_DeliveryForm> {
     });
   }
 
+  void _onPackagesEdited(String _) => setState(_syncBaskets);
+
+  void _onBaskets(List<StandardBasket> baskets) {
+    if (!mounted) return;
+    setState(() {
+      _baskets = baskets;
+      _basketsError = false;
+      _selectedBaskets.retainAll(baskets.map((basket) => basket.basketId));
+      _syncBaskets();
+    });
+  }
+
+  void _toggleBasket(StandardBasket basket) {
+    setState(() {
+      if (!_selectedBaskets.remove(basket.basketId)) {
+        _selectedBaskets.add(basket.basketId);
+      }
+      _syncBaskets();
+    });
+  }
+
+  /// Las despensas elegidas, en el orden de la lista (no en el de los toques)
+  /// para que los productos salgan siempre igual.
+  List<StandardBasket> get _chosenBaskets => [
+    for (final basket in _baskets ?? const <StandardBasket>[])
+      if (_selectedBaskets.contains(basket.basketId)) basket,
+  ];
+
+  BasketTarget get _basketTarget => basketTarget(
+    baskets: _chosenBaskets,
+    date: _date,
+    packages: _packageCount,
+  );
+
+  List<ProductLine> get _currentLines => [
+    for (final product in _products) product.toLine(),
+  ];
+
+  /// Actualiza los productos tras cambiar las despensas, la fecha o el número
+  /// de despensas, salvo que el staff ya los haya editado (basketFillOn); con
+  /// [force] los reemplaza de todos modos. Llamar dentro de setState.
+  void _syncBaskets({bool force = false}) {
+    final items = _basketTarget.items;
+    if (items == null) return;
+    final target = [for (final item in items) ProductLine.fromItem(item)];
+    final action = force
+        ? BasketFillAction.fill
+        : basketFillOn(
+            current: _currentLines,
+            lastFilled: _filledLines,
+            target: target,
+          );
+    switch (action) {
+      case BasketFillAction.keep:
+        _basketsStale = false;
+      case BasketFillAction.fill:
+        final previous = _products;
+        _products = items.isEmpty
+            ? [_ProductDraft()]
+            : [for (final item in items) _ProductDraft.fromItem(item)];
+        _filledLines = target;
+        _basketsStale = false;
+        _disposeAfterFrame(previous);
+      case BasketFillAction.askFirst:
+        _basketsStale = true;
+    }
+  }
+
   void _toggleExempt() {
     setState(() {
       _exempt = !_exempt;
@@ -281,7 +386,10 @@ class _DeliveryFormState extends State<_DeliveryForm> {
       helpText: 'Fecha de entrega',
     );
     if (!mounted || picked == null) return;
-    setState(() => _date = picked);
+    setState(() {
+      _date = picked;
+      _syncBaskets();
+    });
   }
 
   Future<void> _pickType(_ProductDraft product) async {
@@ -360,6 +468,9 @@ class _DeliveryFormState extends State<_DeliveryForm> {
       _status = DeliveryStatus.scheduled;
       _notes.clear();
       _products = [_ProductDraft()];
+      _selectedBaskets.clear();
+      _filledLines = const [];
+      _basketsStale = false;
       _saving = false;
       _error = null;
     });
@@ -518,7 +629,7 @@ class _DeliveryFormState extends State<_DeliveryForm> {
             textInputAction: TextInputAction.done,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             maxLength: 3,
-            onChanged: _onEdited,
+            onChanged: _onPackagesEdited,
           ),
         ),
         if (showPackagesError) ...[
@@ -636,6 +747,8 @@ class _DeliveryFormState extends State<_DeliveryForm> {
           ),
         ),
         const SizedBox(height: 16),
+        _buildBasketSelector(),
+        const SizedBox(height: 16),
         const FieldLabel('Productos entregados', required: true),
         const SizedBox(height: 2),
         const _HelperText(
@@ -662,8 +775,63 @@ class _DeliveryFormState extends State<_DeliveryForm> {
           icon: AppIcons.plus,
           onPressed: _products.length < Delivery.maxItems ? _addProduct : null,
         ),
+        if (_products.length >= Delivery.maxItems) ...[
+          const SizedBox(height: 6),
+          _HelperText(
+            'Una entrega acepta hasta ${Delivery.maxItems} productos. Quita '
+            'uno para agregar otro.',
+          ),
+        ],
       ],
     );
+  }
+
+  Widget _buildBasketSelector() {
+    final target = _basketTarget;
+    final items = target.items;
+    String? message;
+    var stale = false;
+    if (items != null && items.isNotEmpty) {
+      final action = basketFillOn(
+        current: _currentLines,
+        lastFilled: _filledLines,
+        target: [for (final item in items) ProductLine.fromItem(item)],
+      );
+      // Deshacer una edición deja la lista como se llenó (fill), no como toca
+      // ahora: el aviso sigue hasta que coincida (keep) o se reemplace.
+      stale = _basketsStale && action != BasketFillAction.keep;
+      if (action == BasketFillAction.keep) {
+        final packages = _packageCount!;
+        final noun = packages == 1 ? 'despensa' : 'despensas';
+        message =
+            'Llenada con ${_joinNames(_chosenBaskets)} para $packages $noun '
+            '(${items.length} productos).';
+      }
+    } else if (target.waitingFor == BasketWait.date) {
+      message = 'Elige la fecha de entrega para llenar los productos.';
+    } else if (target.waitingFor == BasketWait.packages) {
+      message =
+          'Indica de 1 a ${Delivery.maxPackages} despensas para llenar los '
+          'productos.';
+    }
+
+    return StandardBasketSelector(
+      baskets: _baskets,
+      hasError: _basketsError,
+      selectedIds: _selectedBaskets,
+      onToggle: _toggleBasket,
+      message: message,
+      problem: target.problem,
+      staleNotice: stale,
+      onRefill: () => setState(() => _syncBaskets(force: true)),
+    );
+  }
+
+  /// "A", "A y B" o "A, B y C".
+  String _joinNames(List<StandardBasket> baskets) {
+    final names = [for (final basket in baskets) basket.name];
+    if (names.length < 2) return names.join();
+    return '${names.sublist(0, names.length - 1).join(', ')} y ${names.last}';
   }
 }
 
@@ -674,6 +842,25 @@ class _ProductDraft {
   FoodType type = FoodType.grain;
   FoodUnit unit = FoodUnit.kg;
   DateTime? expiration;
+
+  _ProductDraft();
+
+  /// Un producto de una despensa estándar, con su cantidad y caducidad.
+  _ProductDraft.fromItem(DeliveryItem item) {
+    name.text = item.productId;
+    quantity.text = formatNumber(item.quantity);
+    type = item.type;
+    unit = item.unit;
+    expiration = DateUtils.dateOnly(item.expirationDate);
+  }
+
+  ProductLine toLine() => ProductLine(
+    name: name.text.trim(),
+    quantity: _parseDecimal(quantity.text),
+    type: type,
+    unit: unit,
+    expiration: expiration,
+  );
 
   double? get amount {
     final value = _parseDecimal(quantity.text);
