@@ -130,10 +130,12 @@ class SavedPlanView extends StatelessWidget {
     List<MealPlanEntry> earlier,
     Future<void> Function(MealPlan plan) save,
   ) {
+    // Como "Pedir una receta": nada con alérgenos de la familia.
     final options = planOptionsFor(
       [
         for (final recipe in recipes)
-          if (recipe.id.isNotEmpty) scaledForHousehold(recipe, members),
+          if (recipe.id.isNotEmpty && allergyConflicts(recipe, members).isEmpty)
+            scaledForHousehold(recipe, members),
       ],
       pantry,
       day,
@@ -145,11 +147,7 @@ class SavedPlanView extends StatelessWidget {
       dayName: _dayName(day),
       options: [
         for (final entry in options)
-          (
-            entry: entry,
-            hasAllergens: allergyConflicts(entry.recipe, members).isNotEmpty,
-            missingAppliances: _missingAppliances(entry.recipe),
-          ),
+          (entry: entry, missingAppliances: _missingAppliances(entry.recipe)),
       ],
       currentRecipeId: meal?.recipeId,
       onPick: (recipe) => save(

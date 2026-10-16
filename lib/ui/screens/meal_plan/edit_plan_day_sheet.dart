@@ -16,17 +16,12 @@ const _lateSaveError =
     'de nuevo.';
 
 /// Una receta que se puede elegir para el día: su tarjeta (ver
-/// [planOptionsFor]), si lleva alérgenos de la familia y lo que le falta al
-/// hogar para prepararla ("licuadora").
-typedef PlanDayOption = ({
-  MealPlanEntry entry,
-  bool hasAllergens,
-  List<String> missingAppliances,
-});
+/// [planOptionsFor]) y lo que le falta al hogar para prepararla
+/// ("licuadora").
+typedef PlanDayOption = ({MealPlanEntry entry, List<String> missingAppliances});
 
-/// Si la receta le conviene al hogar: sin alérgenos y con lo que pide.
-bool _suitable(PlanDayOption option) =>
-    !option.hasAllergens && option.missingAppliances.isEmpty;
+/// Si el hogar tiene lo que pide la receta.
+bool _suitable(PlanDayOption option) => option.missingAppliances.isEmpty;
 
 /// Abre [EditPlanDaySheet]. Al guardar se cierra y avisa con un snackbar.
 Future<void> showEditPlanDaySheet(
@@ -72,8 +67,8 @@ class EditPlanDaySheet extends StatefulWidget {
   /// "miércoles 16", para el aviso al guardar.
   final String dayName;
 
-  /// En el orden de [planOptionsFor]. Las que no le convienen al hogar van
-  /// al final; "Pedir una receta" ni siquiera las sugiere.
+  /// En el orden de [planOptionsFor], sin alérgenos de la familia. Las que
+  /// piden algo que el hogar no tiene van al final.
   final List<PlanDayOption> options;
 
   /// La receta guardada para el día; null si está libre.
@@ -149,8 +144,7 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
         ? 'Elige qué cocinar este día. Primero van las recetas que usan lo que '
               'caduca antes.'
         : 'Elige qué cocinar este día. Primero van las recetas que usan lo que '
-              'caduca antes; al final, las que llevan alérgenos de tu familia '
-              'o piden algo que no tienes.';
+              'caduca antes; al final, las que piden algo que no tienes.';
 
     return AppSheet(
       title: widget.title,
@@ -164,12 +158,10 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
                 : intro,
             style: AppText.nunito(14, 21, color: AppColors.textMuted),
           ),
-          for (final (:entry, :hasAllergens, :missingAppliances)
-              in options) ...[
+          for (final (:entry, :missingAppliances) in options) ...[
             const SizedBox(height: 12),
             _OptionCard(
               entry: entry,
-              hasAllergens: hasAllergens,
               missingAppliances: missingAppliances,
               current: entry.recipe.id == widget.currentRecipeId,
               saving: _saving == entry.recipe.id,
@@ -221,7 +213,6 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
 class _OptionCard extends StatelessWidget {
   const _OptionCard({
     required this.entry,
-    required this.hasAllergens,
     required this.missingAppliances,
     required this.current,
     required this.saving,
@@ -229,7 +220,6 @@ class _OptionCard extends StatelessWidget {
   });
 
   final MealPlanEntry entry;
-  final bool hasAllergens;
   final List<String> missingAppliances;
   final bool current;
   final bool saving;
@@ -284,18 +274,6 @@ class _OptionCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(entry.reason, style: muted),
-                      if (hasAllergens) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Contiene alérgenos de tu familia',
-                          style: AppText.nunito(
-                            14,
-                            21,
-                            weight: FontWeight.w700,
-                            color: AppColors.dangerText,
-                          ),
-                        ),
-                      ],
                       if (missingAppliances.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(

@@ -10,6 +10,7 @@ import 'package:bank_storage_app/data/models/member.dart';
 import 'package:bank_storage_app/data/models/pantry_item.dart';
 import 'package:bank_storage_app/domain/meal_plan_edits.dart';
 import 'package:bank_storage_app/domain/models/meal_plan.dart';
+import 'package:bank_storage_app/ui/models/recipe.dart' show allergyConflicts;
 import 'package:bank_storage_app/ui/sample_data.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/delete_meal_plan_sheet.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/edit_plan_day_sheet.dart';
@@ -193,11 +194,18 @@ void main() {
     ) async {
       await pumpSaved(tester);
 
-      await openDay(tester, 'Cambiar');
+      await openDayNamed(tester, 'Cambiar la receta del jueves 15');
 
-      expect(find.text('Miércoles 14 de octubre'), findsOneWidget);
+      expect(find.text('Jueves 15 de octubre'), findsOneWidget);
+      // Luis es alérgico a los lácteos.
       for (final recipe in SampleData.recipes) {
-        expect(inSheet(find.text(recipe.name)), findsOneWidget);
+        expect(
+          inSheet(find.text(recipe.name)),
+          allergyConflicts(recipe, members).isEmpty
+              ? findsOneWidget
+              : findsNothing,
+          reason: recipe.name,
+        );
       }
       expect(inSheet(find.text('Actual')), findsOneWidget);
       expect(
@@ -274,8 +282,9 @@ void main() {
     testWidgets('the current recipe cannot be picked again', (tester) async {
       final writes = await pumpSaved(tester);
 
-      await openDay(tester, 'Cambiar');
-      await pick(tester, 'Avena con fruta');
+      await openDayNamed(tester, 'Cambiar la receta del jueves 15');
+      expect(inSheet(find.text('Actual')), findsOneWidget);
+      await pick(tester, 'Sopa de lentejas');
 
       expect(writes.saved, isEmpty);
       expect(find.byType(EditPlanDaySheet), findsOneWidget);
@@ -318,7 +327,8 @@ void main() {
     testWidgets('the options count what expires on that day, like the plan', (
       tester,
     ) async {
-      await pumpSaved(tester);
+      // Sin alergias, para que salga la avena.
+      await pumpSaved(tester, household: [members.first]);
 
       // La leche caduca el jueves: el viernes ya no sale.
       await openDayNamed(tester, 'Cambiar la receta del jueves 15');
@@ -362,29 +372,30 @@ void main() {
       expect(inSheet(find.textContaining('Usa Lenteja')), findsNothing);
     });
 
-    testWidgets('recipes with family allergens or a missing appliance go '
-        'last', (tester) async {
+    testWidgets('recipes with family allergens are not offered and a '
+        'missing appliance goes last', (tester) async {
       await pumpSaved(tester, appliances: const ['estufa']);
 
+      // El miércoles tiene Avena con fruta, que lleva leche.
       await openDay(tester, 'Cambiar');
 
       double top(String name) => tester.getRect(inSheet(find.text(name))).top;
-      final suitable = [
-        'Sopa de lentejas',
-        'Arroz con atún',
-        'Frijoles de la olla',
-      ].map(top);
-      final last = [
-        'Avena con fruta',
-        'Sándwich de jamón y queso',
-        'Sopa de pasta con verduras',
-      ].map(top);
-      expect(suitable.reduce(math.max), lessThan(last.reduce(math.min)));
       expect(
-        inSheet(find.text('Contiene alérgenos de tu familia')),
-        findsNWidgets(2),
+        [
+          'Sopa de lentejas',
+          'Arroz con atún',
+          'Frijoles de la olla',
+        ].map(top).reduce(math.max),
+        lessThan(top('Sopa de pasta con verduras')),
       );
       expect(inSheet(find.text('Necesita licuadora')), findsOneWidget);
+      expect(inSheet(find.text('Avena con fruta')), findsNothing);
+      expect(inSheet(find.text('Sándwich de jamón y queso')), findsNothing);
+      expect(inSheet(find.text('Actual')), findsNothing);
+      expect(
+        inSheet(find.text('Contiene alérgenos de tu familia')),
+        findsNothing,
+      );
     });
 
     testWidgets('a recipe that is gone can be replaced or freed', (
@@ -707,7 +718,7 @@ void main() {
 
       await openDay(tester, 'Cambiar');
       await tester.ensureVisible(
-        inSheet(find.text('Sándwich de jamón y queso')),
+        inSheet(find.text('Sopa de pasta con verduras')),
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
