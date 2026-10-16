@@ -228,8 +228,10 @@ void main() {
       final salad = recipe('Ensalada', const [
         RecipeIngredient('Queso panela', 0.1, FoodUnit.kg),
       ]);
+      final catalog = [salad, SampleData.sandwichDeJamonYQueso];
 
-      expect(matchesCraving(salad, 'pan'), isFalse);
+      // "pan" es una palabra del catálogo (Pan de caja): no es "panela".
+      expect(matchesCraving(salad, 'pan', catalog: catalog), isFalse);
       expect(matchesCraving(salad, 'pan', product: true), isFalse);
       expect(
         matchesCraving(SampleData.sopaDePastaConVerduras, 'pasta sopa'),
@@ -255,6 +257,57 @@ void main() {
         pick(request: const RecipeRequest(craving: 'arroz con pollo'))!
             .matchesCraving,
         isFalse,
+      );
+    });
+
+    test('finds a word typed halfway', () {
+      final catalog = SampleData.recipes;
+
+      expect(
+        matchesCraving(SampleData.sopaDeLentejas, 'lente', catalog: catalog),
+        isTrue,
+      );
+      expect(
+        matchesCraving(SampleData.arrozConAtun, 'ARRO', catalog: catalog),
+        isTrue,
+      );
+      expect(
+        matchesCraving(SampleData.arrozConAtun, 'arro atu', catalog: catalog),
+        isTrue,
+      );
+      // Con menos de 3 letras, no.
+      expect(
+        matchesCraving(SampleData.arrozConAtun, 'ar', catalog: catalog),
+        isFalse,
+      );
+    });
+
+    test('a whole word of the catalog does not find longer words', () {
+      final salad = recipe('Ensalada', const [
+        RecipeIngredient('Queso panela', 0.1, FoodUnit.kg),
+      ]);
+      final sandwich = SampleData.sandwichDeJamonYQueso;
+
+      expect(matchesCraving(salad, 'pane', catalog: [salad, sandwich]), isTrue);
+      expect(matchesCraving(salad, 'pan', catalog: [salad]), isTrue);
+      // pickRecipe compara con todas sus recetas, también las ya vistas.
+      final request = const RecipeRequest(craving: 'pan')
+          .excluding(recipeKey(sandwich));
+      expect(
+        pick(
+          recipes: [salad, sandwich],
+          members: const [],
+          request: request,
+        )!.matchesCraving,
+        isFalse,
+      );
+      expect(
+        pick(
+          recipes: [salad],
+          members: const [],
+          request: request,
+        )!.matchesCraving,
+        isTrue,
       );
     });
 

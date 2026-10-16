@@ -690,19 +690,42 @@ bool _suitable(Recipe recipe, List<Member> members, List<String> appliances) =>
 
 /// Si [recipe] tiene el antojo: cada palabra escrita (menos "de", "con"...) en
 /// su nombre o ingredientes, o un [product] que sirve para un ingrediente.
-bool matchesCraving(Recipe recipe, String craving, {bool product = false}) {
+///
+/// Una palabra escrita a medias ("lente") encuentra las que empiezan con ella,
+/// salvo que sea una palabra completa de [catalog]: si alguna receta lleva
+/// pan, "pan" no encuentra "panela".
+bool matchesCraving(
+  Recipe recipe,
+  String craving, {
+  bool product = false,
+  List<Recipe> catalog = const [],
+}) => _matchesCraving(
+  recipe,
+  craving,
+  product: product,
+  catalogWords: product ? const {} : _wordsOf(catalog),
+);
+
+bool _matchesCraving(
+  Recipe recipe,
+  String craving, {
+  required bool product,
+  required Set<String> catalogWords,
+}) {
   final wanted = normalizeName(craving);
   if (wanted.isEmpty) return true;
   if (!product) {
-    final known = {
-      ...normalizeName(recipe.name).split(' '),
-      for (final ingredient in recipe.ingredients)
-        ...normalizeName(ingredient.name).split(' '),
-    };
+    final known = _wordsOf([recipe]);
     return [
       for (final word in wanted.split(' '))
         if (!_connectors.contains(word)) word,
-    ].every((word) => known.any((other) => _sameWord(other, word)));
+    ].every((word) {
+      final partial = word.length >= 3 && !catalogWords.contains(word);
+      return known.any(
+        (other) =>
+            _sameWord(other, word) || (partial && other.startsWith(word)),
+      );
+    });
   }
   final words = wanted.split(' ');
   if (_containsWords(normalizeName(recipe.name), words)) return true;
@@ -711,6 +734,15 @@ bool matchesCraving(Recipe recipe, String craving, {bool product = false}) {
     return _namesMatch(name, wanted) || _containsWords(name, words);
   });
 }
+
+/// Las palabras ya normalizadas de los nombres e ingredientes de [recipes].
+Set<String> _wordsOf(Iterable<Recipe> recipes) => {
+  for (final recipe in recipes) ...[
+    ...normalizeName(recipe.name).split(' '),
+    for (final ingredient in recipe.ingredients)
+      ...normalizeName(ingredient.name).split(' '),
+  ],
+};
 
 /// Palabras que no cuentan en un antojo escrito ("arroz con pollo").
 final _connectors = 'de del con y e a al la el los las en para sin un una'
@@ -834,6 +866,9 @@ RecipeSuggestion? pickRecipe(
 }) {
   final now = today ?? DateTime.now();
   final craving = request.cravingText;
+  final catalogWords = craving == null || request.cravingIsProduct
+      ? const <String>{}
+      : _wordsOf(recipes);
   _Candidate? best;
   for (var i = 0; i < recipes.length; i++) {
     final recipe = recipes[i];
@@ -848,7 +883,12 @@ RecipeSuggestion? pickRecipe(
       fitsTime: request.fitsTime(recipe.minutes),
       matchesCraving:
           craving == null ||
-          matchesCraving(recipe, craving, product: request.cravingIsProduct),
+          _matchesCraving(
+            recipe,
+            craving,
+            product: request.cravingIsProduct,
+            catalogWords: catalogWords,
+          ),
       minutesOver: request.minutesOver(recipe.minutes),
     );
     if (best == null || _compareCandidates(candidate, best) < 0) {
