@@ -8,7 +8,7 @@ import 'theme/app_assets.dart';
 /// reales de la familia (ver models/recipe.dart).
 ///
 /// Cada receta lleva el id y los electrodomésticos que tiene en
-/// tool/seed_catalog.mjs: es la misma receta venga de Firestore o de aquí.
+/// tool/catalog_recipes.mjs: es la misma receta venga de Firestore o de aquí.
 abstract final class SampleData {
   static const sopaDeLentejas = Recipe(
     id: 'rec_sopa_lentejas',

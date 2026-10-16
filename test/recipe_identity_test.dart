@@ -31,13 +31,13 @@ Member adult(String name) => Member(
   createdAt: DateTime(2026, 9, 1),
 );
 
-/// Las recetas de tool/seed_catalog.mjs por nombre, con su id y su
+/// Las recetas de tool/catalog_recipes.mjs por nombre, con su id y su
 /// `equipment` (vacío si no lo trae).
 ///
 /// SampleData no puede importar el seed (es JavaScript), así que se lee el
 /// archivo: si alguien cambia uno sin el otro, estas pruebas fallan.
 Map<String, ({String id, List<String> equipment})> readSeedCatalog() {
-  final seed = File('tool/seed_catalog.mjs').readAsStringSync();
+  final seed = File('tool/catalog_recipes.mjs').readAsStringSync();
   final quoted = RegExp(r"'([^']*)'");
   final recipes = <String, ({String id, List<String> equipment})>{};
   // Cada receta es ['rec_x', recipeFields({name: '...', ...})].
@@ -124,7 +124,7 @@ void main() {
       }
     });
 
-    test('ids and equipment match tool/seed_catalog.mjs', () {
+    test('ids and equipment match tool/catalog_recipes.mjs', () {
       final seed = readSeedCatalog();
 
       for (final recipe in SampleData.recipes) {

@@ -44,7 +44,7 @@ class Recipe {
   });
 
   /// Id del documento recipes/{id}. Las de SampleData llevan el de
-  /// tool/seed_catalog.mjs; vacío si la receta no tiene uno.
+  /// tool/catalog_recipes.mjs; vacío si la receta no tiene uno.
   final String id;
   final String name;
   final String image;
