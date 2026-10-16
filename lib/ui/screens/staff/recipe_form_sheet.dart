@@ -306,12 +306,9 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
       RecipeStatus.draft =>
         '«$name» quedó como borrador; las familias no la ven.',
       _ =>
-        '«$name» quedó pendiente de revisión del nutriólogo; las familias la '
-            'ven cuando la apruebe.',
+        '«$name» ahora está pendiente de revisión para el nutriólogo; será '
+            'visible para las familias una vez que sea aprobada.',
     };
-    if (_wasApproved) {
-      message = '$message Dejó de verse para las familias.';
-    }
     if (!synced) message = '$message $_pendingSyncNote';
     setState(() {
       _saving = false;
@@ -851,10 +848,15 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
               // Una aprobada se muestra como estado actual, pero solo mientras
               // no cambie nada: después solo el nutriólogo la vuelve a aprobar.
               if (_wasApproved) ...[
-                OptionButton(
-                  label: 'Aprobada',
-                  selected: _effectiveStatus == RecipeStatus.approved,
-                  onTap: null,
+                // Sin onTap no se puede elegir, y se ve apagada en cuanto la
+                // receta deja de ser la aprobada.
+                Opacity(
+                  opacity: _effectiveStatus == RecipeStatus.approved ? 1 : 0.4,
+                  child: OptionButton(
+                    label: 'Aprobada',
+                    selected: _effectiveStatus == RecipeStatus.approved,
+                    onTap: null,
+                  ),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -873,16 +875,31 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
           ),
         ),
         const SizedBox(height: 6),
-        _HelperText(switch (_effectiveStatus) {
-          RecipeStatus.approved =>
-            'Aprobada por el nutriólogo: las familias la ven. Si la cambias, '
-                'vuelve a revisión.',
-          RecipeStatus.draft =>
-            'Queda guardada en el catálogo, pero ni el nutriólogo ni las '
-                'familias la ven.',
-          RecipeStatus.pending =>
-            'El nutriólogo la revisa. Las familias la ven cuando la apruebe.',
-        }),
+        // Antes de guardar: editar una receta aprobada la saca de las familias.
+        if (_wasApproved && _effectiveStatus != RecipeStatus.approved)
+          InfoBanner(
+            message: _effectiveStatus == RecipeStatus.pending
+                ? 'Si guardas estos cambios, la receta deja de verse para las '
+                      'familias y vuelve a revisión del nutriólogo. Solo él '
+                      'puede aprobarla de nuevo.'
+                : 'Si guardas estos cambios, la receta deja de verse para las '
+                      'familias y queda en borrador. Solo el nutriólogo puede '
+                      'aprobarla de nuevo.',
+            background: AppColors.warningSoft,
+            foreground: AppColors.warningText,
+          )
+        else
+          _HelperText(switch (_effectiveStatus) {
+            RecipeStatus.approved =>
+              'Aprobada por el nutriólogo: las familias la ven. Si la '
+                  'cambias, deja de verse y vuelve a revisión.',
+            RecipeStatus.draft =>
+              'Queda guardada en el catálogo, pero ni el nutriólogo ni las '
+                  'familias la ven.',
+            RecipeStatus.pending =>
+              'El nutriólogo la revisa. Las familias la ven cuando la '
+                  'apruebe.',
+          }),
       ],
     );
   }
