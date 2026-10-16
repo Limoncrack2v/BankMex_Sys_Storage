@@ -3,8 +3,8 @@
 //
 // Uso: ./scripts/seed_catalog.sh
 
-import { RECIPES } from './catalog_recipes.mjs';
 import { PROJECT_ID, FirestoreError, setDocument } from './firestore_rest.mjs';
+import { RECIPES } from './catalog_recipes.mjs';
 
 async function seed() {
   for (const [id, fields] of RECIPES) {

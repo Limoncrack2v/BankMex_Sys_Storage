@@ -1,6 +1,6 @@
-// Las recetas del catálogo de BAMX (recipes/{id}). Es la única fuente: la usan
-// seed_catalog.mjs (proyecto real) y seed_emulators.mjs (emuladores). Las
-// recetas aprobadas son las que ven las familias.
+// Catálogo de recetas (recipes/{recipeId}). Es la única fuente: lo usan
+// seed_emulators.mjs (emuladores) y seed_catalog.mjs (proyecto real). Para
+// cambiar una receta, edítala aquí y vuelve a correr los scripts.
 
 const IMG = 'assets/images/recipes';
 

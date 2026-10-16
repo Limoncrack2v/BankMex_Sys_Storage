@@ -84,6 +84,7 @@ Los datos de los emuladores (cuentas de Auth y documentos de Firestore) se guard
 
 - La primera vez la carpeta no existe: los emuladores inician vacíos y se crea al cerrarlos.
 - Para empezar de cero, cierra los emuladores y borra `exported-dev-data/`.
+- Los datos del seed dependen del día en que se corre (el plan de 14 días, lo que caduca, «este mes» de Estadísticas): vuelve a correrlo para refrescarlos. Cada corrida también deja en `exported-dev-data/` las 27 familias de Estadísticas, sus entregas y sus consumos; para quitarlas, borra la carpeta.
 - Está en `.gitignore` y **nunca** se sube al repo: incluye las cuentas de Auth del emulador.
 
 Cuentas de prueba del seed (contraseña `bamx1234`):
@@ -92,6 +93,8 @@ Cuentas de prueba del seed (contraseña `bamx1234`):
 - Familia: `familia.ramirez@bamx.test`
 - Nutriólogo: `nutriologo@bamx.test`
 - Solicitud de staff pendiente de aprobar: `solicitud.staff@bamx.test`
+
+El seed también carga el catálogo de recetas (`tool/catalog_recipes.mjs`, la misma fuente que `./scripts/seed_catalog.sh`), una entrega programada de 16 productos con cuota, un plan de comidas guardado y 27 familias sin cuenta con entregas y 6 meses de consumo para "Estadísticas". El detalle está al inicio de `tool/seed_emulators.mjs`.
 
 En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `northamerica-south1`:
 
@@ -124,6 +127,7 @@ El contenido fijo de cada despensa del banco está en `standardBaskets/{basketId
 
 - La única fuente es `tool/standard_baskets.mjs`. `node tool/seed_emulators.mjs` las carga en los emuladores y `./scripts/seed_standard_baskets.sh` en el proyecto real (pide confirmación).
 - Solo el staff las lee; ningún cliente las escribe.
+- En el formulario de entregas, el staff elige una o más despensas estándar y la lista de productos se llena con sus cantidades por el número de despensas, y con la caducidad contada desde la fecha de entrega. La entrega guarda los productos reales (`items`): el staff puede quitar o cambiar los que faltaron ese día, y si ya editó la lista, cambiar las despensas, la fecha o el número de despensas no la sobrescribe sin avisar. Sin conexión ni copia local de las despensas, los productos se capturan a mano como siempre.
 
 La fecha de la próxima entrega de la familia (`families/{familyId}.nextDeliveryDate`) la mantienen dos funciones; ningún cliente la escribe:
 
