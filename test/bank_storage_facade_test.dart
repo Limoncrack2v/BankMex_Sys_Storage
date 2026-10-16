@@ -60,10 +60,6 @@ class _MealPlans implements MealPlanRepository {
       throw StateError('generateMealPlan no debe guardar el plan');
 
   @override
-  Future<MealPlan> save(MealPlan plan) async =>
-      throw StateError('generateMealPlan no debe guardar el plan');
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -123,9 +119,8 @@ void main() {
 
     test('only computes the plan: it does not write mealPlans', () async {
       // _MealPlans lanza si la facade intenta guardar.
-      final generated = await facadeFor(family()).generateMealPlan(
-        familyId: 'fam',
-      );
+      final generated = await facadeFor(family())
+          .generateMealPlan(familyId: 'fam');
       expect(generated.plan.id, isEmpty);
     });
 

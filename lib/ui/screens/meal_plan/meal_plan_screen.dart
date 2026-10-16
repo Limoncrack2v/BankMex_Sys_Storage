@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../../data/catalog_source.dart';
@@ -8,19 +6,15 @@ import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../data/repositories/adjustment_repository.dart';
 import '../../../data/repositories/family_repository.dart';
-import '../../../data/repositories/meal_plan_repository.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
 import '../../../domain/meal_plan_length.dart';
-import '../../../domain/models/meal_plan.dart';
 import '../../../domain/models/recipe_adjustment.dart';
 import '../../formatting.dart';
-import '../../models/meal_plan_record.dart';
 import '../../models/recipe.dart';
 import '../../models/recipe_adjustments.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
-import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/pill.dart';
@@ -31,10 +25,7 @@ import 'leftover_ingredients_section.dart';
 /// familia (ver [MealPlanLength]): una receta por día, armado con la despensa
 /// real de la familia y priorizando lo que caduca antes (ver [buildMealPlan]).
 ///
-/// El plan se guarda en mealPlans (un documento vigente por familia): se
-/// lee el guardado, se calcula el de ahora con la despensa y el catálogo de
-/// hoy, y solo se vuelve a guardar si cambió (otra despensa, otras recetas,
-/// otro hogar u otro día). "Actualizar plan" lo guarda a petición.
+/// Esta pantalla solo calcula y muestra el plan: no escribe en mealPlans.
 class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({
     super.key,
@@ -44,8 +35,6 @@ class MealPlanScreen extends StatefulWidget {
     this.catalog,
     this.family,
     this.adjustments,
-    this.loadPlan,
-    this.savePlan,
   });
 
   final String familyId;
@@ -60,8 +49,6 @@ class MealPlanScreen extends StatefulWidget {
   /// Las adaptaciones aprobadas de la familia: se arma el plan con la receta
   /// adaptada solo si el nutriólogo ya la aprobó; si no, con la receta base.
   final Stream<List<RecipeAdjustment>>? adjustments;
-  final Future<MealPlan?> Function(String familyId)? loadPlan;
-  final Future<MealPlan> Function(MealPlan plan)? savePlan;
 
   @override
   State<MealPlanScreen> createState() => _MealPlanScreenState();
@@ -77,13 +64,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   // stream, el plan se alarga o se acorta en vivo si el staff programa o
   // cancela una entrega.
   late Stream<Family?> _family;
-
-  // El plan guardado y la huella del último que ya está guardado (o que ya era
-  // igual al guardado): evita guardar lo mismo en cada cambio de
-  // la despensa.
-  MealPlan? _stored;
-  bool _storedLoaded = false;
-  String? _handled;
 
   @override
   void initState() {
@@ -108,70 +88,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         widget.adjustments ??
         AdjustmentRepository().watchApproved(widget.familyId);
     _family = widget.family ?? FamilyRepository().watchFamily(widget.familyId);
-    _stored = null;
-    _storedLoaded = false;
-    _handled = null;
-    _loadStored();
-  }
-
-  Future<void> _loadStored() async {
-    final familyId = widget.familyId;
-    MealPlan? stored;
-    try {
-      final load = widget.loadPlan ?? MealPlanRepository().getCurrent;
-      stored = await load(familyId);
-    } catch (_) {
-      // Sin el plan guardado se calcula el de ahora y se guarda si se puede.
-    }
-    if (!mounted || familyId != widget.familyId) return;
-    setState(() {
-      _stored = stored;
-      _storedLoaded = true;
-    });
-  }
-
-  /// Guarda [plan] si ya se sabe qué había guardado y es distinto.
-  void _syncPlan(MealPlan plan) {
-    if (!_storedLoaded) return;
-    final key = plan.toJson().toString();
-    if (_handled == key) return;
-    _handled = key;
-    final stored = _stored;
-    if (stored == null ? plan.meals.isEmpty : sameMealPlan(stored, plan)) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _save(plan));
-  }
-
-  Future<void> _save(MealPlan record, {bool announce = false}) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    // Con el id del plan que ya había, se reemplaza en vez de crear otro.
-    final plan = MealPlan(
-      id: _stored?.id ?? '',
-      familyId: record.familyId,
-      dateRangeStart: record.dateRangeStart,
-      dateRangeEnd: record.dateRangeEnd,
-      meals: record.meals,
-    );
-    try {
-      final save = widget.savePlan ?? MealPlanRepository().save;
-      // Sin conexión el guardado no termina hasta sincronizar.
-      _stored = await save(plan).timeout(const Duration(seconds: 4));
-      if (announce) _showSnack(messenger, 'Plan actualizado.');
-    } on TimeoutException {
-      _stored = plan;
-      if (announce) {
-        _showSnack(messenger, 'Se sincronizará cuando haya conexión.');
-      }
-    } catch (_) {
-      _showSnack(messenger, 'No se pudo guardar tu plan de comidas.');
-    }
-  }
-
-  void _showSnack(ScaffoldMessengerState? messenger, String message) {
-    messenger
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -312,15 +228,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       today: today,
       days: days,
     );
-    final portions = householdPortions(members);
-    final record = mealPlanRecord(
-      familyId: widget.familyId,
-      entries: plan,
-      start: today,
-      days: days,
-      servings: portions > 0 ? portions.clamp(0.1, 100.0) : 1.0,
-    );
-    if (record != null) _syncPlan(record);
     final hasProducts = pantry.any(
       (item) => item.quantity > 0 && daysLeft(item, today: today) >= 0,
     );
@@ -363,15 +270,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             leftovers: planLeftovers(plan, pantry, today: today),
             today: today,
           ),
-          if (record != null) ...[
-            const SizedBox(height: 8),
-            Center(
-              child: TextLinkButton(
-                label: 'Actualizar plan',
-                onPressed: () => _save(record, announce: true),
-              ),
-            ),
-          ],
         ],
       ],
     );

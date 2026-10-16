@@ -690,8 +690,6 @@ void main() {
               catalog: Stream.value([uiRecipe()]),
               family: Stream<Family?>.value(null),
               adjustments: Stream.value(adjustments),
-              loadPlan: (_) async => null,
-              savePlan: (plan) async => plan,
             ),
           ),
         ),

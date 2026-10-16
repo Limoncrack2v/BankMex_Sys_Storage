@@ -333,10 +333,9 @@ class BankStorageFacade {
   }
 
   /// Calcula un plan con las reglas de lib/domain y lo regresa, sin guardarlo:
-  /// el único que escribe en mealPlans es la pantalla "Plan de comidas"
-  /// (MealPlanRepository.save, con el plan de lib/ui/models/recipe.dart). Si
-  /// los dos motores guardaran, cada uno dejaría un plan distinto para la
-  /// misma familia.
+  /// esta fachada no escribe en mealPlans. El plan se guarda desde la pantalla
+  /// "Plan de comidas" cuando la familia lo pide; si cada motor guardara por su
+  /// cuenta, dejarían planes distintos para la misma familia.
   ///
   /// Sin [days], el plan es semanal o quincenal según la próxima entrega de
   /// la familia (ver [MealPlanLength]).
