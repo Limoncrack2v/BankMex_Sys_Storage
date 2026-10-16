@@ -16,6 +16,8 @@ import 'package:bank_storage_app/ui/screens/profile/appliances_section.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 
+import 'helpers/large_text.dart';
+
 /// Miércoles a media mañana.
 final today = DateTime(2026, 10, 14, 9, 30);
 
@@ -532,6 +534,40 @@ void main() {
       );
       await tester.scrollUntilVisible(find.text('Lo que te sobra'), 300);
       expect(find.text('Lenteja'), findsOneWidget);
+    });
+  });
+
+  group("at Android's largest text (2x) on a 360 wide screen", () {
+    setUpAll(loadAppFonts);
+
+    void useLargestText(WidgetTester tester) {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
+
+    testWidgets('the date box of a suggested day grows with the text', (
+      tester,
+    ) async {
+      useLargestText(tester);
+      await pumpSuggested(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('MIÉ'), findsOneWidget);
+    });
+
+    testWidgets('the date box of a saved day grows with the text', (
+      tester,
+    ) async {
+      useLargestText(tester);
+      await pumpSaved(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('MIÉ'), findsOneWidget);
     });
   });
 }

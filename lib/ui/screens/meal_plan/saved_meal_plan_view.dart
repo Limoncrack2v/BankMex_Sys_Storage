@@ -19,6 +19,7 @@ import 'delete_meal_plan_sheet.dart';
 import 'edit_plan_day_sheet.dart';
 import 'leftover_ingredients_section.dart';
 import 'meal_plan_saving.dart';
+import 'plan_date_box.dart';
 
 const _weekdays = [
   'lunes',
@@ -452,7 +453,7 @@ class _PlanDayCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DayTile(date),
+              PlanDateBox(date),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -483,44 +484,6 @@ class _PlanDayCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Día de la semana y número: en un plan de 14 días hay dos "LUN".
-class _DayTile extends StatelessWidget {
-  const _DayTile(this.date);
-
-  final DateTime date;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 48,
-      height: 48,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            planDayLabel(date).toUpperCase(),
-            style: AppText.nunito(
-              11,
-              16.5,
-              weight: FontWeight.w700,
-              color: AppColors.textMuted,
-            ),
-          ),
-          Text(
-            '${date.day}',
-            style: AppText.baloo(16, 20, weight: FontWeight.w600),
-          ),
-        ],
       ),
     );
   }

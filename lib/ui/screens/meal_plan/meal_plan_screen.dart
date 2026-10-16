@@ -23,6 +23,7 @@ import '../../widgets/pill.dart';
 import '../recipes/recipe_detail_screen.dart';
 import 'leftover_ingredients_section.dart';
 import 'meal_plan_saving.dart';
+import 'plan_date_box.dart';
 import 'saved_meal_plan_view.dart';
 
 /// Plan de comidas semanal o quincenal, según la próxima entrega de la
@@ -488,34 +489,7 @@ class _DayCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                // Día y número: en un plan de 14 días hay dos "LUN".
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      entry.day.toUpperCase(),
-                      style: AppText.nunito(
-                        11,
-                        16.5,
-                        weight: FontWeight.w700,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                    Text(
-                      '${entry.date.day}',
-                      style: AppText.baloo(16, 20, weight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              ),
+              PlanDateBox(entry.date),
               const SizedBox(width: 12),
               Expanded(
                 child: PillRow(
