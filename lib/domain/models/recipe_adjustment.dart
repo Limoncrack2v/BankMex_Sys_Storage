@@ -70,11 +70,12 @@ class RecipeAdjustment {
   static const int maxSummaryLength = 300;
   static const int maxReasonLength = 300;
 
-  /// El id del documento: uno por familia, receta, versión de la receta y
-  /// hogar (tamaño y alergias, ver [householdKeyOf]). firestore.rules lo exige
-  /// al crear, así que una familia no puede llenar la cola del nutriólogo con
-  /// sugerencias repetidas: crear el mismo id otra vez es una actualización, y
-  /// la familia no actualiza.
+  /// El id del documento: uno por familia, receta, huella de la receta y hogar
+  /// (tamaño y alergias, ver [householdKeyOf]). firestore.rules lo exige al
+  /// crear: crear el mismo id otra vez es una actualización y la familia no
+  /// actualiza, así que un mismo hogar no repite una sugerencia. No limita del
+  /// todo la cola del nutriólogo: las reglas no pueden comprobar que la huella
+  /// sea la de la receta, y un cliente modificado puede inventar huellas.
   static String documentId({
     required String familyId,
     required String recipeId,

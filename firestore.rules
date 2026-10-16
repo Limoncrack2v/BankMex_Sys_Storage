@@ -609,11 +609,17 @@ service cloud.firestore {
     match /adjustments/{adjustmentId} {
       allow read: if isNutritionist()
         || (request.auth != null && isFamilyOwner(resource.data.familyId[4]));
-      // El id es uno por familia, receta, versión de la receta y hogar (su
+      // El id es uno por familia, receta, huella de la receta y hogar (su
       // tamaño y sus alergias, en orden: householdKey; RecipeAdjustment.
-      // documentId): una familia no puede llenar la cola del nutriólogo,
-      // porque crear el mismo id otra vez es una actualización y la familia
-      // no actualiza. Si cambian las alergias, la clave y el id son otros.
+      // documentId). Crear el mismo id otra vez es una actualización y la
+      // familia no actualiza, así que un mismo hogar no repite una sugerencia.
+      // Si cambian las alergias, la clave y el id son otros.
+      // Esto NO cierra del todo la cola del nutriólogo: baseSignature es
+      // cualquier hex de 8 caracteres que mande el cliente (las reglas no
+      // pueden recalcular la huella de la receta), así que un cliente
+      // modificado puede inventar huellas y crear una sugerencia por cada una.
+      // Riesgo aceptado: las cuentas de familia las crea Staff. Para cerrarlo,
+      // la receta tendría que guardar su huella y esta regla compararla.
       allow create: if isFamilyOwner(request.resource.data.familyId[4])
         && validAdjustment(request.resource.data)
         && adjustmentId == request.resource.data.familyId[4] + '_'

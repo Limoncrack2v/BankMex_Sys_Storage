@@ -399,26 +399,40 @@ void main() {
       );
     });
 
-    test(
-      'la cola no se puede llenar: solo hay un id por hogar y receta',
-      () async {
-        // Ids al azar, repetidos o fuera de la clave, todos denegados: de cada
-        // hogar, receta y versión solo existe un documento posible.
-        for (var i = 0; i < 6; i++) {
-          await assertDenied(create(fam1(), adjustment(), id: 'a$i'));
-          await assertDenied(
-            create(fam1(), adjustment(), id: 'famA_r1_abcdef12_4-dairy_$i'),
-          );
-        }
-        expect(await adminDocs('adjustments'), isEmpty);
+    test('ids al azar o repetidos no pasan: un mismo hogar no repite una sugerencia', () async {
+      // Ids al azar, repetidos o fuera de la clave, todos denegados: de cada
+      // huella, receta y hogar solo existe un documento posible.
+      for (var i = 0; i < 6; i++) {
+        await assertDenied(create(fam1(), adjustment(), id: 'a$i'));
+        await assertDenied(
+          create(fam1(), adjustment(), id: 'famA_r1_abcdef12_4-dairy_$i'),
+        );
+      }
+      expect(await adminDocs('adjustments'), isEmpty);
 
-        await assertAllowed(create(fam1(), adjustment()));
-        for (var i = 0; i < 6; i++) {
-          await assertDenied(create(fam1(), adjustment()));
-        }
-        expect(await adminDocs('adjustments'), hasLength(1));
-      },
-    );
+      await assertAllowed(create(fam1(), adjustment()));
+      for (var i = 0; i < 6; i++) {
+        await assertDenied(create(fam1(), adjustment()));
+      }
+      expect(await adminDocs('adjustments'), hasLength(1));
+    });
+
+    test('RIESGO ACEPTADO: una huella inventada abre otro documento', () async {
+      // Las reglas no pueden recalcular la huella de la receta: baseSignature
+      // es cualquier hex de 8 caracteres. Un cliente modificado puede crear
+      // una sugerencia por cada huella inventada. Si algún día la receta
+      // guarda su huella y la regla la compara, este test debe pasar a
+      // denegado.
+      for (final signature in ['00000000', '00000001', 'ffffffff']) {
+        await assertAllowed(
+          create(
+            fam1(),
+            adjustment(change_: {'baseSignature': str(signature)}),
+          ),
+        );
+      }
+      expect(await adminDocs('adjustments'), hasLength(3));
+    });
 
     test('con otra huella o otro tamaño de hogar es otro documento', () async {
       await assertAllowed(create(fam1(), adjustment()));
