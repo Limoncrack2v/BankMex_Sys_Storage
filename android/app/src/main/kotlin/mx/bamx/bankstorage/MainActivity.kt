@@ -1,4 +1,4 @@
-package com.example.bank_storage_app
+package mx.bamx.bankstorage
 
 import android.os.Bundle
 import android.view.WindowManager
