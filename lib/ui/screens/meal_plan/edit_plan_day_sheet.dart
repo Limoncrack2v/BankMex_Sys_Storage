@@ -140,11 +140,12 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
       ...widget.options.where(_suitable),
       ...widget.options.where((option) => !_suitable(option)),
     ];
+    const order =
+        'Elige qué cocinar este día. Primero van las que puedes preparar con '
+        'tu despensa, y entre ellas las que usan lo que caduca antes.';
     final intro = options.every(_suitable)
-        ? 'Elige qué cocinar este día. Primero van las recetas que usan lo que '
-              'caduca antes.'
-        : 'Elige qué cocinar este día. Primero van las recetas que usan lo que '
-              'caduca antes; al final, las que piden algo que no tienes.';
+        ? order
+        : '$order Al final, las que piden algo que no tienes.';
 
     return AppSheet(
       title: widget.title,

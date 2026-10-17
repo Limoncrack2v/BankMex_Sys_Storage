@@ -389,6 +389,16 @@ void main() {
         lessThan(top('Sopa de pasta con verduras')),
       );
       expect(inSheet(find.text('Necesita licuadora')), findsOneWidget);
+      expect(
+        inSheet(
+          find.text(
+            'Elige qué cocinar este día. Primero van las que puedes preparar '
+            'con tu despensa, y entre ellas las que usan lo que caduca antes. '
+            'Al final, las que piden algo que no tienes.',
+          ),
+        ),
+        findsOneWidget,
+      );
       expect(inSheet(find.text('Avena con fruta')), findsNothing);
       expect(inSheet(find.text('Sándwich de jamón y queso')), findsNothing);
       expect(inSheet(find.text('Actual')), findsNothing);

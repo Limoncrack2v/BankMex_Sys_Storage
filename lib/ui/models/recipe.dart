@@ -1112,8 +1112,9 @@ MealPlanEntry planEntryFor(
 /// Abreviatura del día de [date], como en las tarjetas del plan ("Mié").
 String planDayLabel(DateTime date) => _weekdays[date.weekday - 1];
 
-/// [recipes] para elegir la de [date] en un plan guardado, en el orden en que
-/// [buildMealPlan] las ve ese día (ver [planEntryFor]).
+/// [recipes] para elegir la de [date] en un plan guardado (ver
+/// [planEntryFor]). Primero las que se preparan con la despensa; entre ellas,
+/// en el orden en que [buildMealPlan] las ve ese día.
 List<MealPlanEntry> planOptionsFor(
   List<Recipe> recipes,
   List<PantryItem> pantry,
@@ -1126,8 +1127,15 @@ List<MealPlanEntry> planOptionsFor(
   final ranked = [
     for (var i = 0; i < recipes.length; i++)
       _rankRecipe(recipes[i], i, left, day),
-  ]..sort(_compareRanked);
+  ]..sort(_compareOptions);
   return [for (final recipe in ranked) _planEntry(recipe, day, today: today)];
+}
+
+/// Las recetas completas antes que las que tienen faltantes, aunque estas usen
+/// lo que caduca antes; dentro de cada grupo, como [_compareRanked].
+int _compareOptions(_RankedRecipe a, _RankedRecipe b) {
+  final byComplete = (a.missing > 0 ? 1 : 0) - (b.missing > 0 ? 1 : 0);
+  return byComplete != 0 ? byComplete : _compareRanked(a, b);
 }
 
 /// [pantry] después de cocinar en orden las tarjetas de [earlier] de antes de

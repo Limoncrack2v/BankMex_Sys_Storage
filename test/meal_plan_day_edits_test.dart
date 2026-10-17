@@ -196,6 +196,34 @@ void main() {
       expect(friday.map((e) => e.date), everyElement(day(2)));
     });
 
+    test('lists first what the pantry covers, even if another recipe uses '
+        'what expires sooner', () {
+      final pantry = [
+        item('Plátano', 4, FoodUnit.piece, 1),
+        item('Leche entera', 1, FoodUnit.l, 5),
+        item('Frijol', 1, FoodUnit.kg, 30),
+      ];
+
+      final options = planOptionsFor(recipes, pantry, day(0), today: day(0));
+
+      // A la avena le falta la avena, aunque use el plátano que caduca mañana.
+      expect(options.map((e) => e.recipe.name), [
+        'Frijoles de la olla',
+        'Avena con fruta',
+        'Sopa de lentejas',
+      ]);
+      expect(options.first.reason, 'Con productos de tu despensa');
+      expect(
+        options[1].reason,
+        'Usa Plátano (caduca mañana)\nTe falta 1 ingrediente',
+      );
+      // El plan sugerido no cambia: sigue usando primero lo que caduca antes.
+      expect(
+        buildMealPlan(recipes, pantry, today: day(0)).first.recipe.name,
+        'Avena con fruta',
+      );
+    });
+
     test('sees what the earlier days of the plan use', () {
       final pantry = [
         item('Leche entera', 1, FoodUnit.l, 6),
