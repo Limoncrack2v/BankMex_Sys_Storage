@@ -9,7 +9,18 @@ import 'ingredient_names.dart';
 /// acentos y en singular (la forma de normalizeName en
 /// lib/ui/models/recipe.dart).
 const allergenKeywords = <Allergy, List<String>>{
-  Allergy.dairy: ['leche', 'yogurt', 'yogur', 'queso', 'crema', 'mantequilla'],
+  Allergy.dairy: [
+    'leche',
+    'yogurt',
+    'yogur',
+    'queso',
+    'crema',
+    'mantequilla',
+    'requeson',
+    'jocoque',
+    'nata',
+    'helado',
+  ],
   Allergy.gluten: [
     'pan',
     'pasta',
@@ -18,6 +29,19 @@ const allergenKeywords = <Allergy, List<String>>{
     'avena',
     'galleta',
     'cereal',
+    'fideo',
+    'espagueti',
+    'spaghetti',
+    'macarron',
+    'codito',
+    'lasana',
+    'bolillo',
+    'telera',
+    'empanada',
+    'panque',
+    'cebada',
+    'centeno',
+    'cuscus',
   ],
   Allergy.peanut: ['cacahuate', 'mani'],
   Allergy.shellfish: [
@@ -27,8 +51,12 @@ const allergenKeywords = <Allergy, List<String>>{
     'calamar',
     'ostion',
     'jaiba',
+    'langosta',
+    'langostino',
+    'almeja',
+    'mejillon',
   ],
-  Allergy.egg: ['huevo'],
+  Allergy.egg: ['huevo', 'mayonesa', 'merengue'],
   Allergy.soy: ['soya', 'soja', 'tofu'],
 };
 

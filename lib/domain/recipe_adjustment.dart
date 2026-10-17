@@ -169,9 +169,10 @@ class RecipeAdjustmentRules {
 
   /// Por qué se sustituye cada ingrediente (palabra que lo delata) y con qué:
   /// los candidatos van en orden y se toma el primero que no lleva ningún
-  /// alérgeno del hogar. Los nombres de los candidatos no llevan palabras de
-  /// [allergenKeywords] salvo las suyas ("Fideo de arroz", no "Pasta de
-  /// arroz"), porque esa regla compara por palabras.
+  /// alérgeno del hogar. Los nombres de los candidatos no deben llevar palabras
+  /// de [allergenKeywords] (el gluten tiene "pasta" y "fideo", así que el
+  /// sustituto de la pasta es "Arroz"), porque esa regla compara por palabras y
+  /// el candidato se descartaría solo.
   static const _substitutes = <Allergy, List<(List<String>, List<String>)>>{
     Allergy.dairy: [
       (['leche'], ['Bebida de avena', 'Bebida de arroz']),
@@ -182,7 +183,7 @@ class RecipeAdjustmentRules {
     ],
     Allergy.gluten: [
       (['pan'], ['Tortilla de maíz']),
-      (['pasta'], ['Fideo de arroz', 'Arroz']),
+      (['pasta'], ['Arroz']),
       (['harina'], ['Masa de maíz', 'Harina de arroz']),
       (['galleta'], ['Totopos']),
       (['cereal'], ['Hojuelas de maíz']),

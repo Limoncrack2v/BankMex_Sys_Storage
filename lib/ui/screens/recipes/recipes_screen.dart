@@ -17,6 +17,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/pill.dart';
 import 'recipe_detail_screen.dart';
+import 'request_recipe_screen.dart';
 
 enum RecipeFilter {
   todas('Todas', 'Todas las recetas de nutriólogos de BAMX'),
@@ -215,6 +216,14 @@ class _RecipesScreenState extends State<RecipesScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        RequestRecipeCard(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => RequestRecipeScreen(familyId: widget.familyId),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
         _FilterBar(
           selected: _filter,
           onSelected: (filter) => setState(() => _filter = filter),

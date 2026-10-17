@@ -10,7 +10,7 @@ import 'package:bank_storage_app/domain/models/recipe.dart' as domain;
 import 'package:bank_storage_app/domain/recipe_on_demand.dart';
 import 'package:bank_storage_app/domain/recipe_planner.dart';
 import 'package:bank_storage_app/ui/models/recipe.dart' as ui;
-import 'package:bank_storage_app/ui/screens/meal_plan/meal_plan_screen.dart';
+import 'helpers/meal_plan_harness.dart';
 import 'package:bank_storage_app/ui/screens/recipes/recipes_screen.dart';
 import 'package:bank_storage_app/ui/theme/app_assets.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
@@ -333,7 +333,7 @@ void main() {
     });
   });
 
-  group('MealPlanScreen', () {
+  group('the plan screen (MealPlanView)', () {
     Future<void> pump(
       WidgetTester tester, {
       required Stream<List<Member>> members,
@@ -347,7 +347,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.light,
           home: Scaffold(
-            body: MealPlanScreen(
+            body: MealPlanHarness(
               familyId: 'famA',
               pantry: Stream.value([for (final p in pantry) uiPantry(p)]),
               members: members,

@@ -7,6 +7,7 @@ import '../../domain/ingredient_names.dart';
 import '../../domain/exclusion_list.dart';
 import '../../domain/meal_plan_length.dart';
 import '../../domain/models/child_profile.dart';
+import '../../domain/models/recipe_request.dart';
 import '../../domain/portion_adjuster.dart';
 import '../formatting.dart';
 import 'expiration_urgency.dart';
@@ -43,10 +44,11 @@ class Recipe {
     required this.kcalPerServing,
     required this.ingredients,
     required this.steps,
+    this.requiredEquipment = const [],
   });
 
-  /// El id de la receta en el catálogo (recipes/{id}); vacío en las recetas de
-  /// muestra. Es lo que se guarda en un plan de comidas (mealPlans).
+  /// Id del documento recipes/{id}. Las de SampleData llevan el de
+  /// tool/catalog_recipes.mjs; vacío si la receta no tiene uno.
   final String id;
 
   /// [recipeSignature] de la receta del catálogo; sirve para saber si una
@@ -63,6 +65,10 @@ class Recipe {
   final int kcalPerServing;
   final List<RecipeIngredient> ingredients;
   final List<String> steps;
+
+  /// Ids de Appliance que pide la receta (recipes/{id}.requiredEquipment).
+  /// Vacía si no necesita ninguno.
+  final List<String> requiredEquipment;
 
   bool get isQuick => minutes <= 30;
 }
@@ -266,6 +272,7 @@ Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
     id: recipe.id,
     signature: recipe.signature,
     adaptation: recipe.adaptation,
+    requiredEquipment: recipe.requiredEquipment,
     name: recipe.name,
     image: recipe.image,
     minutes: recipe.minutes,
@@ -497,7 +504,7 @@ List<MealPlanEntry> buildMealPlan(
     ]..sort(_compareRanked);
 
     final chosen = ranked.first;
-    plan.add(_planEntry(chosen, date));
+    plan.add(_planEntry(chosen, date, today: now));
     served.add(chosen.index);
     previous = chosen.index;
     replay.cook(chosen.recipe, date);
@@ -549,8 +556,12 @@ int _compareRanked(_RankedRecipe a, _RankedRecipe b) {
 }
 
 /// El motivo nombra el producto solo si caduca pronto (7 días o menos); si
-/// no, basta con decir si faltan ingredientes.
-MealPlanEntry _planEntry(_RankedRecipe ranked, DateTime date) {
+/// no, basta con decir si faltan ingredientes. Sin [today], [date] es hoy.
+MealPlanEntry _planEntry(
+  _RankedRecipe ranked,
+  DateTime date, {
+  DateTime? today,
+}) {
   final (:recipe, :missing, :mostUrgent, :days, index: _) = ranked;
   final urgency = days == null
       ? ExpirationUrgency.fresh
@@ -560,7 +571,8 @@ MealPlanEntry _planEntry(_RankedRecipe ranked, DateTime date) {
     if (mostUrgent != null &&
         days != null &&
         urgency != ExpirationUrgency.fresh)
-      'Usa ${productDisplayName(mostUrgent.productId)} (${_expiresIn(days)})',
+      'Usa ${productDisplayName(mostUrgent.productId)} '
+          '(${_expiresIn(days, date, today)})',
     if (missing == 1) 'Te falta 1 ingrediente',
     if (missing > 1) 'Te faltan $missing ingredientes',
   ];
@@ -576,11 +588,296 @@ MealPlanEntry _planEntry(_RankedRecipe ranked, DateTime date) {
   );
 }
 
-String _expiresIn(int days) => switch (days) {
-  0 => 'caduca hoy',
-  1 => 'caduca mañana',
-  _ => 'caduca en $days días',
+/// Contado desde hoy en la tarjeta de hoy. En la de otro día se dice la
+/// fecha, porque "caduca en 4 días" se lee como contado desde hoy.
+String _expiresIn(int days, DateTime date, DateTime? today) {
+  final isToday =
+      today == null || DateTime(today.year, today.month, today.day) == date;
+  if (!isToday) {
+    if (days == 0) return 'caduca ese día';
+    final expiry = DateTime(date.year, date.month, date.day + days);
+    return 'caduca el ${_weekdays[expiry.weekday - 1].toLowerCase()} '
+        '${expiry.day}';
+  }
+  return switch (days) {
+    0 => 'caduca hoy',
+    1 => 'caduca mañana',
+    _ => 'caduca en $days días',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Receta a pedido.
+
+/// Clave para no repetir una receta con "Otra receta": su id de Firestore o,
+/// si no tiene, su nombre normalizado.
+String recipeKey(Recipe recipe) =>
+    recipe.id.isNotEmpty ? recipe.id : normalizeName(recipe.name);
+
+/// Si al hogar le falta algún electrodoméstico que pide [recipe]. Con
+/// [householdAppliances] vacía no se sabe qué tiene (appliances: [] también
+/// es "no se capturó"), así que no se descarta ninguna.
+bool lacksAppliance(Recipe recipe, List<String> householdAppliances) =>
+    householdAppliances.isNotEmpty &&
+    recipe.requiredEquipment.any((id) => !householdAppliances.contains(id));
+
+/// [recipes] que se le pueden sugerir al hogar: sin alérgenos de ningún
+/// integrante y sin electrodomésticos que no tiene. Las enfermedades crónicas
+/// no descartan recetas; [pickRecipe] las deja al final.
+List<Recipe> recipesForHousehold(
+  List<Recipe> recipes, {
+  required List<Member> members,
+  List<String> householdAppliances = const [],
+}) => [
+  for (final recipe in recipes)
+    if (_suitable(recipe, members, householdAppliances)) recipe,
+];
+
+// Una receta sin ingredientes (datos incompletos) no se sugiere.
+bool _suitable(Recipe recipe, List<Member> members, List<String> appliances) =>
+    recipe.ingredients.isNotEmpty &&
+    !lacksAppliance(recipe, appliances) &&
+    allergyConflicts(recipe, members).isEmpty;
+
+/// Si [recipe] tiene el antojo: cada palabra escrita (menos "de", "con"...) en
+/// su nombre o ingredientes, o un [product] que sirve para un ingrediente.
+///
+/// Una palabra escrita a medias ("lente") encuentra las que empiezan con ella,
+/// salvo que sea una palabra completa de [catalog]: si alguna receta lleva
+/// pan, "pan" no encuentra "panela".
+bool matchesCraving(
+  Recipe recipe,
+  String craving, {
+  bool product = false,
+  List<Recipe> catalog = const [],
+}) => _matchesCraving(
+  recipe,
+  craving,
+  product: product,
+  catalogWords: product ? const {} : _wordsOf(catalog),
+);
+
+bool _matchesCraving(
+  Recipe recipe,
+  String craving, {
+  required bool product,
+  required Set<String> catalogWords,
+}) {
+  final wanted = normalizeName(craving);
+  if (wanted.isEmpty) return true;
+  if (!product) {
+    final known = _wordsOf([recipe]);
+    return [
+      for (final word in wanted.split(' '))
+        if (!_connectors.contains(word)) word,
+    ].every((word) {
+      final partial = word.length >= 3 && !catalogWords.contains(word);
+      return known.any(
+        (other) =>
+            sameIngredientWord(other, word) || (partial && other.startsWith(word)),
+      );
+    });
+  }
+  final words = wanted.split(' ');
+  if (_containsWords(normalizeName(recipe.name), words)) return true;
+  return recipe.ingredients.any((ingredient) {
+    final name = normalizeName(ingredient.name);
+    return _namesMatch(name, wanted) || _containsWords(name, words);
+  });
+}
+
+/// Las palabras ya normalizadas de los nombres e ingredientes de [recipes].
+Set<String> _wordsOf(Iterable<Recipe> recipes) => {
+  for (final recipe in recipes) ...[
+    ...normalizeName(recipe.name).split(' '),
+    for (final ingredient in recipe.ingredients)
+      ...normalizeName(ingredient.name).split(' '),
+  ],
 };
+
+/// Palabras que no cuentan en un antojo escrito ("arroz con pollo").
+final _connectors = 'de del con y e a al la el los las en para sin un una'
+    .split(' ')
+    .toSet();
+
+/// Si [words] van seguidas en [text] (ya normalizado), palabra por palabra.
+bool _containsWords(String text, List<String> words) {
+  if (text.isEmpty) return false;
+  final haystack = text.split(' ');
+  for (var start = 0; start + words.length <= haystack.length; start++) {
+    var found = true;
+    for (var i = 0; i < words.length && found; i++) {
+      found = sameIngredientWord(haystack[start + i], words[i]);
+    }
+    if (found) return true;
+  }
+  return false;
+}
+
+/// Productos de la despensa que se pueden pedir como antojo: los que no han
+/// caducado y usa al menos una de [recipes]. Van del que caduca antes al que
+/// caduca después (como el plan), un solo nombre por producto aunque esté en
+/// varias entregas.
+List<String> cravingOptions(
+  List<Recipe> recipes,
+  List<PantryItem> pantry, {
+  DateTime? today,
+}) {
+  final now = today ?? DateTime.now();
+  int days(PantryItem item) => daysLeft(item, today: now);
+  bool used(PantryItem item) => recipes.any(
+    (recipe) => recipe.ingredients.any(
+      (ingredient) => ingredientMatches(ingredient, item),
+    ),
+  );
+
+  final items = [
+    for (final item in pantry)
+      if (item.quantity > 0 && days(item) >= 0 && used(item)) item,
+  ];
+  items.sort((a, b) {
+    final byDays = days(a).compareTo(days(b));
+    return byDays != 0
+        ? byDays
+        : normalizeName(a.productId).compareTo(normalizeName(b.productId));
+  });
+  final seen = <String>{};
+  return [
+    for (final item in items)
+      if (seen.add(normalizeName(item.productId)))
+        productDisplayName(item.productId),
+  ];
+}
+
+/// La receta que se sugiere al pedir una (ver [pickRecipe]).
+class RecipeSuggestion {
+  const RecipeSuggestion({
+    required this.recipe,
+    required this.scaled,
+    required this.missing,
+    required this.reason,
+    required this.urgency,
+    required this.usesPantry,
+    required this.fitsTime,
+    required this.matchesCraving,
+    required this.avoidsConditions,
+  });
+
+  /// La receta del catálogo, sin ajustar. Es la que recibe openRecipe
+  /// (recipe_detail_screen.dart): el detalle ajusta las porciones y, si
+  /// recibiera [scaled], las ajustaría dos veces.
+  final Recipe recipe;
+
+  /// [recipe] con las porciones del hogar: la que se muestra y con la que se
+  /// cuentan los faltantes.
+  final Recipe scaled;
+
+  /// Ingredientes de [scaled] que no alcanzan con la despensa.
+  final int missing;
+
+  /// Como en el plan: "Usa Jitomate (caduca en 5 días)", "Te falta 1
+  /// ingrediente" o "Con productos de tu despensa".
+  final String reason;
+  final ExpirationUrgency urgency;
+
+  /// Si usa algo de la despensa; si no, [urgency] no dice nada.
+  final bool usesPantry;
+
+  /// Si cabe en el tiempo pedido (siempre, sin límite de tiempo).
+  final bool fitsTime;
+
+  /// Si tiene el antojo pedido (siempre, sin antojo).
+  final bool matchesCraving;
+
+  /// Si no lleva nada que convenga evitar por una enfermedad de la familia.
+  final bool avoidsConditions;
+
+  /// Si se puede preparar con lo que hay en la despensa.
+  bool get fitsPantry => missing == 0;
+}
+
+typedef _Candidate = ({
+  Recipe recipe,
+  _RankedRecipe ranked,
+  bool avoidsConditions,
+  bool fitsTime,
+  bool matchesCraving,
+  int minutesOver,
+});
+
+/// La receta de [recipes] (del catálogo, sin ajustar) que mejor cumple
+/// [request], o null si ya no queda ninguna para el hogar.
+RecipeSuggestion? pickRecipe(
+  List<Recipe> recipes,
+  List<PantryItem> pantry, {
+  required List<Member> members,
+  List<String> householdAppliances = const [],
+  RecipeRequest request = const RecipeRequest(),
+  DateTime? today,
+}) {
+  final now = today ?? DateTime.now();
+  final craving = request.cravingText;
+  final catalogWords = craving == null || request.cravingIsProduct
+      ? const <String>{}
+      : _wordsOf(recipes);
+  _Candidate? best;
+  for (var i = 0; i < recipes.length; i++) {
+    final recipe = recipes[i];
+    if (request.excludeRecipeIds.contains(recipeKey(recipe)) ||
+        !_suitable(recipe, members, householdAppliances)) {
+      continue;
+    }
+    final candidate = (
+      recipe: recipe,
+      ranked: _rankRecipe(scaledForHousehold(recipe, members), i, pantry, now),
+      avoidsConditions: conditionConflicts(recipe, members).isEmpty,
+      fitsTime: request.fitsTime(recipe.minutes),
+      matchesCraving:
+          craving == null ||
+          _matchesCraving(
+            recipe,
+            craving,
+            product: request.cravingIsProduct,
+            catalogWords: catalogWords,
+          ),
+      minutesOver: request.minutesOver(recipe.minutes),
+    );
+    if (best == null || _compareCandidates(candidate, best) < 0) {
+      best = candidate;
+    }
+  }
+  if (best == null) return null;
+
+  final entry = _planEntry(best.ranked, DateTime(now.year, now.month, now.day));
+  return RecipeSuggestion(
+    recipe: best.recipe,
+    scaled: best.ranked.recipe,
+    missing: best.ranked.missing,
+    reason: entry.reason,
+    urgency: entry.urgency,
+    usesPantry: best.ranked.mostUrgent != null,
+    fitsTime: best.fitsTime,
+    matchesCraving: best.matchesCraving,
+    avoidsConditions: best.avoidsConditions,
+  );
+}
+
+// Antes lo que evita enfermedades y alcanza con la despensa (o le falta
+// menos); luego el tiempo, el antojo, los minutos de más y el plan.
+int _compareCandidates(_Candidate a, _Candidate b) {
+  if (a.avoidsConditions != b.avoidsConditions) {
+    return a.avoidsConditions ? -1 : 1;
+  }
+  final byMissing = a.ranked.missing.compareTo(b.ranked.missing);
+  if (byMissing != 0) return byMissing;
+  if (a.fitsTime != b.fitsTime) return a.fitsTime ? -1 : 1;
+  if (a.matchesCraving != b.matchesCraving) return a.matchesCraving ? -1 : 1;
+  // Si ninguna cabe, la que no dice cuánto tarda va después.
+  final (aKnown, bKnown) = (a.recipe.minutes > 0, b.recipe.minutes > 0);
+  if (!a.fitsTime && aKnown != bKnown) return aKnown ? -1 : 1;
+  final byOver = a.minutesOver.compareTo(b.minutesOver);
+  return byOver != 0 ? byOver : _compareRanked(a.ranked, b.ranked);
+}
 
 // ---------------------------------------------------------------------------
 // Lo que sobra después del plan.
@@ -671,9 +968,9 @@ List<PlanLeftover> planLeftovers(
 }
 
 /// La despensa mientras se cocina el plan día por día. La comparten
-/// [buildMealPlan] (para elegir cada día contra lo que queda) y
-/// [planLeftovers] (para contar lo que sobra), de modo que las dos cuentas no
-/// pueden separarse.
+/// [buildMealPlan] (para elegir cada día contra lo que queda), el plan
+/// guardado ([planEntryFor]) y [planLeftovers] (para contar lo que sobra), de
+/// modo que las cuentas no pueden separarse.
 class _PantryReplay {
   _PantryReplay(List<PantryItem> pantry)
     : original = [
@@ -727,3 +1024,64 @@ PantryItem _withQuantity(PantryItem item, double quantity) => PantryItem(
   deviceId: item.deviceId,
   localTimestamp: item.localTimestamp,
 );
+
+// ---------------------------------------------------------------------------
+// Plan guardado.
+
+/// La tarjeta de [recipe] el día [date] de un plan guardado, como en
+/// [buildMealPlan]: con la despensa de esa fecha, sin lo que usa [earlier].
+/// Sin [today], [date] es hoy.
+MealPlanEntry planEntryFor(
+  Recipe recipe,
+  DateTime date,
+  List<PantryItem> pantry, {
+  List<MealPlanEntry> earlier = const [],
+  DateTime? today,
+}) {
+  final day = DateTime(date.year, date.month, date.day);
+  final left = _pantryAfter(earlier, pantry, day);
+  return _planEntry(_rankRecipe(recipe, 0, left, day), day, today: today);
+}
+
+/// Abreviatura del día de [date], como en las tarjetas del plan ("Mié").
+String planDayLabel(DateTime date) => _weekdays[date.weekday - 1];
+
+/// [recipes] para elegir la de [date] en un plan guardado (ver
+/// [planEntryFor]). Primero las que se preparan con la despensa; entre ellas,
+/// en el orden en que [buildMealPlan] las ve ese día.
+List<MealPlanEntry> planOptionsFor(
+  List<Recipe> recipes,
+  List<PantryItem> pantry,
+  DateTime date, {
+  List<MealPlanEntry> earlier = const [],
+  DateTime? today,
+}) {
+  final day = DateTime(date.year, date.month, date.day);
+  final left = _pantryAfter(earlier, pantry, day);
+  final ranked = [
+    for (var i = 0; i < recipes.length; i++)
+      _rankRecipe(recipes[i], i, left, day),
+  ]..sort(_compareOptions);
+  return [for (final recipe in ranked) _planEntry(recipe, day, today: today)];
+}
+
+/// Las recetas completas antes que las que tienen faltantes, aunque estas usen
+/// lo que caduca antes; dentro de cada grupo, como [_compareRanked].
+int _compareOptions(_RankedRecipe a, _RankedRecipe b) {
+  final byComplete = (a.missing > 0 ? 1 : 0) - (b.missing > 0 ? 1 : 0);
+  return byComplete != 0 ? byComplete : _compareRanked(a, b);
+}
+
+/// [pantry] después de cocinar en orden las tarjetas de [earlier] de antes de
+/// [day] ([_PantryReplay]). Los días libres no tienen tarjeta.
+List<PantryItem> _pantryAfter(
+  List<MealPlanEntry> earlier,
+  List<PantryItem> pantry,
+  DateTime day,
+) {
+  final replay = _PantryReplay(pantry);
+  for (final entry in earlier) {
+    if (entry.date.isBefore(day)) replay.cook(entry.recipe, entry.date);
+  }
+  return replay.current;
+}

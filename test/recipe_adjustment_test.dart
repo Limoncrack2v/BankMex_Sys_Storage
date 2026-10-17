@@ -137,7 +137,7 @@ void main() {
       )!;
 
       expect(suggestion.ingredients.map((i) => i.productName), [
-        'Fideo de arroz',
+        'Arroz',
         'Tofu',
         'Tofu',
       ]);

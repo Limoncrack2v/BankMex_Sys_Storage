@@ -103,6 +103,7 @@ abstract final class CatalogMappers {
     return ui.Recipe(
       id: recipe.id,
       signature: recipeSignature(recipe),
+      requiredEquipment: recipe.requiredEquipment,
       name: recipe.name,
       image: recipe.image.isEmpty ? AppImages.sopaDeLentejas : recipe.image,
       minutes: recipe.prepTimeMinutes,

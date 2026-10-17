@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'saved_auth_emulator_stub.dart'
+    if (dart.library.js_interop) 'saved_auth_emulator_web.dart';
+
 /// En debug la app usa los emuladores de Firebase (Firestore 8080, Auth 9099),
 /// para no escribir en los datos reales desde una máquina de desarrollo. Se
 /// llama para la app principal y para la instancia secundaria que se usa al
@@ -9,9 +12,13 @@ import 'package:flutter/foundation.dart';
 ///
 /// Para trabajar en debug contra el proyecto real (p. ej. para ver el catálogo
 /// ya sembrado): `flutter run --dart-define=USE_FIRESTORE_EMULATOR=false`.
+///
+/// [forgetSavedEmulator] es solo para pruebas.
 Future<void> connectToEmulatorsIfDebug({
   required FirebaseAuth auth,
   FirebaseFirestore? firestore,
+  @visibleForTesting
+  void Function(String appName) forgetSavedEmulator = forgetSavedAuthEmulator,
 }) async {
   if (!kDebugMode) return;
   const useEmulator = bool.fromEnvironment(
@@ -24,5 +31,8 @@ Future<void> connectToEmulatorsIfDebug({
       ? '10.0.2.2'
       : 'localhost';
   firestore?.useFirestoreEmulator(host, 8080);
+  // firebase_auth_web 6.3.0 solo reconecta tras F5 en localhost; fuera, una
+  // sesión previa a F5 aún se pierde. Quitar con > 6.3.0 (flutterfire#18690).
+  forgetSavedEmulator(auth.app.name);
   await auth.useAuthEmulator(host, 9099);
 }
