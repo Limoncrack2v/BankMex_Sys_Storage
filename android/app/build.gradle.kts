@@ -62,7 +62,7 @@ android {
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {
-                logger.warn("android/key.properties no existe: el release se firma con la llave de debug.")
+                if (gradle.startParameter.taskNames.any { it.contains("Release") }) logger.warn("android/key.properties no existe: el release se firma con la llave de debug.")
                 signingConfigs.getByName("debug")
             }
             isMinifyEnabled = true

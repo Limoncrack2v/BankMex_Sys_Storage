@@ -111,11 +111,13 @@ El application ID de Android es `mx.bamx.bankstorage` (antes `com.example.bank_s
 
 El APK de producción se firma con la llave de subida del equipo, no con la de debug: con la de debug, cualquiera que tenga una llave de debug podría reemplazar la app (MASVS-RESILIENCE-3).
 
-1. Pide la llave (`upload-keystore.jks`) y sus contraseñas a quien la custodia. Guárdala fuera del repo. Solo si el equipo aún no tiene una, créala una vez:
+1. Pide la llave (`upload-keystore.jks`) y su contraseña a @HenryJMP, que la custodia; la segunda copia la tiene @11rls11. Las dos están en Bitwarden. Guárdala fuera del repo y nunca la compartas por GitHub, WhatsApp ni Drive. Solo si el equipo la perdiera, se crea otra una vez:
 
    ```sh
    keytool -genkey -v -keystore ~/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
    ```
+
+   En Windows, `keytool` no está en el PATH: está en `jbr\bin` dentro de la carpeta de Android Studio (por ejemplo `"C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe"`). PowerShell no expande `~`, así que usa una ruta completa en `-keystore` (por ejemplo `C:\Users\<usuario>\upload-keystore.jks`).
 
 2. Crea `android/key.properties` (está en `.gitignore`; nunca lo subas):
 
@@ -124,22 +126,34 @@ El APK de producción se firma con la llave de subida del equipo, no con la de d
    keyPassword=<contraseña de la llave>
    keyAlias=upload
    storeFile=/home/<usuario>/upload-keystore.jks
+   # Windows: usa / en la ruta, no \
+   # storeFile=C:/Users/<usuario>/upload-keystore.jks
    ```
+
+   En Windows la ruta lleva `/`: el archivo se lee con `java.util.Properties`, que trata `\` como escape. `C:\Users\<usuario>\upload-keystore.jks` falla con `Malformed \uxxxx encoding` (por el `\u` de "upload"), y otras rutas pierden las `\` sin avisar. Como Gradle lee `key.properties` siempre que existe, una ruta mal escrita rompe todos los builds de Android en esa computadora, también los de debug.
 
    Sin este archivo el release se firma con la llave de debug y Gradle lo avisa con `android/key.properties no existe`. Sirve para `flutter run --release`, pero ese APK no se distribuye.
 
-3. Compila con el código de Dart ofuscado. El release también pasa por R8 (`isMinifyEnabled`) para el código de Java/Kotlin:
+3. Compila con el código de Dart ofuscado. El release también pasa por R8 (`isMinifyEnabled`) para el código de Java/Kotlin. Para Google Play se sube un AAB; el APK sirve para instalarlo directamente:
 
    ```sh
+   # Google Play (AAB)
+   flutter build appbundle --release --obfuscate --split-debug-info=build/symbols
+   # APK
    flutter build apk --release --obfuscate --split-debug-info=build/symbols
    ```
 
-   `build/symbols` guarda los símbolos para leer los stack traces ofuscados (`flutter symbolize -i <trace> -d build/symbols/app.android-arm64.symbols`). Guárdalos junto con la versión que publicaste, en un lugar privado y fuera del repo; sin ellos no se pueden leer los errores de esa versión.
+   Con Play App Signing, Google guarda la llave con la que se firma la app y la de `key.properties` es solo la llave de subida: si se pierde, Google la puede restablecer.
 
-4. Revisa que el APK esté firmado con la llave del equipo y no con la de debug (`CN=Android Debug`):
+   `build/symbols` guarda los símbolos para leer los stack traces ofuscados (`flutter symbolize -i <trace> -d build/symbols/app.android-arm64.symbols`). Guárdalos junto con la versión que publicaste, en un lugar privado y fuera del repo. Sin ellos no se pueden leer los errores de esa versión.
+
+4. Revisa que el build esté firmado con la llave del equipo (`CN=Bank Storage Upload`) y no con la de debug (`CN=Android Debug`). `apksigner` solo revisa el APK; para el AAB usa `keytool`:
 
    ```sh
+   # APK
    $ANDROID_HOME/build-tools/<versión>/apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+   # AAB
+   keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab
    ```
 
 ## Despensa y entregas
