@@ -5,6 +5,8 @@ import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_bottom_nav.dart';
 import 'package:bank_storage_app/ui/widgets/app_icon.dart';
 
+import 'helpers/large_text.dart';
+
 /// Ancho lógico de un iPhone 17 en vertical.
 const _iphone = Size(402, 874);
 
@@ -71,6 +73,23 @@ void main() {
       final rightMargin = _iphone.width - centers.last;
       expect(leftMargin, closeTo(rightMargin, 0.5));
       expect(leftMargin, closeTo(gaps.first / 2, 1));
+    });
+
+    testWidgets('con la letra más grande ninguna etiqueta $name se parte', (
+      tester,
+    ) async {
+      await loadAppFonts();
+      // 2.0: el máximo de Android. Sin el ajuste, "Despen sa".
+      await pumpWithTextScale(
+        tester,
+        AppBottomNav(items: items, currentIndex: 0, onTap: (_) {}),
+        textScale: 2,
+      );
+
+      for (final item in items) {
+        expect(find.text(item.label), findsOneWidget);
+      }
+      expectNoBrokenWords(tester);
     });
 
     testWidgets('cada opción $name ocupa el mismo ancho', (tester) async {

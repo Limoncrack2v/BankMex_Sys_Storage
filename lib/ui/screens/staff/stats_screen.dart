@@ -9,6 +9,7 @@ import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
 import '../../formatting.dart';
 import '../../models/program_stats.dart';
+import '../../text_width.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
@@ -243,23 +244,43 @@ class _Caption extends StatelessWidget {
       Text(text, style: AppText.nunito(15, 22.5, weight: FontWeight.w700));
 }
 
+/// Dos tarjetas lado a lado; con letra grande, si una palabra de alguna no
+/// cabe en media pantalla ("vs. 1–14 sep" no se corta), van una debajo de otra.
 class _MetricRow extends StatelessWidget {
   const _MetricRow({required this.left, required this.right});
 
-  final Widget left;
-  final Widget right;
+  final _MetricCard left;
+  final _MetricCard right;
+
+  static const _gap = 12.0;
 
   @override
   Widget build(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: left),
-          const SizedBox(width: 12),
-          Expanded(child: right),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final half = (constraints.maxWidth - _gap) / 2;
+        if (left.minWidth(context) > half || right.minWidth(context) > half) {
+          // IntrinsicHeight: el Spacer de la tarjeta necesita un alto fijo.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              IntrinsicHeight(child: left),
+              const SizedBox(height: _gap),
+              IntrinsicHeight(child: right),
+            ],
+          );
+        }
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: left),
+              const SizedBox(width: _gap),
+              Expanded(child: right),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -276,36 +297,45 @@ class _MetricCard extends StatelessWidget {
   final String value;
   final String note;
 
+  static const _padding = 16.0;
+  static final _labelStyle = AppText.nunito(
+    15,
+    21,
+    weight: FontWeight.w600,
+    color: AppColors.textMuted,
+  );
+  static final _valueStyle = AppText.baloo(30, 36);
+  static final _noteStyle = AppText.nunito(
+    14,
+    20,
+    weight: FontWeight.w600,
+    color: AppColors.textMuted,
+  );
+
+  /// Ancho mínimo de la tarjeta para que ninguna palabra se parta, con la
+  /// letra del sistema.
+  double minWidth(BuildContext context) =>
+      2 * _padding +
+      [
+        longestWordWidth(context, label, _labelStyle),
+        longestWordWidth(context, value, _valueStyle),
+        longestWordWidth(context, note, _noteStyle),
+      ].reduce(math.max);
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(_padding),
       decoration: _cardDecoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: AppText.nunito(
-              15,
-              21,
-              weight: FontWeight.w600,
-              color: AppColors.textMuted,
-            ),
-          ),
+          Text(label, style: _labelStyle),
           const SizedBox(height: 4),
-          Text(value, style: AppText.baloo(30, 36)),
+          Text(value, style: _valueStyle),
           const Spacer(),
           const SizedBox(height: 8),
-          Text(
-            note,
-            style: AppText.nunito(
-              14,
-              20,
-              weight: FontWeight.w600,
-              color: AppColors.textMuted,
-            ),
-          ),
+          Text(note, style: _noteStyle),
         ],
       ),
     );
@@ -463,16 +493,20 @@ class _LegendItem extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          label,
-          style:
-              style ??
-              AppText.nunito(
-                14,
-                20,
-                weight: FontWeight.w600,
-                color: AppColors.textMuted,
-              ),
+        // Flexible: con letra grande el texto baja de renglón en vez de
+        // desbordarse.
+        Flexible(
+          child: Text(
+            label,
+            style:
+                style ??
+                AppText.nunito(
+                  14,
+                  20,
+                  weight: FontWeight.w600,
+                  color: AppColors.textMuted,
+                ),
+          ),
         ),
       ],
     );
@@ -561,15 +595,20 @@ class _BarChart extends StatelessWidget {
               children: [
                 for (final (index, month) in months.indexed)
                   Expanded(
-                    child: Text(
-                      monthShort(month.month),
-                      textAlign: TextAlign.center,
-                      style: index == selected
-                          ? labelStyle.copyWith(
-                              color: AppColors.text,
-                              fontWeight: FontWeight.w700,
-                            )
-                          : labelStyle,
+                    // Con letra grande "may" no cabe bajo su barra: se encoge
+                    // en vez de partirse.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        monthShort(month.month),
+                        textAlign: TextAlign.center,
+                        style: index == selected
+                            ? labelStyle.copyWith(
+                                color: AppColors.text,
+                                fontWeight: FontWeight.w700,
+                              )
+                            : labelStyle,
+                      ),
                     ),
                   ),
               ],
