@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../../application/bank_storage_facade.dart';
 import '../../../data/models/family.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/auth_repository.dart';
 import '../../../domain/models/recipe.dart';
 import '../../formatting.dart';
 import '../../theme/app_assets.dart';
@@ -253,17 +254,26 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     try {
       synced = await _awaitSave(
         save,
-        onLateError: (error) => _showSnack(
-          messenger,
-          'No se pudo sincronizar «$name». Revisa el catálogo e intenta de '
-          'nuevo.',
-        ),
+        onLateError: (error) async {
+          final stale = publishes
+              ? await AuthRepository().staleSignInError(error)
+              : null;
+          _showSnack(
+            messenger,
+            'No se pudo sincronizar «$name». '
+            '${stale ?? 'Revisa el catálogo e intenta de nuevo.'}',
+          );
+        },
       );
     } catch (e) {
+      // Guardar una receta pendiente no pide una sesión reciente.
+      final stale = publishes
+          ? await AuthRepository().staleSignInError(e)
+          : null;
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = _errorMessage(e, 'guardar la receta');
+        _error = stale ?? _errorMessage(e, 'guardar la receta');
       });
       return;
     }
@@ -301,16 +311,21 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     try {
       synced = await _awaitSave(
         BankStorageFacade().approveRecipe(recipe.id),
-        onLateError: (error) => _showSnack(
-          messenger,
-          'No se pudo sincronizar la publicación de «${recipe.name}».',
-        ),
+        onLateError: (error) async {
+          final stale = await AuthRepository().staleSignInError(error);
+          _showSnack(
+            messenger,
+            'No se pudo sincronizar la publicación de «${recipe.name}».'
+            '${stale == null ? '' : ' $stale'}',
+          );
+        },
       );
     } catch (e) {
+      final stale = await AuthRepository().staleSignInError(e);
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = _errorMessage(e, 'publicar la receta');
+        _error = stale ?? _errorMessage(e, 'publicar la receta');
       });
       return;
     }
