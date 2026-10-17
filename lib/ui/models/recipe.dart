@@ -570,7 +570,7 @@ List<MealPlanEntry> buildMealPlan(
     ]..sort(_compareRanked);
 
     final chosen = ranked.first;
-    plan.add(_planEntry(chosen, date));
+    plan.add(_planEntry(chosen, date, today: now));
     served.add(chosen.index);
     previous = chosen.index;
     replay.cook(chosen.recipe, date);
@@ -622,8 +622,12 @@ int _compareRanked(_RankedRecipe a, _RankedRecipe b) {
 }
 
 /// El motivo nombra el producto solo si caduca pronto (7 días o menos); si
-/// no, basta con decir si faltan ingredientes.
-MealPlanEntry _planEntry(_RankedRecipe ranked, DateTime date) {
+/// no, basta con decir si faltan ingredientes. Sin [today], [date] es hoy.
+MealPlanEntry _planEntry(
+  _RankedRecipe ranked,
+  DateTime date, {
+  DateTime? today,
+}) {
   final (:recipe, :missing, :mostUrgent, :days, index: _) = ranked;
   final urgency = days == null
       ? ExpirationUrgency.fresh
@@ -633,7 +637,8 @@ MealPlanEntry _planEntry(_RankedRecipe ranked, DateTime date) {
     if (mostUrgent != null &&
         days != null &&
         urgency != ExpirationUrgency.fresh)
-      'Usa ${productDisplayName(mostUrgent.productId)} (${_expiresIn(days)})',
+      'Usa ${productDisplayName(mostUrgent.productId)} '
+          '(${_expiresIn(days, date, today)})',
     if (missing == 1) 'Te falta 1 ingrediente',
     if (missing > 1) 'Te faltan $missing ingredientes',
   ];
@@ -649,11 +654,23 @@ MealPlanEntry _planEntry(_RankedRecipe ranked, DateTime date) {
   );
 }
 
-String _expiresIn(int days) => switch (days) {
-  0 => 'caduca hoy',
-  1 => 'caduca mañana',
-  _ => 'caduca en $days días',
-};
+/// Contado desde hoy en la tarjeta de hoy. En la de otro día se dice la
+/// fecha, porque "caduca en 4 días" se lee como contado desde hoy.
+String _expiresIn(int days, DateTime date, DateTime? today) {
+  final isToday =
+      today == null || DateTime(today.year, today.month, today.day) == date;
+  if (!isToday) {
+    if (days == 0) return 'caduca ese día';
+    final expiry = DateTime(date.year, date.month, date.day + days);
+    return 'caduca el ${_weekdays[expiry.weekday - 1].toLowerCase()} '
+        '${expiry.day}';
+  }
+  return switch (days) {
+    0 => 'caduca hoy',
+    1 => 'caduca mañana',
+    _ => 'caduca en $days días',
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Receta a pedido.
@@ -1079,15 +1096,17 @@ PantryItem _withQuantity(PantryItem item, double quantity) => PantryItem(
 
 /// La tarjeta de [recipe] el día [date] de un plan guardado, como en
 /// [buildMealPlan]: con la despensa de esa fecha, sin lo que usa [earlier].
+/// Sin [today], [date] es hoy.
 MealPlanEntry planEntryFor(
   Recipe recipe,
   DateTime date,
   List<PantryItem> pantry, {
   List<MealPlanEntry> earlier = const [],
+  DateTime? today,
 }) {
   final day = DateTime(date.year, date.month, date.day);
   final left = _pantryAfter(earlier, pantry, day);
-  return _planEntry(_rankRecipe(recipe, 0, left, day), day);
+  return _planEntry(_rankRecipe(recipe, 0, left, day), day, today: today);
 }
 
 /// Abreviatura del día de [date], como en las tarjetas del plan ("Mié").
@@ -1100,6 +1119,7 @@ List<MealPlanEntry> planOptionsFor(
   List<PantryItem> pantry,
   DateTime date, {
   List<MealPlanEntry> earlier = const [],
+  DateTime? today,
 }) {
   final day = DateTime(date.year, date.month, date.day);
   final left = _pantryAfter(earlier, pantry, day);
@@ -1107,7 +1127,7 @@ List<MealPlanEntry> planOptionsFor(
     for (var i = 0; i < recipes.length; i++)
       _rankRecipe(recipes[i], i, left, day),
   ]..sort(_compareRanked);
-  return [for (final recipe in ranked) _planEntry(recipe, day)];
+  return [for (final recipe in ranked) _planEntry(recipe, day, today: today)];
 }
 
 /// [pantry] después de cocinar en orden las tarjetas de [earlier] de antes de

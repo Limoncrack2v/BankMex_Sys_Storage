@@ -396,7 +396,8 @@ void main() {
     testWidgets('a card counts what expires on its date, like the suggestion', (
       tester,
     ) async {
-      // La leche caduca el jueves: en su tarjeta caduca hoy.
+      // La leche caduca el jueves. Hoy es miércoles, así que la tarjeta del
+      // jueves dice "caduca ese día", no "hoy" ni "mañana".
       await pumpSaved(
         tester,
         plan: savedPlan(meals: [meal(15, 'rec_avena_fruta')]),
@@ -404,9 +405,10 @@ void main() {
 
       expect(find.text('JUE'), findsOneWidget);
       expect(
-        find.textContaining('Usa Leche entera (caduca hoy)'),
+        find.textContaining('Usa Leche entera (caduca ese día)'),
         findsOneWidget,
       );
+      expect(find.textContaining('caduca hoy'), findsNothing);
       expect(find.textContaining('caduca mañana'), findsNothing);
     });
 
@@ -435,7 +437,7 @@ void main() {
         findsOneWidget,
       );
       final saturday = find.text(
-        'Usa Lenteja (caduca en 2 días)\nTe faltan 3 ingredientes',
+        'Usa Lenteja (caduca el lun 19)\nTe faltan 3 ingredientes',
       );
       await tester.scrollUntilVisible(saturday, 300);
       expect(saturday, findsOneWidget);

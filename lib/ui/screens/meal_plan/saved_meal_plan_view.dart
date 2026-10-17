@@ -140,6 +140,7 @@ class SavedPlanView extends StatelessWidget {
       pantry,
       day,
       earlier: earlier,
+      today: today,
     );
     showEditPlanDaySheet(
       context,
@@ -236,6 +237,7 @@ class SavedPlanView extends StatelessWidget {
           day,
           pantry,
           earlier: earlier,
+          today: today,
         );
         entries.add(entry);
         cards.add(

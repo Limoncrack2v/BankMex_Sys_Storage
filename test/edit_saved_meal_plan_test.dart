@@ -334,7 +334,7 @@ void main() {
       await openDayNamed(tester, 'Cambiar la receta del jueves 15');
       expect(find.text('Jueves 15 de octubre'), findsOneWidget);
       expect(
-        inSheet(find.textContaining('Usa Leche entera (caduca hoy)')),
+        inSheet(find.textContaining('Usa Leche entera (caduca ese día)')),
         findsOneWidget,
       );
       await tester.tap(find.byTooltip('Cerrar'));
@@ -360,13 +360,13 @@ void main() {
       await openDayNamed(tester, 'Cambiar la receta del jueves 15');
       expect(find.text('Jueves 15 de octubre'), findsOneWidget);
       expect(
-        inSheet(find.textContaining('Usa Lenteja (caduca en 4 días)')),
+        inSheet(find.textContaining('Usa Lenteja (caduca el lun 19)')),
         findsOneWidget,
       );
       await tester.tap(find.byTooltip('Cerrar'));
       await tester.pumpAndSettle();
 
-      // Le quedan 3 días, pero la sopa del jueves ya se la acabó.
+      // Todavía no caduca, pero la sopa del jueves ya se la acabó.
       await openDay(tester, 'Elegir receta');
       expect(find.text('Viernes 16 de octubre'), findsOneWidget);
       expect(inSheet(find.textContaining('Usa Lenteja')), findsNothing);

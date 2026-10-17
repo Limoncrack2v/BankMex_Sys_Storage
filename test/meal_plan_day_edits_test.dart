@@ -173,8 +173,8 @@ void main() {
         item('Lenteja', 1, FoodUnit.kg, 5),
       ];
 
-      final today = planOptionsFor(recipes, pantry, day(0));
-      final friday = planOptionsFor(recipes, pantry, day(2));
+      final today = planOptionsFor(recipes, pantry, day(0), today: day(0));
+      final friday = planOptionsFor(recipes, pantry, day(2), today: day(0));
 
       expect(today.map((e) => e.recipe.name), [
         'Avena con fruta',
@@ -189,9 +189,10 @@ void main() {
         today.first.reason,
         startsWith('Usa Leche entera (caduca mañana)'),
       );
-      // El viernes 16 la leche ya caducó y a los plátanos les queda 1 día.
-      expect(friday.first.reason, startsWith('Usa Plátano (caduca mañana)'));
-      expect(friday[1].reason, startsWith('Usa Lenteja (caduca en 3 días)'));
+      // El viernes 16 la leche ya caducó y los plátanos caducan el sábado. La
+      // tarjeta del viernes dice la fecha, no los días desde hoy.
+      expect(friday.first.reason, startsWith('Usa Plátano (caduca el sáb 17)'));
+      expect(friday[1].reason, startsWith('Usa Lenteja (caduca el lun 19)'));
       expect(friday.map((e) => e.date), everyElement(day(2)));
     });
 
@@ -245,6 +246,7 @@ void main() {
           pantry,
           plan[i].date,
           earlier: plan.sublist(0, i),
+          today: day(0),
         );
         final card = options.singleWhere((e) => e.recipe == plan[i].recipe);
         expect(card.reason, plan[i].reason, reason: '${plan[i].date}');

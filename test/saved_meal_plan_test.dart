@@ -219,7 +219,13 @@ void main() {
     for (final meal in plan.meals) {
       final recipe = byId[meal.recipeId]!;
       saved.add(
-        planEntryFor(recipe, meal.date, pantry, earlier: List.of(saved)),
+        planEntryFor(
+          recipe,
+          meal.date,
+          pantry,
+          earlier: List.of(saved),
+          today: today,
+        ),
       );
     }
 
@@ -228,7 +234,8 @@ void main() {
     expect(saved.map((e) => e.urgency), suggested.map((e) => e.urgency));
     // Sin lo que usan los días anteriores, alguna tarjeta diría otra cosa.
     final alone = [
-      for (final e in suggested) planEntryFor(e.recipe, e.date, pantry).reason,
+      for (final e in suggested)
+        planEntryFor(e.recipe, e.date, pantry, today: today).reason,
     ];
     expect(alone, isNot(suggested.map((e) => e.reason).toList()));
     String leftovers(List<MealPlanEntry> entries) => [

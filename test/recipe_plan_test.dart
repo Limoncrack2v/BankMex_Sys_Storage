@@ -434,14 +434,14 @@ void main() {
         // Ronda nueva: la leche y el jitomate ya caducaron, ya nada urgente.
         'Arroz con atún',
       ]);
-      // Los días que quedan se cuentan desde la fecha de cada tarjeta: el
-      // jamón caduca en 3 días desde hoy, pero el martes ya le queda 2.
+      // La tarjeta de hoy cuenta desde hoy; las demás dicen la fecha, así que
+      // el mismo jitomate dice lo mismo en cada tarjeta.
       expect(plan.map((e) => e.reason), [
         'Usa Leche entera (caduca mañana)\nTe faltan 2 ingredientes',
-        'Usa Jamón de pavo (caduca en 2 días)\nTe faltan 2 ingredientes',
-        'Usa Jitomate (caduca en 3 días)\nTe faltan 2 ingredientes',
-        'Usa Jitomate (caduca en 2 días)\nTe faltan 3 ingredientes',
-        'Usa Jitomate (caduca mañana)\nTe faltan 4 ingredientes',
+        'Usa Jamón de pavo (caduca el jue 24)\nTe faltan 2 ingredientes',
+        'Usa Jitomate (caduca el sáb 26)\nTe faltan 2 ingredientes',
+        'Usa Jitomate (caduca el sáb 26)\nTe faltan 3 ingredientes',
+        'Usa Jitomate (caduca el sáb 26)\nTe faltan 4 ingredientes',
         'Con productos de tu despensa',
         'Te faltan 3 ingredientes',
       ]);
@@ -666,8 +666,8 @@ void main() {
       }
     });
 
-    test('"caduca mañana" y "caduca en N días" se cuentan desde la fecha de '
-        'la tarjeta, igual que Urgente / Pronto', () {
+    test('"caduca en N días" solo en la tarjeta de hoy; las demás dicen la '
+        'fecha. Urgente / Pronto, desde la fecha de la tarjeta', () {
       final plan = buildMealPlan(
         [conJitomate, conArroz],
         [
@@ -689,9 +689,9 @@ void main() {
       expect(plan.map((e) => e.reason), [
         'Usa Jitomate (caduca en 5 días)',
         'Con productos de tu despensa',
-        'Usa Jitomate (caduca en 3 días)',
+        'Usa Jitomate (caduca el sáb 26)',
         'Con productos de tu despensa',
-        'Usa Jitomate (caduca mañana)',
+        'Usa Jitomate (caduca el sáb 26)',
         'Con productos de tu despensa',
         // El jitomate caducó el sábado: el domingo ya no se nombra.
         'Te falta 1 ingrediente',
@@ -707,7 +707,7 @@ void main() {
       ]);
     });
 
-    test('un producto con "caduca hoy" lo dice solo en su último día', () {
+    test('un producto dice "caduca ese día" solo en su último día', () {
       final plan = buildMealPlan(
         [conJitomate, conArroz],
         [
@@ -718,8 +718,8 @@ void main() {
       );
 
       expect(plan[0].reason, 'Usa Jitomate (caduca en 4 días)');
-      expect(plan[2].reason, 'Usa Jitomate (caduca en 2 días)');
-      expect(plan[4].reason, 'Usa Jitomate (caduca hoy)');
+      expect(plan[2].reason, 'Usa Jitomate (caduca el vie 25)');
+      expect(plan[4].reason, 'Usa Jitomate (caduca ese día)');
       expect(plan[4].urgency, ExpirationUrgency.urgent);
       expect(plan[6].reason, 'Te falta 1 ingrediente');
     });
@@ -758,7 +758,9 @@ void main() {
           // frase coincide con los días que le quedan en esa fecha.
           expect(left, isNotEmpty);
           expect(
-            left.where((days) => days >= 0).map(_expiresPhrase),
+            left
+                .where((days) => days >= 0)
+                .map((days) => _expiresPhrase(days, entry.date, octubre13)),
             contains(match.group(2)),
             reason: '${entry.date}: ${entry.reason}',
           );
@@ -801,8 +803,8 @@ void main() {
       // El lunes se bebió el litro entero: el miércoles no queda leche.
       expect(lecheAgotada[2].reason, 'Te falta 1 ingrediente');
       expect(lecheAgotada[2].urgency, ExpirationUrgency.fresh);
-      // Con 2 litros sí queda, y los días que le quedan son los del miércoles.
-      expect(conSobrante[2].reason, 'Usa Leche entera (caduca en 4 días)');
+      // Con 2 litros sí queda, y sigue caducando el domingo.
+      expect(conSobrante[2].reason, 'Usa Leche entera (caduca el dom 27)');
     });
 
     test('un día sin nada usable elige la receta con menos faltantes y no '
@@ -919,10 +921,10 @@ void main() {
 
     test('cuenta los días de calendario al cruzar de mes, de año y de 29 de '
         'febrero', () {
-      for (final start in [
-        DateTime(2026, 9, 28, 23, 30),
-        DateTime(2026, 12, 29, 8),
-        DateTime(2028, 2, 27, 23, 59),
+      for (final (start, expiry) in [
+        (DateTime(2026, 9, 28, 23, 30), 'caduca el sáb 3'),
+        (DateTime(2026, 12, 29, 8), 'caduca el dom 3'),
+        (DateTime(2028, 2, 27, 23, 59), 'caduca el vie 3'),
       ]) {
         final day = DateTime(start.year, start.month, start.day);
         final plan = buildMealPlan(
@@ -940,16 +942,25 @@ void main() {
         ], reason: '$start');
         // La leche sale los días 0, 2, 4 y 6 y caduca el día 5.
         expect(plan[0].reason, 'Usa Leche entera (caduca en 5 días)');
-        expect(plan[2].reason, 'Usa Leche entera (caduca en 3 días)');
-        expect(plan[4].reason, 'Usa Leche entera (caduca mañana)');
+        expect(plan[2].reason, 'Usa Leche entera ($expiry)', reason: '$start');
+        expect(plan[4].reason, 'Usa Leche entera ($expiry)', reason: '$start');
         expect(plan[6].reason, 'Te falta 1 ingrediente', reason: '$start');
       }
     });
   });
 }
 
-String _expiresPhrase(int days) => switch (days) {
-  0 => 'caduca hoy',
-  1 => 'caduca mañana',
-  _ => 'caduca en $days días',
-};
+/// Lo que dice la tarjeta del [date] de lo que le quedan [days] días.
+String _expiresPhrase(int days, DateTime date, DateTime today) {
+  if (date != today) {
+    if (days == 0) return 'caduca ese día';
+    final expiry = DateTime(date.year, date.month, date.day + days);
+    const weekdays = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    return 'caduca el ${weekdays[expiry.weekday - 1]} ${expiry.day}';
+  }
+  return switch (days) {
+    0 => 'caduca hoy',
+    1 => 'caduca mañana',
+    _ => 'caduca en $days días',
+  };
+}
