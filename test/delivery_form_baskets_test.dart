@@ -11,7 +11,10 @@ import 'package:bank_storage_app/ui/formatting.dart';
 import 'package:bank_storage_app/ui/screens/staff/deliveries_screen.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_text_field.dart';
+import 'package:bank_storage_app/ui/widgets/option_button.dart';
 import 'package:bank_storage_app/ui/widgets/standard_basket_selector.dart';
+
+import 'helpers/large_text.dart';
 
 const _arroz = StandardBasketItem(
   productId: 'Arroz',
@@ -50,7 +53,8 @@ const _frescos = StandardBasket(
 
 final _today = DateUtils.dateOnly(DateTime.now());
 
-DateTime _in(int days) => DateTime(_today.year, _today.month, _today.day + days);
+DateTime _in(int days) =>
+    DateTime(_today.year, _today.month, _today.day + days);
 
 Future<void> _pumpForm(
   WidgetTester tester, {
@@ -129,6 +133,42 @@ Future<void> _setQuantity(WidgetTester tester, int index, String text) async {
 }
 
 void main() {
+  testWidgets('con la letra más grande el formulario no parte palabras', (
+    tester,
+  ) async {
+    await loadAppFonts();
+    // Antes: "Exen ta" y "Programad a".
+    await pumpWithTextScale(
+      tester,
+      SingleChildScrollView(
+        child: DeliveryForm(
+          families: Stream.value(const <Family>[]),
+          baskets: Stream.value(const [_basica, _frescos]),
+        ),
+      ),
+      textScale: 2,
+      height: 6000,
+    );
+
+    expect(find.text('Exenta'), findsOneWidget);
+    expect(find.text('Programada'), findsOneWidget);
+    expectNoBrokenWords(tester);
+
+    // "Exenta" mide lo mismo que el campo de la cuota.
+    final feeRow = find
+        .ancestor(of: find.text('Exenta'), matching: find.byType(Row))
+        .first;
+    final field = find.descendant(
+      of: feeRow,
+      matching: find.byType(AppTextField),
+    );
+    final exempt = find.descendant(
+      of: feeRow,
+      matching: find.byType(OptionButton),
+    );
+    expect(tester.getSize(exempt).height, tester.getSize(field).height);
+  });
+
   group('elegir las despensas', () {
     testWidgets('antes de la fecha no llena nada y la pide', (tester) async {
       await _pumpForm(tester);
@@ -175,45 +215,47 @@ void main() {
       );
     });
 
-    testWidgets('las cantidades salen multiplicadas por el número de despensas', (
-      tester,
-    ) async {
-      await _pumpForm(tester);
-      await _pickDate(tester);
-      await _pickBasket(tester, 'Despensa básica');
-      await _pickBasket(tester, 'Frescos');
+    testWidgets(
+      'las cantidades salen multiplicadas por el número de despensas',
+      (tester) async {
+        await _pumpForm(tester);
+        await _pickDate(tester);
+        await _pickBasket(tester, 'Despensa básica');
+        await _pickBasket(tester, 'Frescos');
 
-      await _setPackages(tester, '3');
+        await _setPackages(tester, '3');
 
-      expect(_quantities(tester), ['3', '1.2', '36']);
+        expect(_quantities(tester), ['3', '1.2', '36']);
 
-      await _setPackages(tester, '2');
+        await _setPackages(tester, '2');
 
-      expect(_quantities(tester), ['2', '0.8', '24']);
-    });
+        expect(_quantities(tester), ['2', '0.8', '24']);
+      },
+    );
 
-    testWidgets('con un número de despensas inválido espera sin tocar la lista', (
-      tester,
-    ) async {
-      await _pumpForm(tester);
-      await _pickDate(tester);
-      await _pickBasket(tester, 'Despensa básica');
+    testWidgets(
+      'con un número de despensas inválido espera sin tocar la lista',
+      (tester) async {
+        await _pumpForm(tester);
+        await _pickDate(tester);
+        await _pickBasket(tester, 'Despensa básica');
 
-      await _setPackages(tester, '');
+        await _setPackages(tester, '');
 
-      expect(_quantities(tester), ['1', '0.4']);
-      expect(
-        find.text(
-          'Indica de 1 a ${Delivery.maxPackages} despensas para llenar los '
-          'productos.',
-        ),
-        findsOneWidget,
-      );
+        expect(_quantities(tester), ['1', '0.4']);
+        expect(
+          find.text(
+            'Indica de 1 a ${Delivery.maxPackages} despensas para llenar los '
+            'productos.',
+          ),
+          findsOneWidget,
+        );
 
-      await _setPackages(tester, '4');
+        await _setPackages(tester, '4');
 
-      expect(_quantities(tester), ['4', '1.6']);
-    });
+        expect(_quantities(tester), ['4', '1.6']);
+      },
+    );
 
     testWidgets('la caducidad se cuenta desde la fecha de entrega', (
       tester,
@@ -229,21 +271,22 @@ void main() {
       expect(find.text(formatDateShort(_in(21))), findsOneWidget);
     });
 
-    testWidgets('al cambiar la fecha una lista sin editar cambia sus caducidades', (
-      tester,
-    ) async {
-      await _pumpForm(tester);
-      await _pickBasket(tester, 'Frescos');
-      await _pickDate(tester);
-      final day = _today.day == 15 ? 16 : 15;
-      final delivery = DateTime(_today.year, _today.month, day);
+    testWidgets(
+      'al cambiar la fecha una lista sin editar cambia sus caducidades',
+      (tester) async {
+        await _pumpForm(tester);
+        await _pickBasket(tester, 'Frescos');
+        await _pickDate(tester);
+        final day = _today.day == 15 ? 16 : 15;
+        final delivery = DateTime(_today.year, _today.month, day);
 
-      await _pickDate(tester, day: day);
+        await _pickDate(tester, day: day);
 
-      final expiration = DateTime(delivery.year, delivery.month, day + 21);
-      expect(find.text(formatDateShort(expiration)), findsOneWidget);
-      expect(find.text(formatDateShort(_in(21))), findsNothing);
-    });
+        final expiration = DateTime(delivery.year, delivery.month, day + 21);
+        expect(find.text(formatDateShort(expiration)), findsOneWidget);
+        expect(find.text(formatDateShort(_in(21))), findsNothing);
+      },
+    );
 
     testWidgets('quitar la despensa vacía la lista que no se editó', (
       tester,
@@ -316,10 +359,7 @@ void main() {
     ) async {
       await _pumpForm(tester);
       await _pickDate(tester);
-      await tester.enterText(
-        find.byWidget(_nameField(tester, 0)),
-        'Galletas',
-      );
+      await tester.enterText(find.byWidget(_nameField(tester, 0)), 'Galletas');
       await tester.pump();
 
       await _pickBasket(tester, 'Despensa básica');
