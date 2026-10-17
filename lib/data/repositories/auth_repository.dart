@@ -162,6 +162,29 @@ class AuthRepository {
     }
   }
 
+  /// Lo que se muestra cuando las reglas niegan una acción sensible porque el
+  /// inicio de sesión ya no es reciente: el siguiente toque pide la
+  /// contraseña (ensureRecentSignIn).
+  static const staleSignInMessage =
+      'Tu sesión necesita confirmarse. Intenta de nuevo.';
+
+  /// [staleSignInMessage] si [error] es un permission-denied y la sesión no
+  /// es reciente; si no, null y cada pantalla muestra su propio mensaje.
+  static String? staleSignInMessageFor(
+    Object error, {
+    required bool recentSignIn,
+  }) => !recentSignIn && _isPermissionDenied(error) ? staleSignInMessage : null;
+
+  /// [staleSignInMessageFor] con la sesión actual. Solo para acciones que
+  /// piden una sesión reciente (las que pasan por ensureRecentSignIn).
+  Future<String?> staleSignInError(Object error) async =>
+      _isPermissionDenied(error)
+      ? staleSignInMessageFor(error, recentSignIn: await hasRecentSignIn())
+      : null;
+
+  static bool _isPermissionDenied(Object error) =>
+      error is FirebaseException && error.code == 'permission-denied';
+
   /// Confirma la identidad de quien tiene la sesión con su contraseña; el
   /// token nuevo trae un auth_time reciente. Lanza [AuthException].
   Future<void> reauthenticate(String password) async {
@@ -359,14 +382,17 @@ class AuthRepository {
 
       try {
         await batch.commit();
-      } catch (_) {
+      } catch (e) {
         try {
           await newUser.delete();
         } catch (_) {
           // Sin conexión no se puede borrar; la cuenta queda sin perfil y no
           // puede entrar a la app.
         }
-        throw AuthException('No se pudo crear la cuenta. Intenta de nuevo.');
+        throw AuthException(
+          await staleSignInError(e) ??
+              'No se pudo crear la cuenta. Intenta de nuevo.',
+        );
       }
       return family;
     } finally {
