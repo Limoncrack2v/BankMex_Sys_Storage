@@ -15,13 +15,14 @@ import '../../widgets/app_header.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/pill.dart';
 import 'deliveries_screen.dart';
+import 'families_sheet.dart';
 import 'recipe_catalog_screen.dart';
 import 'register_account_sheet.dart';
 import 'staff_requests_sheet.dart';
 import 'stats_screen.dart';
 
 /// Panel del staff: Entregas, con acceso a la cuenta (alta de cuentas,
-/// solicitudes de staff y cerrar sesión) desde el header. Si hay solicitudes
+/// familias, solicitudes de staff y cerrar sesión) desde el header. Si hay solicitudes
 /// de staff por revisar, un aviso arriba lleva a ellas.
 class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key, required this.session});
@@ -63,6 +64,10 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
           onRegisterAccount: () {
             Navigator.of(sheetContext).pop();
             showRegisterAccountSheet(context);
+          },
+          onFamilies: () {
+            Navigator.of(sheetContext).pop();
+            showFamiliesSheet(context);
           },
           onSignOut: () {
             Navigator.of(sheetContext).pop();
@@ -214,12 +219,14 @@ class _AccountDetails extends StatelessWidget {
     required this.user,
     required this.onStaffRequests,
     required this.onRegisterAccount,
+    required this.onFamilies,
     required this.onSignOut,
   });
 
   final AppUser user;
   final VoidCallback onStaffRequests;
   final VoidCallback onRegisterAccount;
+  final VoidCallback onFamilies;
   final VoidCallback onSignOut;
 
   @override
@@ -274,6 +281,12 @@ class _AccountDetails extends StatelessWidget {
           label: 'Registrar cuenta',
           icon: AppIcons.plus,
           onPressed: onRegisterAccount,
+        ),
+        const SizedBox(height: 12),
+        SecondaryButton(
+          label: 'Familias',
+          icon: AppIcons.users,
+          onPressed: onFamilies,
         ),
         const SizedBox(height: 16),
         Center(
