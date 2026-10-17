@@ -4,6 +4,7 @@ import '../../../data/catalog_source.dart';
 import '../../../data/models/family.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/adjustment_repository.dart';
 import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/meal_plan_repository.dart';
 import '../../../data/repositories/member_repository.dart';
@@ -11,14 +12,16 @@ import '../../../data/repositories/pantry_repository.dart';
 import '../../../domain/meal_plan_edits.dart';
 import '../../../domain/meal_plan_length.dart';
 import '../../../domain/models/meal_plan.dart';
+import '../../../domain/models/recipe_adjustment.dart';
 import '../../formatting.dart';
 import '../../models/recipe.dart';
-import '../../sample_data.dart';
+import '../../models/recipe_adjustments.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/pill.dart';
 import '../recipes/recipe_detail_screen.dart';
 import 'leftover_ingredients_section.dart';
@@ -34,14 +37,9 @@ import 'saved_meal_plan_view.dart';
 /// ([SavedPlanView]); si no, el plan sugerido, que se puede guardar
 /// ([SuggestedPlanView]).
 class MealPlanScreen extends StatefulWidget {
-  const MealPlanScreen({
-    super.key,
-    required this.familyId,
-    this.recipes = SampleData.recipes,
-  });
+  const MealPlanScreen({super.key, required this.familyId});
 
   final String familyId;
-  final List<Recipe> recipes;
 
   @override
   State<MealPlanScreen> createState() => _MealPlanScreenState();
@@ -55,6 +53,10 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   late Stream<List<PantryItem>> _pantry;
   late Stream<List<Member>> _members;
   late Stream<List<Recipe>> _catalog;
+
+  /// Las adaptaciones aprobadas de la familia: se arma el plan con la receta
+  /// adaptada solo si el nutriólogo ya la aprobó; si no, con la receta base.
+  late Stream<List<RecipeAdjustment>> _adjustments;
 
   // El hogar trae nextDeliveryDate (lo escribe syncNextDelivery): al ser un
   // stream, el plan se alarga o se acorta en vivo si el staff programa o
@@ -80,6 +82,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
     _members = MemberRepository().watchAllMembers(widget.familyId);
     _catalog = watchApprovedCatalogRecipes();
+    _adjustments = AdjustmentRepository().watchApproved(widget.familyId);
     _family = FamilyRepository().watchFamily(widget.familyId);
     _plans = MealPlanRepository().watchByFamily(widget.familyId);
   }
@@ -100,18 +103,22 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                   stream: _pantry,
                   builder: (context, pantry) => StreamBuilder<SavedPlans>(
                     stream: _plans,
-                    builder: (context, plans) => MealPlanView(
-                      familyId: widget.familyId,
-                      catalog: catalog,
-                      family: family,
-                      members: members,
-                      pantry: pantry,
-                      plans: plans,
-                      sampleRecipes: widget.recipes,
-                      onSave: MealPlanRepository().create,
-                      onSaveMeals: MealPlanRepository().updateMeals,
-                      onDelete: MealPlanRepository().delete,
-                    ),
+                    builder: (context, plans) =>
+                        StreamBuilder<List<RecipeAdjustment>>(
+                          stream: _adjustments,
+                          builder: (context, adjustments) => MealPlanView(
+                            familyId: widget.familyId,
+                            catalog: catalog,
+                            family: family,
+                            members: members,
+                            pantry: pantry,
+                            plans: plans,
+                            adjustments: adjustments,
+                            onSave: MealPlanRepository().create,
+                            onSaveMeals: MealPlanRepository().updateMeals,
+                            onDelete: MealPlanRepository().delete,
+                          ),
+                        ),
                   ),
                 ),
               ),
@@ -157,7 +164,7 @@ class MealPlanView extends StatelessWidget {
     required this.onSave,
     required this.onSaveMeals,
     required this.onDelete,
-    this.sampleRecipes = SampleData.recipes,
+    this.adjustments = const AsyncSnapshot<List<RecipeAdjustment>>.nothing(),
     this.clock = DateTime.now,
   });
 
@@ -179,8 +186,9 @@ class MealPlanView extends StatelessWidget {
   /// Elimina el plan con ese id.
   final Future<void> Function(String planId) onDelete;
 
-  /// Las que se muestran si el catálogo está vacío o no se pudo leer.
-  final List<Recipe> sampleRecipes;
+  /// Las adaptaciones aprobadas de la familia. Si no se pueden leer, el plan
+  /// usa las recetas base (que sí pasan por el filtro de alergias).
+  final AsyncSnapshot<List<RecipeAdjustment>> adjustments;
   final DateTime Function() clock;
 
   @override
@@ -210,16 +218,24 @@ class MealPlanView extends StatelessWidget {
     final approved = catalog.hasError
         ? const <Recipe>[]
         : catalog.data ?? const <Recipe>[];
-    final recipes = approved.isEmpty ? sampleRecipes : approved;
     final household = members.hasError
         ? const <Member>[]
         : members.data ?? const <Member>[];
+    // La receta adaptada solo si el nutriólogo ya la aprobó para este hogar.
+    final adapted = applyAdjustments(
+      approved,
+      adjustments.hasError ? const [] : adjustments.data ?? const [],
+      members: household,
+    );
+    // Lo que se sugiere y se guarda nunca lleva un alérgeno del hogar
+    // (decisión 2 de #23). Un plan que la familia ya guardó sí conserva sus
+    // recetas, con su aviso: lo que cambia es lo que se le ofrece.
+    final recipes = recipesSafeForHousehold(adapted, household);
     final warnings = [
       if (members.hasError) _membersWarning,
       if (family.hasError) _familyWarning,
       if (catalog.hasError) _catalogWarning,
     ];
-    // Un plan guardado apunta a recipes/{id}: las de ejemplo no se guardan.
     final canWrite = warnings.isEmpty && approved.isNotEmpty;
 
     final saved = plans.data ?? const [];
@@ -233,7 +249,7 @@ class MealPlanView extends StatelessWidget {
         pendingSync: saved.any(
           (entry) => identical(entry.plan, current) && entry.pendingSync,
         ),
-        recipes: recipes,
+        recipes: adapted,
         members: household,
         pantry: items,
         today: today,
@@ -243,6 +259,33 @@ class MealPlanView extends StatelessWidget {
         onOpenRecipe: open,
         onSaveMeals: canWrite ? onSaveMeals : null,
         onDelete: () => onDelete(current.id),
+      );
+    }
+    // Sin saber las alergias del hogar no se arma un plan: podría traer una
+    // receta que alguien no puede comer.
+    if (members.hasError) return _NoPlan(warnings: warnings);
+    if (catalog.hasError) return _NoPlan(warnings: warnings);
+    if (approved.isEmpty) {
+      return const _NoPlan(
+        warnings: [],
+        empty: EmptyState(
+          title: 'Aún no hay recetas para armar tu plan',
+          message:
+              'Cuando el nutriólogo apruebe recetas, tu plan de comidas se '
+              'armará con ellas.',
+        ),
+      );
+    }
+    if (recipes.isEmpty) {
+      return _NoPlan(
+        warnings: [if (plans.hasError) _plansWarning, ...warnings],
+        empty: const EmptyState(
+          title: 'Ninguna receta es segura para tu familia',
+          message:
+              'Todas las recetas del catálogo llevan algo a lo que alguien de '
+              'tu familia es alérgico, así que no armamos un plan. Puedes ver '
+              'el catálogo completo, con sus avisos, en Recetas.',
+        ),
       );
     }
     return SuggestedPlanView(
@@ -256,6 +299,33 @@ class MealPlanView extends StatelessWidget {
       // Sin los planes guardados no se ofrece guardar: ya podría haber uno.
       onSave: canWrite && !plans.hasError ? onSave : null,
       clock: clock,
+    );
+  }
+}
+
+/// Lo que se ve cuando no hay un plan que mostrar: los avisos de lo que no se
+/// pudo leer y, si hace falta, por qué no hay plan.
+class _NoPlan extends StatelessWidget {
+  const _NoPlan({required this.warnings, this.empty});
+
+  final List<String> warnings;
+  final Widget? empty;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final warning in warnings) ...[
+          InfoBanner(
+            message: warning,
+            background: AppColors.warningSoft,
+            foreground: AppColors.warningText,
+          ),
+          const SizedBox(height: 12),
+        ],
+        ?empty,
+      ],
     );
   }
 }

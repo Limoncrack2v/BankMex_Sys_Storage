@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/firestore_paths.dart';
 import '../data/models/family.dart';
 import '../data/models/pantry_item.dart';
+import '../data/repositories/adjustment_repository.dart';
 import '../data/repositories/family_repository.dart';
 import '../data/repositories/meal_plan_repository.dart';
 import '../data/repositories/member_repository.dart';
@@ -15,11 +16,13 @@ import '../domain/meal_plan_length.dart';
 import '../domain/models/consumption_waste_stats.dart';
 import '../domain/models/family_profile.dart';
 import '../domain/models/pantry_item.dart' as domain;
+import '../domain/models/recipe_adjustment.dart';
 import '../domain/models/recipe.dart';
 import '../domain/name_normalizer.dart';
 import '../domain/nutrition_targets.dart';
 import '../domain/pantry_recipe_filter.dart';
 import '../domain/portion_adjuster.dart';
+import '../domain/recipe_adjustment.dart';
 import '../domain/recipe_catalog.dart';
 import '../domain/recipe_planner.dart';
 import '../domain/unit_converter.dart';
@@ -27,8 +30,10 @@ import '../domain/unit_converter.dart';
 /// Orquesta el catálogo y el plan sobre los repos del equipo.
 ///
 /// Contrato para la UI de staff (no hay HTTP):
-/// [publishRecipe], [updateRecipe], [deleteRecipe], [watchStaffRecipes].
-/// [submitRecipe] deja pending; [approveRecipe] la publica.
+/// [submitRecipe], [updateRecipe], [deleteRecipe], [watchStaffRecipes].
+/// Staff deja las recetas en draft o pending; [approveRecipe] la publica y
+/// [rejectRecipe] la regresa a draft, y las dos son del nutriólogo
+/// (firestore.rules). Las familias solo ven las approved.
 /// La familia lee approved y [filterRecipesByPantry].
 class BankStorageFacade {
   BankStorageFacade({
@@ -37,6 +42,7 @@ class BankStorageFacade {
     MemberRepository? members,
     RecipeRepository? recipes,
     MealPlanRepository? mealPlans,
+    AdjustmentRepository? adjustments,
     FirebaseFirestore? firestore,
     RecipePlanner? planner,
   }) : families = families ?? FamilyRepository(),
@@ -46,6 +52,7 @@ class BankStorageFacade {
        _db = firestore ?? FirebaseFirestore.instance {
     this.recipes = recipes ?? RecipeRepository(_db);
     this.mealPlans = mealPlans ?? MealPlanRepository(_db);
+    this.adjustments = adjustments ?? AdjustmentRepository(_db);
   }
 
   final FamilyRepository families;
@@ -54,6 +61,7 @@ class BankStorageFacade {
   final RecipePlanner planner;
   late final RecipeRepository recipes;
   late final MealPlanRepository mealPlans;
+  late final AdjustmentRepository adjustments;
   final FirebaseFirestore _db;
 
   Future<Family> _family(String familyId) async {
@@ -93,6 +101,7 @@ class BankStorageFacade {
     List<String> requiredEquipment = const [],
     String image = '',
     int servings = 4,
+    RecipeStatus status = RecipeStatus.pending,
   }) async {
     final pending = RecipeCatalog.submitRecipe(
       id: id,
@@ -104,36 +113,9 @@ class BankStorageFacade {
       dietaryTags: dietaryTags,
       nutritionalTags: nutritionalTags,
       requiredEquipment: requiredEquipment,
+      status: status,
     ).copyWith(image: image, servings: servings);
     return recipes.create(pending);
-  }
-
-  /// Alta del staff: queda approved y la familia ya la puede ver.
-  Future<Recipe> publishRecipe({
-    String id = '',
-    required String name,
-    required List<RecipeIngredient> ingredients,
-    required List<String> steps,
-    required int prepTimeMinutes,
-    required int caloriesPerServing,
-    List<String> dietaryTags = const [],
-    List<String> nutritionalTags = const [],
-    List<String> requiredEquipment = const [],
-    String image = '',
-    int servings = 4,
-  }) async {
-    final published = RecipeCatalog.publishRecipe(
-      id: id,
-      name: name,
-      ingredients: ingredients,
-      steps: steps,
-      prepTimeMinutes: prepTimeMinutes,
-      caloriesPerServing: caloriesPerServing,
-      dietaryTags: dietaryTags,
-      nutritionalTags: nutritionalTags,
-      requiredEquipment: requiredEquipment,
-    ).copyWith(image: image, servings: servings);
-    return recipes.create(published);
   }
 
   /// [previous] es la receta guardada antes de editarla: sus etiquetas y
@@ -142,13 +124,18 @@ class BankStorageFacade {
   ///
   /// Los tres métodos que guardan son async para que un error de validación
   /// llegue como Future fallido y el formulario lo muestre.
-  Future<Recipe> updateRecipe(
-    Recipe recipe, {
-    required Recipe previous,
-  }) async {
+  Future<Recipe> updateRecipe(Recipe recipe, {required Recipe previous}) async {
     if (recipe.id.isEmpty) {
       throw ArgumentError('updateRecipe requires an id');
     }
+    if (recipe.status == RecipeStatus.approved) {
+      throw ArgumentError('Solo el nutriólogo deja una receta aprobada');
+    }
+    RecipeCatalog.validateLimits(
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      dietaryTags: recipe.dietaryTags,
+    );
     RecipeCatalog.validateTags(
       nutritionalTags: recipe.nutritionalTags,
       requiredEquipment: recipe.requiredEquipment,
@@ -161,12 +148,116 @@ class BankStorageFacade {
 
   Stream<List<Recipe>> watchStaffRecipes() => recipes.watchAll();
 
-  Future<Recipe> approveRecipe(String recipeId) async {
+  /// Solo el nutriólogo, con inicio de sesión reciente: las reglas no dejan
+  /// que nadie más pase una receta de pending a approved. [reviewerUid] es su
+  /// uid.
+  Future<Recipe> approveRecipe(
+    String recipeId, {
+    required String reviewerUid,
+  }) async {
+    final existing = await _pending(recipeId);
+    await recipes.approve(recipeId, reviewerUid: reviewerUid);
+    return RecipeCatalog.approveRecipe(
+      existing,
+      approvedBy: reviewerUid,
+      at: DateTime.now(),
+    );
+  }
+
+  /// Regresa la receta a draft con el [note] del rechazo (obligatorio). Mismas
+  /// reglas que [approveRecipe].
+  Future<Recipe> rejectRecipe(
+    String recipeId, {
+    required String reviewerUid,
+    required String note,
+  }) async {
+    final error = RecipeCatalog.validateReviewNote(note);
+    if (error != null) throw ArgumentError(error);
+    final existing = await _pending(recipeId);
+    await recipes.reject(recipeId, reviewerUid: reviewerUid, note: note.trim());
+    return RecipeCatalog.rejectRecipe(
+      existing,
+      rejectedBy: reviewerUid,
+      note: note,
+      at: DateTime.now(),
+    );
+  }
+
+  Future<Recipe> _pending(String recipeId) async {
     final existing = await recipes.getById(recipeId);
     if (existing == null) {
       throw StateError('Recipe $recipeId not found');
     }
-    return recipes.update(RecipeCatalog.approveRecipe(existing));
+    if (existing.status != RecipeStatus.pending) {
+      throw StateError('Recipe $recipeId is not pending review');
+    }
+    return existing;
+  }
+
+  /// Sugiere cómo adaptar [recipeId] (aprobada) al hogar de [familyId]: la
+  /// guarda como una adaptación pendiente que solo el nutriólogo puede aprobar.
+  /// No hace nada si ya hay una para esta versión de la receta y este hogar
+  /// (pendiente, aprobada o rechazada) o si no hay nada que cambiar. Una
+  /// pendiente vieja (la receta, el tamaño del hogar o sus alergias cambiaron)
+  /// se retira, y las aprobadas o rechazadas se quedan. Regresa la que creó, o
+  /// null.
+  Future<RecipeAdjustment?> suggestAdjustment({
+    required String familyId,
+    required String recipeId,
+  }) async {
+    final recipe = await recipes.getById(recipeId);
+    if (recipe == null || recipe.status != RecipeStatus.approved) return null;
+    final profile = await _profile(familyId);
+    final suggestion = await planner.suggestAdjustment(
+      household: AdjustmentContext.forHousehold(profile),
+      recipe: recipe,
+    );
+    final existing = await adjustments.listForRecipe(familyId, recipeId);
+
+    // Una adaptación es de ahora si es de esta versión de la receta y de este
+    // hogar (tamaño y alergias); su id lo dice (RecipeAdjustment.documentId).
+    bool isCurrent(RecipeAdjustment a) =>
+        suggestion != null &&
+        a.baseSignature == suggestion.baseSignature &&
+        a.householdKey == suggestion.householdKey;
+    for (final old in existing) {
+      if (old.status == AdjustmentStatus.pending && !isCurrent(old)) {
+        await adjustments.delete(old.id);
+      }
+    }
+    if (suggestion == null || existing.any(isCurrent)) return null;
+    return adjustments.create(
+      RecipeAdjustment.pending(familyId: familyId, suggestion: suggestion),
+    );
+  }
+
+  /// Solo el nutriólogo, con inicio de sesión reciente (firestore.rules).
+  Future<void> approveAdjustment(
+    String adjustmentId, {
+    required String reviewerUid,
+  }) => adjustments.approve(adjustmentId, reviewerUid: reviewerUid);
+
+  /// Solo el nutriólogo, con inicio de sesión reciente. El motivo es
+  /// obligatorio.
+  Future<void> rejectAdjustment(
+    String adjustmentId, {
+    required String reviewerUid,
+    required String reason,
+  }) {
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('Escribe el motivo del rechazo');
+    }
+    if (trimmed.length > RecipeAdjustment.maxReasonLength) {
+      throw ArgumentError(
+        'El motivo lleva máximo ${RecipeAdjustment.maxReasonLength} caracteres',
+      );
+    }
+    return adjustments.reject(
+      adjustmentId,
+      reviewerUid: reviewerUid,
+      reason: trimmed,
+    );
   }
 
   Future<List<Recipe>> filterRecipesByPantry(String familyId) async {
@@ -241,6 +332,11 @@ class BankStorageFacade {
     );
   }
 
+  /// Calcula un plan con las reglas de lib/domain y lo regresa, sin guardarlo:
+  /// esta fachada no escribe en mealPlans. El plan se guarda desde la pantalla
+  /// "Plan de comidas" cuando la familia lo pide; si cada motor guardara por su
+  /// cuenta, dejarían planes distintos para la misma familia.
+  ///
   /// Sin [days], el plan es semanal o quincenal según la próxima entrega de
   /// la familia (ver [MealPlanLength]).
   Future<MealPlanGeneration> generateMealPlan({
@@ -258,13 +354,7 @@ class BankStorageFacade {
       days:
           days ?? MealPlanLength.daysFor(nextDelivery: family.nextDeliveryDate),
     );
-    final saved = await mealPlans.create(generated.plan);
-    return MealPlanGeneration(
-      plan: saved,
-      updatedPantry: generated.updatedPantry,
-      requestedDays: generated.requestedDays,
-      filledDays: generated.filledDays,
-    );
+    return generated;
   }
 
   /// Descuenta ingredientes con [PantryRepository.registerConsumption]
