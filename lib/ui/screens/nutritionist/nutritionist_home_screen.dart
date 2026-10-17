@@ -273,6 +273,9 @@ class _PendingRecipeCard extends StatelessWidget {
             child: ExpansionTile(
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(bottom: 8),
+              // ExpansionTile centra sus hijos si no se le dice otra cosa;
+              // expandedCrossAxisAlignment solo los alinea entre sí.
+              expandedAlignment: Alignment.centerLeft,
               expandedCrossAxisAlignment: CrossAxisAlignment.start,
               title: Text(
                 'Ver ingredientes y pasos',

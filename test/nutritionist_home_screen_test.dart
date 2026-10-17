@@ -108,6 +108,28 @@ void main() {
     expect(find.text('1. Enjuaga las lentejas.'), findsOneWidget);
   });
 
+  testWidgets('a short ingredient and step are aligned to the left', (
+    tester,
+  ) async {
+    final short = Recipe(
+      id: 'r1',
+      name: 'Ensalada de naranja',
+      ingredients: const [
+        RecipeIngredient(productName: 'Naranja', quantity: 0.4, unit: 'kg'),
+      ],
+      steps: const ['Pela y sirve.'],
+      prepTimeMinutes: 10,
+      caloriesPerServing: 90,
+      status: RecipeStatus.pending,
+    );
+    await _pump(tester, recipes: Stream.value([short]));
+    await _tapButton(tester, 'Ver ingredientes y pasos');
+
+    final left = tester.getTopLeft(find.text('Ensalada de naranja')).dx;
+    expect(tester.getTopLeft(find.textContaining('Naranja')).dx, left);
+    expect(tester.getTopLeft(find.text('1. Pela y sirve.')).dx, left);
+  });
+
   testWidgets('shows an error when the recipes cannot be loaded', (
     tester,
   ) async {

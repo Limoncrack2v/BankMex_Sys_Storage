@@ -192,7 +192,7 @@ class _RecipeCard extends StatelessWidget {
           const SizedBox(height: 12),
           // Una pendiente está en revisión: solo se ve, no se edita.
           SecondaryButton(
-            label: recipe.status == RecipeStatus.pending ? 'Revisar' : 'Editar',
+            label: recipe.status == RecipeStatus.pending ? 'Ver receta' : 'Editar',
             onPressed: onEdit,
           ),
         ],

@@ -1,6 +1,7 @@
 import 'package:bank_storage_app/domain/models/recipe.dart';
 import 'package:bank_storage_app/ui/screens/staff/recipe_form_sheet.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
+import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,8 +21,12 @@ Recipe recipe(RecipeStatus status) => Recipe(
 const warning = 'la receta deja de verse para las familias';
 
 /// Abre el formulario de Staff (con la receta, o vacío si es null).
-Future<void> open(WidgetTester tester, Recipe? recipe) async {
-  tester.view.physicalSize = const Size(900, 4000);
+Future<void> open(
+  WidgetTester tester,
+  Recipe? recipe, {
+  Size size = const Size(900, 4000),
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
@@ -47,7 +52,118 @@ Finder field(String text) => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.controller?.text == text,
 );
 
+/// "Guardar cambios" (o "Guardar receta") puede tocarse.
+bool canSave(WidgetTester tester, {String label = 'Guardar cambios'}) {
+  final button = tester.widget<PrimaryButton>(
+    find.widgetWithText(PrimaryButton, label),
+  );
+  return button.onPressed != null;
+}
+
+/// Baja hasta el final del formulario, donde está el aviso.
+Future<void> scrollToEnd(WidgetTester tester) async {
+  await tester.drag(
+    find.byType(SingleChildScrollView).first,
+    const Offset(0, -5000),
+  );
+  await tester.pumpAndSettle();
+}
+
+const hint = 'Baja hasta el final: hay un aviso antes de guardar.';
+// Una pantalla chica: el formulario no cabe y hay que bajar para ver el aviso.
+const small = Size(400, 600);
+
 void main() {
+  group('"Guardar cambios" waits until Staff has seen the warning', () {
+    testWidgets('an approved recipe with a change cannot be saved yet', (
+      tester,
+    ) async {
+      await open(tester, recipe(RecipeStatus.approved), size: small);
+
+      await tester.enterText(field('30'), '20');
+      await tester.pump();
+
+      expect(canSave(tester), isFalse);
+      expect(find.text(hint), findsOneWidget);
+    });
+
+    testWidgets('after scrolling to the end it can be saved', (tester) async {
+      await open(tester, recipe(RecipeStatus.approved), size: small);
+      await tester.enterText(field('30'), '20');
+      await tester.pump();
+
+      await scrollToEnd(tester);
+
+      expect(find.textContaining('deja de verse'), findsOneWidget);
+      expect(canSave(tester), isTrue);
+      expect(find.text(hint), findsNothing);
+    });
+
+    testWidgets('moving it to draft without changes waits too', (tester) async {
+      await open(tester, recipe(RecipeStatus.approved), size: small);
+
+      // El selector de estado está cerca del final: se baja hasta él.
+      await tester.ensureVisible(find.text('Borrador'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Borrador'));
+      await tester.pumpAndSettle();
+
+      expect(canSave(tester), isFalse);
+      expect(find.text(hint), findsOneWidget);
+
+      await scrollToEnd(tester);
+      expect(canSave(tester), isTrue);
+    });
+
+    testWidgets('undoing the change takes the hint away', (tester) async {
+      await open(tester, recipe(RecipeStatus.approved), size: small);
+      await tester.enterText(field('30'), '20');
+      await tester.pump();
+      await tester.enterText(field('20'), '30');
+      await tester.pump();
+
+      expect(find.text(hint), findsNothing);
+      expect(
+        find.text('Cambia la receta o su estado para guardar.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('when the form fits, the warning is already in view', (
+      tester,
+    ) async {
+      await open(tester, recipe(RecipeStatus.approved));
+
+      await tester.enterText(field('30'), '20');
+      await tester.pump();
+
+      expect(find.textContaining('deja de verse'), findsOneWidget);
+      expect(canSave(tester), isTrue);
+    });
+
+    testWidgets('a draft recipe is not held back', (tester) async {
+      await open(tester, recipe(RecipeStatus.draft), size: small);
+
+      await tester.enterText(field('30'), '20');
+      await tester.pump();
+
+      expect(find.text(hint), findsNothing);
+      expect(canSave(tester), isTrue);
+    });
+  });
+
+  group('a pending recipe', () {
+    testWidgets('opens as "Ver receta", not as a review by Staff', (
+      tester,
+    ) async {
+      await open(tester, recipe(RecipeStatus.pending));
+
+      expect(find.text('Ver receta'), findsOneWidget);
+      expect(find.text('Revisar receta'), findsNothing);
+      expect(find.text('Regresar a borrador'), findsOneWidget);
+    });
+  });
+
   group('editing an approved recipe', () {
     testWidgets('nothing changed: no warning, and "Aprobada" is the state', (
       tester,

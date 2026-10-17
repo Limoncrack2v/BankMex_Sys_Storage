@@ -85,6 +85,21 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
 
   bool get _isEditing => widget.recipe != null;
 
+  // Si Staff ya bajó hasta el aviso de que guardar la saca de las familias, y
+  // cuánto falta por bajar según el último aviso del scroll (0 si el formulario
+  // cabe entero: entonces el aviso ya está a la vista).
+  bool _sawWarning = false;
+  double _extentAfter = 0;
+
+  static const _endOfForm = 24.0;
+
+  /// El aviso está (o estuvo) a la vista.
+  bool get _warningSeen => _sawWarning || _extentAfter < _endOfForm;
+
+  /// Guardar saca una receta aprobada de las familias (ver el aviso).
+  bool get _warnsBeforeSave =>
+      _wasApproved && _effectiveStatus != RecipeStatus.approved;
+
   bool get _wasApproved => widget.recipe?.status == RecipeStatus.approved;
 
   /// Una pendiente está en revisión del nutriólogo: Staff la ve en solo
@@ -229,7 +244,30 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     if (_effectiveStatus == RecipeStatus.approved) {
       return 'Cambia la receta o su estado para guardar.';
     }
+    if (_warnsBeforeSave && !_warningSeen) {
+      return 'Baja hasta el final: hay un aviso antes de guardar.';
+    }
     return null;
+  }
+
+  /// El aviso queda al final del formulario: hasta verlo no se guarda. Si el
+  /// formulario cabe entero no llega ningún aviso del scroll cuando aparece el
+  /// aviso, por eso se guarda la última posición ([_extentAfter]). También
+  /// cuenta si el aviso aparece ya a la vista (ScrollMetricsNotification).
+  bool _onScroll(Notification notification) {
+    final metrics = switch (notification) {
+      ScrollNotification(:final metrics) => metrics,
+      ScrollMetricsNotification(:final metrics) => metrics,
+      _ => null,
+    };
+    if (metrics == null) return false;
+    final seenBefore = _warningSeen;
+    _extentAfter = metrics.extentAfter;
+    if (_warnsBeforeSave && metrics.extentAfter < _endOfForm) {
+      _sawWarning = true;
+    }
+    if (_warnsBeforeSave && seenBefore != _warningSeen) setState(() {});
+    return false;
   }
 
   // -------------------------------------------------------------------------
@@ -473,54 +511,58 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
     final missing = _missing;
     final error = _error;
 
-    return AppSheet(
-      title: _title,
-      busy: _saving,
-      body: AbsorbPointer(absorbing: _saving, child: _buildForm()),
-      footer: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (error != null) ...[
-            Semantics(
-              liveRegion: true,
-              child: InfoBanner(
-                message: error,
-                background: AppColors.dangerSoft,
-                foreground: AppColors.dangerText,
+    return NotificationListener<Notification>(
+      onNotification: _onScroll,
+      child: AppSheet(
+        title: _title,
+        busy: _saving,
+        body: AbsorbPointer(absorbing: _saving, child: _buildForm()),
+        footer: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (error != null) ...[
+              Semantics(
+                liveRegion: true,
+                child: InfoBanner(
+                  message: error,
+                  background: AppColors.dangerSoft,
+                  foreground: AppColors.dangerText,
+                ),
               ),
+              const SizedBox(height: 12),
+            ],
+            if (missing != null && !_saving) ...[
+              _HelperText(missing),
+              const SizedBox(height: 8),
+            ],
+            PrimaryButton(
+              label: _isEditing ? 'Guardar cambios' : 'Guardar receta',
+              icon: AppIcons.check,
+              loading: _saving,
+              onPressed: missing == null ? _save : null,
             ),
-            const SizedBox(height: 12),
-          ],
-          if (missing != null && !_saving) ...[
-            _HelperText(missing),
-            const SizedBox(height: 8),
-          ],
-          PrimaryButton(
-            label: _isEditing ? 'Guardar cambios' : 'Guardar receta',
-            icon: AppIcons.check,
-            loading: _saving,
-            onPressed: missing == null ? _save : null,
-          ),
-          if (_isEditing) ...[
-            const SizedBox(height: 8),
-            Center(
-              child: _DangerLinkButton(
-                label: 'Eliminar receta',
-                onPressed: _saving
-                    ? null
-                    : () =>
-                          setState(() => _confirmation = _Confirmation.delete),
+            if (_isEditing) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: _DangerLinkButton(
+                  label: 'Eliminar receta',
+                  onPressed: _saving
+                      ? null
+                      : () => setState(
+                          () => _confirmation = _Confirmation.delete,
+                        ),
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
   String get _title => _isPendingReview
-      ? 'Revisar receta'
+      ? 'Ver receta'
       : _isEditing
       ? 'Editar receta'
       : 'Nueva receta';
@@ -876,7 +918,7 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
         ),
         const SizedBox(height: 6),
         // Antes de guardar: editar una receta aprobada la saca de las familias.
-        if (_wasApproved && _effectiveStatus != RecipeStatus.approved)
+        if (_warnsBeforeSave)
           InfoBanner(
             message: _effectiveStatus == RecipeStatus.pending
                 ? 'Si guardas estos cambios, la receta deja de verse para las '
