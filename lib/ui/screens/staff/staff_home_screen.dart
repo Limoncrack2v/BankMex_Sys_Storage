@@ -285,7 +285,7 @@ class _AccountDetails extends StatelessWidget {
         const SizedBox(height: 12),
         SecondaryButton(
           label: 'Familias',
-          icon: AppIcons.users,
+          icon: AppIcons.home,
           onPressed: onFamilies,
         ),
         const SizedBox(height: 16),

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../data/models/family.dart';
 import '../../../data/repositories/family_repository.dart';
@@ -14,8 +13,8 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_text_field.dart';
-import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
+import '../../widgets/recovery_quota_field.dart';
 
 /// Sin conexión el update no termina hasta sincronizar; pasado este tiempo
 /// se da por guardado (igual que en Entregas).
@@ -416,36 +415,14 @@ class _FamilyEditFormState extends State<FamilyEditForm> {
         const SizedBox(height: 16),
         LabeledField(
           label: 'Cuota de recuperación por defecto',
-          child: Row(
-            children: [
-              Expanded(
-                child: AppTextField(
-                  key: const ValueKey('familyQuota'),
-                  controller: _quota,
-                  hint: formatNumber(Family.standardRecoveryQuota),
-                  prefixText: r'$',
-                  enabled: !_exempt,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  textInputAction: TextInputAction.done,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                  ],
-                  maxLength: 9,
-                  onChanged: _onChanged,
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 84,
-                child: OptionButton(
-                  label: 'Exenta',
-                  selected: _exempt,
-                  onTap: _toggleExempt,
-                ),
-              ),
-            ],
+          child: RecoveryQuotaField(
+            fieldKey: const ValueKey('familyQuota'),
+            controller: _quota,
+            exempt: _exempt,
+            onToggleExempt: _toggleExempt,
+            onChanged: _onChanged,
+            hint: formatNumber(Family.standardRecoveryQuota),
+            textInputAction: TextInputAction.done,
           ),
         ),
         const SizedBox(height: 6),

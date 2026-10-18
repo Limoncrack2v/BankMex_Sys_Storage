@@ -5,6 +5,10 @@ import 'package:bank_storage_app/data/models/family.dart';
 import 'package:bank_storage_app/ui/screens/staff/families_sheet.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
+import 'package:bank_storage_app/ui/widgets/app_text_field.dart';
+import 'package:bank_storage_app/ui/widgets/option_button.dart';
+
+import 'helpers/large_text.dart';
 
 final _family = Family(
   familyId: 'familia-1',
@@ -140,5 +144,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(saved.single.quota, isNull);
+  });
+
+  testWidgets('con la letra más grande "Exenta" no se parte', (tester) async {
+    await loadAppFonts();
+    // Antes: "Exen ta", con el botón de otro alto que el campo.
+    await pumpWithTextScale(
+      tester,
+      SingleChildScrollView(
+        child: FamilyEditForm(
+          family: _family,
+          onDone: () {},
+          save: (
+            family, {
+            required name,
+            required address,
+            required recoveryQuotaDefault,
+          }) async {},
+        ),
+      ),
+      textScale: 2,
+      height: 2000,
+    );
+
+    expectNoBrokenWords(tester);
+    final field = find.byKey(const ValueKey('familyQuota'));
+    final exempt = find.widgetWithText(OptionButton, 'Exenta');
+    expect(tester.getSize(exempt).height, tester.getSize(field).height);
+    expect(tester.widget(field), isA<AppTextField>());
   });
 }
