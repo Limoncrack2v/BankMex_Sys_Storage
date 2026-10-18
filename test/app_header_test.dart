@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_header.dart';
+
+import 'helpers/large_text.dart';
 
 /// Distancia del borde de arriba al título con [systemTop] de barra de estado.
 Future<double> _titleRowTop(WidgetTester tester, double systemTop) async {
@@ -26,6 +29,23 @@ Future<double> _titleRowTop(WidgetTester tester, double systemTop) async {
 }
 
 void main() {
+  testWidgets('con la letra más grande el título se encoge, no se corta', (
+    tester,
+  ) async {
+    await loadAppFonts();
+    // Antes: "Plan de comi…".
+    await pumpWithTextScale(
+      tester,
+      const Column(children: [AppHeader(title: 'Plan de comidas')]),
+      textScale: 2,
+    );
+
+    final title = tester.renderObject<RenderParagraph>(
+      find.text('Plan de comidas'),
+    );
+    expect(title.didExceedMaxLines, isFalse);
+  });
+
   testWidgets('sin barra de estado (web): 56 como en el diseño', (
     tester,
   ) async {

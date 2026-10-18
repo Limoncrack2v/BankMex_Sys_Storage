@@ -10,6 +10,8 @@ import 'package:bank_storage_app/ui/models/program_stats.dart';
 import 'package:bank_storage_app/ui/screens/staff/stats_screen.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 
+import 'helpers/large_text.dart';
+
 final now = DateTime(2026, 10, 13, 16);
 
 ConsumptionLog log(
@@ -103,6 +105,21 @@ void main() {
     expect(find.text('3 kg ahora · 2 kg antes'), findsOneWidget);
     expect(find.text('↑ 50%'), findsOneWidget);
     expect(find.text('Frijol'), findsNothing);
+  });
+
+  testWidgets('con la letra más grande las tarjetas no parten palabras', (
+    tester,
+  ) async {
+    await loadAppFonts();
+    // "vs. 1–13 sep" no se corta: en media pantalla se partía ("se p").
+    await pumpWithTextScale(
+      tester,
+      StatsScreen(load: () async => sample),
+      textScale: 2,
+    );
+
+    expect(find.text('+1 vs. 1–⁠13 sep'), findsOneWidget);
+    expectNoBrokenWords(tester);
   });
 
   testWidgets('al tocar un mes muestra sus valores', (tester) async {

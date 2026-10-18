@@ -99,11 +99,13 @@ class _PantryScreenState extends State<PantryScreen> {
                     category: _category,
                     onCategorySelected: (category) =>
                         setState(() => _category = category),
-                    onRegisterConsumption: (items) => showConsumptionSheet(
-                      context,
-                      familyId: widget.familyId,
-                      items: items,
-                    ),
+                    onRegisterConsumption: (items, {focused}) =>
+                        showConsumptionSheet(
+                          context,
+                          familyId: widget.familyId,
+                          items: items,
+                          focusedItemId: focused?.pantryItemId,
+                        ),
                   );
                 },
               );
@@ -160,7 +162,11 @@ class _PantryList extends StatelessWidget {
   /// consumo» siguen contando toda la despensa.
   final FoodType? category;
   final ValueChanged<FoodType?> onCategorySelected;
-  final ValueChanged<List<PantryItem>> onRegisterConsumption;
+
+  /// Abre "Registrar consumo" con toda la despensa; desde la tarjeta de un
+  /// producto, con ese producto ([focused]) ya elegido.
+  final void Function(List<PantryItem> items, {PantryItem? focused})
+  onRegisterConsumption;
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +183,8 @@ class _PantryList extends StatelessWidget {
     final expiringSoon = entries
         .where((e) => e.days >= 0 && e.urgency != ExpirationUrgency.fresh)
         .length;
+
+    final items = [for (final e in entries) e.item];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -211,7 +219,7 @@ class _PantryList extends StatelessWidget {
           icon: AppIcons.check,
           onPressed: entries.isEmpty
               ? null
-              : () => onRegisterConsumption([for (final e in entries) e.item]),
+              : () => onRegisterConsumption(items),
         ),
         if (entries.isEmpty)
           Padding(
@@ -234,7 +242,10 @@ class _PantryList extends StatelessWidget {
         ],
         for (final entry in visible) ...[
           const SizedBox(height: 12),
-          _ProductCard(entry),
+          _ProductCard(
+            entry,
+            onTap: () => onRegisterConsumption(items, focused: entry.item),
+          ),
         ],
       ],
     );
@@ -273,9 +284,12 @@ class _PantryError extends StatelessWidget {
 }
 
 class _ProductCard extends StatelessWidget {
-  const _ProductCard(this.entry);
+  const _ProductCard(this.entry, {required this.onTap});
 
   final _PantryEntry entry;
+
+  /// Abre "Registrar consumo" con este producto elegido.
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -283,81 +297,97 @@ class _ProductCard extends StatelessWidget {
     final urgency = entry.urgency;
 
     // Borde izquierdo de 8 px y 1 px en los demás lados, como en el Figma.
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: urgency.accent,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 1, 1, 1),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.horizontal(
-              left: Radius.elliptical(8, 15),
-              right: Radius.circular(15),
-            ),
+    return Semantics(
+      button: true,
+      onTapHint: 'Registrar consumo',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: urgency.accent,
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              PillRow(
-                leading: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.name,
-                      style: AppText.baloo(19, 23.75, weight: FontWeight.w600),
-                    ),
-                    Text(
-                      foodTypeLabel(item.type),
-                      style: AppText.nunito(
-                        15,
-                        22.5,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-                trailing: Pill(
-                  label: expirationLabel(entry.days),
-                  icon: AppIcons.urgencyClock,
-                  iconSize: 14,
-                  gap: 4,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 4,
-                  ),
-                  fontSize: 13,
-                  lineHeight: 19.5,
-                  background: urgency.background,
-                  foreground: urgency.foreground,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 1, 1, 1),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.horizontal(
+                  left: Radius.elliptical(8, 15),
+                  right: Radius.circular(15),
                 ),
               ),
-              const SizedBox(height: 12),
-              Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      remainingLabel(item.quantity, item.unit),
-                      style: AppText.nunito(16, 24, weight: FontWeight.w700),
+                  PillRow(
+                    leading: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.name,
+                          style: AppText.baloo(
+                            19,
+                            23.75,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          foodTypeLabel(item.type),
+                          style: AppText.nunito(
+                            15,
+                            22.5,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: Pill(
+                      label: expirationLabel(entry.days),
+                      icon: AppIcons.urgencyClock,
+                      iconSize: 14,
+                      gap: 4,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
+                      fontSize: 13,
+                      lineHeight: 19.5,
+                      background: urgency.background,
+                      foreground: urgency.foreground,
                     ),
                   ),
-                  Tooltip(
-                    message: entry.pendingSync
-                        ? 'Pendiente de sincronizar'
-                        : 'Sincronizado',
-                    child: AppIcon(
-                      entry.pendingSync
-                          ? AppIcons.cloudPending
-                          : AppIcons.cloudSynced,
-                      size: 20,
-                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          remainingLabel(item.quantity, item.unit),
+                          style: AppText.nunito(
+                            16,
+                            24,
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Tooltip(
+                        message: entry.pendingSync
+                            ? 'Pendiente de sincronizar'
+                            : 'Sincronizado',
+                        child: AppIcon(
+                          entry.pendingSync
+                              ? AppIcons.cloudPending
+                              : AppIcons.cloudSynced,
+                          size: 20,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
