@@ -862,16 +862,18 @@ RecipeSuggestion? pickRecipe(
   );
 }
 
-// Antes lo que evita enfermedades y alcanza con la despensa (o le falta
-// menos); luego el tiempo, el antojo, los minutos de más y el plan.
+// Antes lo que evita enfermedades; luego lo que pidió la familia (el tiempo
+// y el antojo), lo que alcanza con la despensa (o le falta menos), los
+// minutos de más y el plan. Si escribió "avena", la avena va primero aunque le
+// falte algo.
 int _compareCandidates(_Candidate a, _Candidate b) {
   if (a.avoidsConditions != b.avoidsConditions) {
     return a.avoidsConditions ? -1 : 1;
   }
-  final byMissing = a.ranked.missing.compareTo(b.ranked.missing);
-  if (byMissing != 0) return byMissing;
   if (a.fitsTime != b.fitsTime) return a.fitsTime ? -1 : 1;
   if (a.matchesCraving != b.matchesCraving) return a.matchesCraving ? -1 : 1;
+  final byMissing = a.ranked.missing.compareTo(b.ranked.missing);
+  if (byMissing != 0) return byMissing;
   // Si ninguna cabe, la que no dice cuánto tarda va después.
   final (aKnown, bKnown) = (a.recipe.minutes > 0, b.recipe.minutes > 0);
   if (!a.fitsTime && aKnown != bKnown) return aKnown ? -1 : 1;
