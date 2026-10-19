@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../../application/bank_storage_facade.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/adjustment_repository.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/recipe_repository.dart';
 import '../../../domain/models/recipe.dart';
+import '../../../domain/models/recipe_adjustment.dart';
 import '../../../domain/recipe_catalog.dart';
 import '../../formatting.dart';
 import '../../theme/app_assets.dart';
@@ -20,12 +22,14 @@ import '../../widgets/danger_buttons.dart';
 import '../../widgets/pill.dart';
 import '../session/account_sheet.dart';
 import '../session/step_up_sheet.dart';
+import 'adjustment_queue.dart';
 
 /// Pantalla del nutriólogo: las recetas pendientes que Staff dejó para
 /// revisión. Aprobar una la publica para las familias; rechazarla la regresa a
 /// borrador con el motivo, que Staff ve. Las dos acciones piden una sesión
 /// reciente (firestore.rules: recentlySignedIn) y son lo único que escribe.
-/// No muestra nada de ninguna familia.
+/// Abajo van las adaptaciones por revisar ([AdjustmentQueue]): de las familias
+/// solo muestran el tamaño y las alergias de cada hogar.
 ///
 /// Los parámetros opcionales son para las pruebas: por omisión lee Firestore,
 /// aprueba y rechaza con [BankStorageFacade] y confirma con la contraseña.
@@ -37,6 +41,10 @@ class NutritionistHomeScreen extends StatefulWidget {
     this.approveRecipe,
     this.rejectRecipe,
     this.confirmIdentity,
+    this.pendingAdjustments,
+    this.approvedRecipes,
+    this.approveAdjustment,
+    this.rejectAdjustment,
   });
 
   final AuthSession session;
@@ -44,6 +52,11 @@ class NutritionistHomeScreen extends StatefulWidget {
   final Future<void> Function(String recipeId)? approveRecipe;
   final Future<void> Function(String recipeId, String note)? rejectRecipe;
   final Future<bool> Function(BuildContext context)? confirmIdentity;
+  final Stream<List<RecipeAdjustment>>? pendingAdjustments;
+  final Stream<List<Recipe>>? approvedRecipes;
+  final Future<void> Function(String adjustmentId)? approveAdjustment;
+  final Future<void> Function(String adjustmentId, String reason)?
+  rejectAdjustment;
 
   @override
   State<NutritionistHomeScreen> createState() => _NutritionistHomeScreenState();
@@ -51,15 +64,22 @@ class NutritionistHomeScreen extends StatefulWidget {
 
 class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
   late final Stream<List<Recipe>> _pending;
+  late final Stream<List<RecipeAdjustment>> _adjustments;
+  late final Stream<List<Recipe>> _approved;
   String? _working;
 
   @override
   void initState() {
     super.initState();
-    // Solo las pendientes: el nutriólogo no lee las demás (firestore.rules).
+    // Por estado: el nutriólogo no lee los borradores (firestore.rules).
     _pending =
         widget.pendingRecipes ??
         RecipeRepository().watchByStatus(RecipeStatus.pending);
+    _adjustments =
+        widget.pendingAdjustments ?? AdjustmentRepository().watchPending();
+    _approved =
+        widget.approvedRecipes ??
+        RecipeRepository().watchByStatus(RecipeStatus.approved);
   }
 
   String get _reviewer => widget.session.user.userId;
@@ -179,6 +199,15 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
                 StreamBuilder<List<Recipe>>(
                   stream: _pending,
                   builder: _buildRecipes,
+                ),
+                const SizedBox(height: 32),
+                AdjustmentQueue(
+                  adjustments: _adjustments,
+                  approvedRecipes: _approved,
+                  reviewerUid: _reviewer,
+                  approveAdjustment: widget.approveAdjustment,
+                  rejectAdjustment: widget.rejectAdjustment,
+                  confirmIdentity: widget.confirmIdentity,
                 ),
               ],
             ),
