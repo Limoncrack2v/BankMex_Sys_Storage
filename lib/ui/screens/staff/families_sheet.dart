@@ -364,15 +364,13 @@ class _FamilyEditFormState extends State<FamilyEditForm> {
             onPressed: problem == null && _changed ? _save : null,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: Opacity(
-              opacity: _saving ? 0.4 : 1,
-              child: TextLinkButton(
-                label: 'Volver',
-                onPressed: () {
-                  if (!_saving) widget.onDone();
-                },
-              ),
+          Opacity(
+            opacity: _saving ? 0.4 : 1,
+            child: SecondaryButton(
+              label: 'Volver',
+              onPressed: () {
+                if (!_saving) widget.onDone();
+              },
             ),
           ),
         ],
