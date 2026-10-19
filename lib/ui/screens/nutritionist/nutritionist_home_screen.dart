@@ -124,15 +124,29 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
     setState(() => _working = recipe.id);
     String message;
     var ok = true;
+    final write = action();
     try {
       // Sin conexión Firestore deja la escritura en cola y el Future no
       // termina hasta que llega al servidor.
-      await action().timeout(const Duration(seconds: 8));
+      await write.timeout(const Duration(seconds: 8));
       message = done;
     } on TimeoutException {
       message = offline;
-    } catch (_) {
-      message = failed;
+      // Al sincronizar, las reglas pueden negarla si la sesión ya no es
+      // reciente.
+      unawaited(
+        write.then<void>(
+          (_) {},
+          onError: (Object e) async {
+            final stale = await AuthRepository().staleSignInError(e);
+            messenger
+              ..hideCurrentSnackBar()
+              ..showSnackBar(SnackBar(content: Text(stale ?? failed)));
+          },
+        ),
+      );
+    } catch (e) {
+      message = await AuthRepository().staleSignInError(e) ?? failed;
       ok = false;
     }
     if (!ok) {
