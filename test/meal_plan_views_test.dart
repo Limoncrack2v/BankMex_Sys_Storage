@@ -210,7 +210,16 @@ void main() {
         for (final e in shown) e.recipe.id,
       ]);
       expect(plan.meals.map((m) => m.servings), everyElement(2));
-      expect(find.text('Plan guardado.'), findsOneWidget);
+      // Confirma con la palomita, no con un snackbar.
+      await tester.pumpAndSettle();
+      expect(find.text('Plan guardado'), findsOneWidget);
+      expect(
+        find.text(
+          'Las recetas de cada día ya no cambian. Puedes cambiar un día o '
+          'dejarlo libre.',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('saves the portions the household eats, not its size', (
@@ -291,8 +300,13 @@ void main() {
       await tester.tap(find.byType(PrimaryButton));
 
       await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Plan guardado'), findsOneWidget);
       expect(
-        find.text('Plan guardado. Se sincronizará cuando haya conexión.'),
+        find.text(
+          'Las recetas de cada día ya no cambian. Puedes cambiar un día o '
+          'dejarlo libre. Se sincronizará cuando haya conexión.',
+        ),
         findsOneWidget,
       );
       expect(saved, hasLength(1));
@@ -306,8 +320,9 @@ void main() {
 
       await tapSave(tester);
       await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
       expect(
-        find.text('Plan guardado. Se sincronizará cuando haya conexión.'),
+        find.textContaining('Se sincronizará cuando haya conexión.'),
         findsOneWidget,
       );
 

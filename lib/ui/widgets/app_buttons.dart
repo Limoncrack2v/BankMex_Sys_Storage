@@ -17,12 +17,16 @@ class PrimaryButton extends StatelessWidget {
     this.icon,
     this.onPressed,
     this.loading = false,
+    this.danger = false,
   });
 
   final String label;
   final String? icon;
   final VoidCallback? onPressed;
   final bool loading;
+
+  /// Rojo en vez de verde (p. ej. "Cerrar sesión").
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +36,11 @@ class PrimaryButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: Material(
-        color: enabled ? AppColors.primary : AppColors.border,
+        color: !enabled
+            ? AppColors.border
+            : danger
+            ? AppColors.danger
+            : AppColors.primary,
         shape: _buttonShape,
         child: InkWell(
           onTap: loading ? null : onPressed,

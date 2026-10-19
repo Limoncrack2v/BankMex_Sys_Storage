@@ -243,11 +243,15 @@ void main() {
         'rec_borrada',
         'rec_sandwich',
       ]);
-      expect(find.byType(EditPlanDaySheet), findsNothing);
+      // Confirma en el mismo sheet, con la palomita, y "Listo" lo cierra.
+      expect(find.text('Plan actualizado'), findsOneWidget);
       expect(
         find.text('Cambiaste la receta del miércoles 14.'),
         findsOneWidget,
       );
+      await tester.tap(find.text('Listo'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EditPlanDaySheet), findsNothing);
     });
 
     testWidgets('a picked recipe saves the portions the household eats', (
@@ -476,7 +480,7 @@ void main() {
       );
     });
 
-    testWidgets('offline it closes after 4 seconds and says it will sync', (
+    testWidgets('offline it confirms after 4 seconds and says it will sync', (
       tester,
     ) async {
       final server = Completer<void>();
@@ -495,7 +499,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(writes.saved, hasLength(1));
-      expect(find.byType(EditPlanDaySheet), findsNothing);
+      expect(find.text('Plan actualizado'), findsOneWidget);
       expect(
         find.text(
           'Cambiaste la receta del miércoles 14. Se sincronizará cuando haya '

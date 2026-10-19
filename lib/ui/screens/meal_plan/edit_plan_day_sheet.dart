@@ -89,6 +89,9 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
   String? _saving;
   String? _error;
 
+  /// Lo que dice la confirmación, ya guardado el cambio.
+  String? _done;
+
   Future<void> _write(
     String saving,
     Future<void> Function() write,
@@ -96,7 +99,6 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
   ) async {
     if (_saving != null) return;
 
-    final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _saving = saving;
@@ -117,8 +119,10 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
       return;
     }
     if (!mounted) return;
-    navigator.pop();
-    showPlanSnack(messenger, withSyncNote(success, synced: synced));
+    setState(() {
+      _saving = null;
+      _done = withSyncNote(success, synced: synced);
+    });
   }
 
   void _pick(Recipe recipe) => _write(
@@ -134,6 +138,17 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (_done case final done?) {
+      return AppSheet(
+        title: widget.title,
+        body: SuccessContent(
+          heading: 'Plan actualizado',
+          message: done,
+          onDone: () => Navigator.of(context).pop(),
+        ),
+      );
+    }
+
     final error = _error;
     final clear = widget.onClear;
     final options = [

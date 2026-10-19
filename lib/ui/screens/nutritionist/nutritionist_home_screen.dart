@@ -9,7 +9,6 @@ import '../../../data/repositories/recipe_repository.dart';
 import '../../../domain/models/recipe.dart';
 import '../../../domain/recipe_catalog.dart';
 import '../../formatting.dart';
-import '../../session_navigation.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -18,6 +17,7 @@ import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/pill.dart';
+import '../session/account_sheet.dart';
 import '../session/step_up_sheet.dart';
 
 /// Pantalla del nutriólogo: las recetas pendientes que Staff dejó para
@@ -51,7 +51,6 @@ class NutritionistHomeScreen extends StatefulWidget {
 class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
   late final Stream<List<Recipe>> _pending;
   String? _working;
-  bool _signingOut = false;
 
   @override
   void initState() {
@@ -75,6 +74,7 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
           (id) async {
             await BankStorageFacade().approveRecipe(id, reviewerUid: _reviewer);
           })(recipe.id),
+      heading: 'Receta aprobada',
       done: '«${recipe.name}» aprobada. Las familias ya la ven.',
       offline: '«${recipe.name}» se aprobará cuando vuelva la conexión.',
       failed: 'No se pudo aprobar «${recipe.name}». Intenta de nuevo.',
@@ -102,15 +102,19 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
               note: note,
             );
           })(recipe.id, note),
+      heading: 'Receta rechazada',
       done: '«${recipe.name}» regresó a borrador con tu motivo.',
       offline: '«${recipe.name}» se rechazará cuando vuelva la conexión.',
       failed: 'No se pudo rechazar «${recipe.name}». Intenta de nuevo.',
     );
   }
 
+  /// Confirma con la palomita ([showSuccessSheet]); si la escritura falla,
+  /// el error va en un snackbar.
   Future<void> _run(
     Recipe recipe,
     Future<void> Function() action, {
+    required String heading,
     required String done,
     required String offline,
     required String failed,
@@ -118,6 +122,7 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _working = recipe.id);
     String message;
+    var ok = true;
     try {
       // Sin conexión Firestore deja la escritura en cola y el Future no
       // termina hasta que llega al servidor.
@@ -127,19 +132,23 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
       message = offline;
     } catch (_) {
       message = failed;
+      ok = false;
     }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-    if (mounted) setState(() => _working = null);
-  }
-
-  /// signOutAndReturnToSignIn navega primero y cierra la sesión después. La
-  /// bandera evita un segundo toque durante la transición.
-  Future<void> _signOut() async {
-    if (_signingOut) return;
-    _signingOut = true;
-    await signOutAndReturnToSignIn(context);
+    if (!ok) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    }
+    if (!mounted) return;
+    setState(() => _working = null);
+    if (ok) {
+      await showSuccessSheet(
+        context,
+        title: 'Recetas por revisar',
+        heading: heading,
+        message: message,
+      );
+    }
   }
 
   @override
@@ -148,18 +157,16 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
       backgroundColor: AppColors.surface,
       body: Column(
         children: [
-          AppHeader(title: 'BAMX Guadalajara', horizontalPadding: 24),
+          AppHeader(
+            title: 'BAMX Guadalajara',
+            horizontalPadding: 24,
+            onAccount: () =>
+                showAccountSheet(context, user: widget.session.user),
+          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                Text(widget.session.user.name, style: AppText.baloo(20, 30)),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Pill.success(label: 'Nutriólogo', withIcon: false),
-                ),
-                const SizedBox(height: 24),
                 Text('Recetas por revisar', style: AppText.baloo(18, 27)),
                 const SizedBox(height: 4),
                 Text(
@@ -171,13 +178,6 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
                 StreamBuilder<List<Recipe>>(
                   stream: _pending,
                   builder: _buildRecipes,
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: TextLinkButton(
-                    label: 'Cerrar sesión',
-                    onPressed: _signOut,
-                  ),
                 ),
               ],
             ),

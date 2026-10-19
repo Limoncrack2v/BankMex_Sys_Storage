@@ -19,6 +19,7 @@ import '../../models/recipe_adjustments.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
+import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/empty_state.dart';
@@ -37,9 +38,12 @@ import 'saved_meal_plan_view.dart';
 /// ([SavedPlanView]); si no, el plan sugerido, que se puede guardar
 /// ([SuggestedPlanView]).
 class MealPlanScreen extends StatefulWidget {
-  const MealPlanScreen({super.key, required this.familyId});
+  const MealPlanScreen({super.key, required this.familyId, this.onAccount});
 
   final String familyId;
+
+  /// Abre "Mi cuenta" desde el header (lo pasa HomeScreen).
+  final VoidCallback? onAccount;
 
   @override
   State<MealPlanScreen> createState() => _MealPlanScreenState();
@@ -91,7 +95,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const AppHeader(title: 'Plan de comidas'),
+        AppHeader(title: 'Plan de comidas', onAccount: widget.onAccount),
         Expanded(
           child: StreamBuilder<List<Recipe>>(
             stream: _catalog,
@@ -404,6 +408,9 @@ class _SuggestedPlanViewState extends State<SuggestedPlanView> {
     if (_saving || onSave == null) return;
 
     final messenger = ScaffoldMessenger.of(context);
+    // La confirmación se abre con el Navigator: esta vista se desmonta en
+    // cuanto el plan queda guardado en el dispositivo.
+    final hostContext = Navigator.of(context).context;
     setState(() => _saving = true);
     final bool synced;
     try {
@@ -439,7 +446,17 @@ class _SuggestedPlanViewState extends State<SuggestedPlanView> {
     // En cuanto el plan queda en el dispositivo la pantalla cambia al plan
     // guardado, así que esta vista ya puede no estar.
     if (mounted) setState(() => _saving = false);
-    showPlanSnack(messenger, withSyncNote('Plan guardado.', synced: synced));
+    if (!hostContext.mounted) return;
+    await showSuccessSheet(
+      hostContext,
+      title: 'Plan de comidas',
+      heading: 'Plan guardado',
+      message: withSyncNote(
+        'Las recetas de cada día ya no cambian. Puedes cambiar un día o '
+        'dejarlo libre.',
+        synced: synced,
+      ),
+    );
   }
 
   @override
