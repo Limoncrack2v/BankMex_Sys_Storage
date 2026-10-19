@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../application/bank_storage_facade.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../data/repositories/member_repository.dart';
@@ -65,10 +66,17 @@ class RecipeDetailScreen extends StatefulWidget {
     required this.recipe,
     required this.familyId,
     required this.backLabel,
+    this.suggestAdjustment,
   });
 
-  /// Receta original (sin ajustar).
+  /// Receta original (sin ajustar a las porciones del hogar). Si ya es la
+  /// versión adaptada y aprobada por el nutriólogo, trae su resumen.
   final Recipe recipe;
+
+  /// Para las pruebas: por omisión pide la sugerencia a
+  /// [BankStorageFacade.suggestAdjustment].
+  final Future<void> Function(String familyId, String recipeId)?
+  suggestAdjustment;
   final String familyId;
   final String backLabel;
 
@@ -90,6 +98,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _suggestAdjustment();
     _pantrySubscription = PantryRepository()
         .watchAllPantryItems(widget.familyId)
         .listen(
@@ -114,6 +123,27 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             _membersFailed = true;
           }),
         );
+  }
+
+  /// Al abrir una receta se le pide al motor que sugiera cómo adaptarla a este
+  /// hogar (porciones y alergias). Queda pendiente del nutriólogo y no cambia
+  /// lo que se ve ahora; si falla, se sigue con la receta base.
+  Future<void> _suggestAdjustment() async {
+    final recipe = widget.recipe;
+    if (recipe.id.isEmpty || recipe.adaptation != null) return;
+    try {
+      final suggest =
+          widget.suggestAdjustment ??
+          (familyId, recipeId) async {
+            await BankStorageFacade().suggestAdjustment(
+              familyId: familyId,
+              recipeId: recipeId,
+            );
+          };
+      await suggest(widget.familyId, recipe.id);
+    } catch (_) {
+      // Es en segundo plano: sin la sugerencia, la familia ve la receta base.
+    }
   }
 
   @override
@@ -208,6 +238,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           const SizedBox(height: 8),
                           const Pill.success(
                             label: 'Adaptado al tamaño de tu hogar',
+                          ),
+                        ],
+                        if (widget.recipe.adaptation != null) ...[
+                          const SizedBox(height: 8),
+                          InfoBanner(
+                            message:
+                                'Adaptada para tu familia y aprobada por el '
+                                'nutriólogo: ${widget.recipe.adaptation}.',
+                            background: AppColors.primarySoft,
+                            foreground: AppColors.primaryDark,
                           ),
                         ],
                         const SizedBox(height: 8),

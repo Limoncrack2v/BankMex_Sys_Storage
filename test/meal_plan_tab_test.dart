@@ -205,14 +205,19 @@ void main() {
   });
 
   testWidgets('if the members cannot be read, it warns about allergies and '
-      'does not offer to save', (tester) async {
+      'does not build a plan', (tester) async {
     await pumpTab(tester, members: failed());
 
-    expectWarning(
-      tester,
-      'No pudimos revisar las alergias de tu familia. Revisa tu conexión e '
-      'intenta de nuevo.',
+    // Sin saber las alergias podría salir una receta que alguien no puede
+    // comer: no hay plan que mostrar ni que guardar.
+    expect(
+      find.text(
+        'No pudimos revisar las alergias de tu familia. Revisa tu conexión e '
+        'intenta de nuevo.',
+      ),
+      findsOneWidget,
     );
+    expect(find.text('MIÉ'), findsNothing);
     expect(find.text('Guardar este plan'), findsNothing);
   });
 
@@ -228,31 +233,28 @@ void main() {
     expect(find.text('Guardar este plan'), findsNothing);
   });
 
-  testWidgets('if the catalog cannot be read, the sample recipes are shown '
-      'but cannot be saved', (tester) async {
+  testWidgets('if the catalog cannot be read, it says so and shows no sample '
+      'recipes', (tester) async {
     await pumpTab(tester, catalog: failed());
 
-    expectWarning(
-      tester,
-      'No pudimos cargar las recetas de BAMX. Revisa tu conexión e intenta de '
-      'nuevo.',
+    expect(
+      find.text(
+        'No pudimos cargar las recetas de BAMX. Revisa tu conexión e intenta '
+        'de nuevo.',
+      ),
+      findsOneWidget,
     );
+    expect(find.text('MIÉ'), findsNothing);
     expect(find.text('Guardar este plan'), findsNothing);
-    expect(find.textContaining('Para guardar tu plan'), findsNothing);
   });
 
-  testWidgets('the sample recipes of an empty catalog cannot be saved', (
+  testWidgets('an empty catalog shows an empty state, not sample recipes', (
     tester,
   ) async {
     await pumpTab(tester, catalog: loaded(const []));
 
-    expect(find.text('MIÉ'), findsOneWidget);
-    expect(
-      find.text(
-        'Para guardar tu plan hacen falta recetas del catálogo de BAMX.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('Aún no hay recetas para armar tu plan'), findsOneWidget);
+    expect(find.text('MIÉ'), findsNothing);
     expect(find.text('Guardar este plan'), findsNothing);
   });
 

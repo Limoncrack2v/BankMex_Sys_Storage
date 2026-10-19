@@ -2,6 +2,7 @@ import 'meal_plan_generator.dart';
 import 'models/family_profile.dart';
 import 'models/pantry_item.dart';
 import 'models/recipe.dart';
+import 'recipe_adjustment.dart';
 import 'recipe_on_demand.dart';
 
 /// Elige recetas para una familia con lo que hay en su despensa.
@@ -32,6 +33,19 @@ abstract interface class RecipePlanner {
     required int days,
     DateTime? startDate,
     DateTime? now,
+  });
+
+  /// Los cambios que conviene hacerle a [recipe] (una receta aprobada) para el
+  /// hogar descrito por [household]: porciones y sustitución de alérgenos, con
+  /// el motivo de cada uno. Null si no hay nada que cambiar o si no se puede
+  /// adaptar. Es solo una sugerencia: nada se aplica hasta que el nutriólogo
+  /// la aprueba.
+  ///
+  /// Recibe [AdjustmentContext] y no el perfil de la familia: un motor remoto
+  /// no recibe nombres, edades ni pesos de los integrantes.
+  Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
+    required AdjustmentContext household,
+    required Recipe recipe,
   });
 }
 
@@ -78,4 +92,10 @@ class RuleBasedRecipePlanner implements RecipePlanner {
       now: now,
     );
   }
+
+  @override
+  Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
+    required AdjustmentContext household,
+    required Recipe recipe,
+  }) async => RecipeAdjustmentRules.suggest(recipe, household);
 }

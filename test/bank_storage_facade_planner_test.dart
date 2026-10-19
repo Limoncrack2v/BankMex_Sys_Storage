@@ -12,6 +12,7 @@ import 'package:bank_storage_app/domain/models/family_profile.dart';
 import 'package:bank_storage_app/domain/models/meal_plan.dart';
 import 'package:bank_storage_app/domain/models/pantry_item.dart';
 import 'package:bank_storage_app/domain/models/recipe.dart';
+import 'package:bank_storage_app/domain/recipe_adjustment.dart';
 import 'package:bank_storage_app/domain/recipe_planner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,7 +66,8 @@ class _Recipes implements RecipeRepository {
 
 class _MealPlans implements MealPlanRepository {
   @override
-  Future<MealPlan> create(MealPlan plan) async => plan;
+  Future<MealPlan> create(MealPlan plan) async =>
+      throw StateError('generateMealPlan no debe guardar el plan');
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -98,6 +100,12 @@ class _Planner implements RecipePlanner {
     suggestedFrom = recipes;
     return suggestion;
   }
+
+  @override
+  Future<RecipeAdjustmentSuggestion?> suggestAdjustment({
+    required AdjustmentContext household,
+    required Recipe recipe,
+  }) async => null;
 
   @override
   Future<MealPlanGeneration> planDays({
