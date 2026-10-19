@@ -74,14 +74,16 @@ abstract interface class ReminderScheduler {
   /// Pide permiso para mostrar notificaciones; true si lo dieron.
   Future<bool> requestPermission();
 
-  /// Si el teléfono deja que la app muestre notificaciones.
+  /// Si el teléfono deja que la app muestre el recordatorio: las
+  /// notificaciones de la app y, en Android, también su canal.
   Future<bool> notificationsEnabled();
 
   /// Programa el recordatorio todos los días a [time] y reemplaza al
   /// anterior. Va después de [init].
   Future<void> scheduleDaily(ReminderTime time);
 
-  /// Quita el recordatorio programado y el que ya se mostró.
+  /// Quita el recordatorio programado y el que ya se mostró. Las demás
+  /// notificaciones de la app se quedan.
   Future<void> cancel();
 
   /// Abre los ajustes de notificaciones de la app en el teléfono.
@@ -100,6 +102,7 @@ class LocalReminderScheduler implements ReminderScheduler {
   /// Siempre el mismo id: programarlo otra vez reemplaza al anterior.
   static const _id = 1;
   static const _payload = 'plan';
+  static const _channelId = 'plan_reminder';
 
   /// res/drawable/ic_stat_plan_reminder.xml. Dart lo pide solo por nombre:
   /// res/raw/keep_bank_storage_app.xml evita que el build release lo borre.
@@ -172,7 +175,13 @@ class LocalReminderScheduler implements ReminderScheduler {
   @override
   Future<bool> notificationsEnabled() async {
     final android = _android;
-    if (android != null) return await android.areNotificationsEnabled() ?? true;
+    if (android != null) {
+      if (!(await android.areNotificationsEnabled() ?? true)) return false;
+      // Desde la notificación se puede apagar solo este canal.
+      final channels = await android.getNotificationChannels();
+      final channel = channels?.where((c) => c.id == _channelId).firstOrNull;
+      return channel == null || channel.importance != Importance.none;
+    }
     final ios = _ios;
     if (ios != null) return (await ios.checkPermissions())?.isEnabled ?? true;
     return true;
@@ -189,7 +198,7 @@ class LocalReminderScheduler implements ReminderScheduler {
     scheduledDate: nextReminderAt(tz.TZDateTime.now(tz.local), time),
     notificationDetails: const NotificationDetails(
       android: AndroidNotificationDetails(
-        'plan_reminder',
+        _channelId,
         'Recordatorio del plan',
         channelDescription: 'Un aviso al día para revisar tu plan de comidas',
         icon: _icon,
@@ -202,8 +211,10 @@ class LocalReminderScheduler implements ReminderScheduler {
     matchDateTimeComponents: DateTimeComponents.time,
   );
 
+  /// Solo el recordatorio: cancelAll también quitaría otras notificaciones
+  /// de la app (las push que vengan después).
   @override
-  Future<void> cancel() => _plugin.cancelAll();
+  Future<void> cancel() => _plugin.cancel(id: _id);
 
   @override
   Future<void> openSettings() async {

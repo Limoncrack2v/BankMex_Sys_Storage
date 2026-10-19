@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bank_storage_app/data/models/app_user.dart';
+import 'package:bank_storage_app/data/models/family.dart';
 import 'package:bank_storage_app/data/plan_reminder.dart';
 import 'package:bank_storage_app/ui/screens/home/home_screen.dart';
 import 'package:bank_storage_app/ui/screens/home/open_plan_from_reminder.dart';
@@ -42,6 +44,29 @@ void main() {
       AppBottomNav.familyItems[HomeScreen.planTab].label,
       'Plan de comidas',
     );
+  });
+
+  // HomeScreen no se puede montar sin Firestore: esto cuida que un merge no
+  // le quite el mixin.
+  test('the family home uses it', () {
+    final home = HomeScreen(
+      family: Family(
+        familyId: 'fam',
+        address: 'Calle 1',
+        registrationDate: DateTime(2026, 9, 1),
+        authUid: 'fam',
+        appliances: const [],
+      ),
+      user: AppUser(
+        userId: 'fam',
+        name: 'Familia',
+        email: 'fam@bamx.test',
+        role: AppUser.roleFamily,
+        createdAt: DateTime(2026, 9, 1),
+      ),
+    );
+    // ignore: invalid_use_of_protected_member
+    expect(home.createState(), isA<OpenPlanFromReminder>());
   });
 
   testWidgets('starts on the plan when the reminder opened the app', (

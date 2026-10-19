@@ -35,6 +35,9 @@ class _FakePlugin extends Fake implements FlutterLocalNotificationsPlugin {
   NotificationAppLaunchDetails? launch;
   final scheduled = <_Scheduled>[];
   int cancelled = 0;
+
+  /// Los ids que se cancelaron, en orden.
+  final cancelledIds = <int>[];
   int settingsOpened = 0;
   _FakeAndroid? android;
 
@@ -83,7 +86,10 @@ class _FakePlugin extends Fake implements FlutterLocalNotificationsPlugin {
   }
 
   @override
-  Future<void> cancelAll() async => cancelled++;
+  Future<void> cancel({required int id, String? tag}) async {
+    cancelled++;
+    cancelledIds.add(id);
+  }
 
   @override
   Future<bool?> openAppNotificationSettings() async {
@@ -103,16 +109,23 @@ class _FakePlugin extends Fake implements FlutterLocalNotificationsPlugin {
 /// La parte de Android del plugin, con las respuestas del teléfono.
 class _FakeAndroid extends Fake
     implements AndroidFlutterLocalNotificationsPlugin {
-  _FakeAndroid({this.granted, this.enabled});
+  _FakeAndroid({this.granted, this.enabled, this.channels});
 
   final bool? granted;
   final bool? enabled;
+
+  /// Los canales que ya creó la app; null si el teléfono no responde.
+  final List<AndroidNotificationChannel>? channels;
 
   @override
   Future<bool?> requestNotificationsPermission() async => granted;
 
   @override
   Future<bool?> areNotificationsEnabled() async => enabled;
+
+  @override
+  Future<List<AndroidNotificationChannel>?> getNotificationChannels() async =>
+      channels;
 }
 
 const _tapOnReminder = NotificationResponse(
@@ -678,14 +691,42 @@ void main() {
       expect(reminder.date.isAfter(tz.TZDateTime.now(tz.local)), isTrue);
     });
 
-    test('cancel removes every notification and openSettings opens the '
-        'app settings', () async {
+    test('cancel removes only the reminder and openSettings opens the app '
+        'settings', () async {
       await scheduler.cancel();
       await scheduler.openSettings();
 
-      expect(plugin.cancelled, 1);
+      // Solo el id del recordatorio: las demás notificaciones de la app (las
+      // push, por ejemplo) se quedan.
+      expect(plugin.cancelledIds, [1]);
       expect(plugin.settingsOpened, 1);
     });
+
+    test(
+      'a family that turned off only this channel counts as blocked',
+      () async {
+        AndroidNotificationChannel channel(String id, Importance importance) =>
+            AndroidNotificationChannel(id, id, importance: importance);
+
+        plugin.android = _FakeAndroid(
+          enabled: true,
+          channels: [channel('plan_reminder', Importance.none)],
+        );
+        expect(await scheduler.notificationsEnabled(), isFalse);
+
+        // Otro canal apagado no importa, ni que el canal aún no exista.
+        plugin.android = _FakeAndroid(
+          enabled: true,
+          channels: [
+            channel('otro', Importance.none),
+            channel('plan_reminder', Importance.defaultImportance),
+          ],
+        );
+        expect(await scheduler.notificationsEnabled(), isTrue);
+        plugin.android = _FakeAndroid(enabled: true, channels: const []);
+        expect(await scheduler.notificationsEnabled(), isTrue);
+      },
+    );
 
     test('reads the permission answers; unknown counts as not granted but '
         'allowed', () async {

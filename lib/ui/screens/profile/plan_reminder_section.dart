@@ -135,15 +135,11 @@ class _PlanReminderSectionState extends State<PlanReminderSection>
         _blocked = false;
       }
     });
-    final message = switch (result) {
-      ReminderResult.scheduled =>
-        'Te recordaremos tu plan todos los días a las ${_format(time)}.',
-      ReminderResult.failed =>
-        'No se pudo guardar el recordatorio. Intenta de nuevo.',
-      // El aviso de permisos ya dice qué hacer.
-      ReminderResult.permissionDenied => null,
-    };
-    if (message != null) _showSnack(message);
+    // La sección ya muestra si quedó encendido y a qué hora, y el aviso de
+    // permisos dice qué hacer: solo el error va en un snackbar.
+    if (result == ReminderResult.failed) {
+      _showSnack('No se pudo guardar el recordatorio. Intenta de nuevo.');
+    }
   }
 
   Future<void> _disable() async {
@@ -154,7 +150,6 @@ class _PlanReminderSectionState extends State<PlanReminderSection>
       _denied = false;
       _blocked = false;
     });
-    _showSnack('Apagaste el recordatorio del plan.');
   }
 
   static Future<TimeOfDay?> _showTimePicker(
@@ -272,8 +267,10 @@ class _PlanReminderSectionState extends State<PlanReminderSection>
       foreground: foreground,
     ),
     const SizedBox(height: 8),
-    Center(
-      child: TextLinkButton(
+    // Como "Reintentar" debajo de un aviso (#51).
+    SizedBox(
+      width: double.infinity,
+      child: SecondaryButton(
         label: 'Abrir ajustes',
         onPressed: _reminder.openSettings,
       ),

@@ -168,7 +168,7 @@ Cuando una familia abre una receta, la app sugiere cómo adaptarla a su hogar: l
 
 La familia puede encender en su Perfil un aviso diario, a la hora que elija (9:00 si no elige otra), que dice "Revisa tu plan de comidas de hoy". Es una notificación local que programa el propio teléfono con `flutter_local_notifications`: no hay servidor, FCM ni tokens, y funciona sin conexión. El texto es fijo y no muestra recetas ni datos de la familia en la pantalla bloqueada (MASVS-PLATFORM-3, OWASP Mobile M6). Es solo para familias y no existe en web.
 
-- **Código:** `PlanReminder` en `lib/data/plan_reminder.dart`. Si está encendido y a qué hora se guarda en el teléfono por cuenta (`plan_reminder_on.<uid>` y `plan_reminder_time.<uid>`), nunca con nombres; la app no tiene respaldos, así que no sale del teléfono.
+- **Código:** `PlanReminder` en `lib/data/plan_reminder.dart`. Si está encendido y a qué hora se guarda en el teléfono por cuenta (`plan_reminder_on.<uid>` y `plan_reminder_time.<uid>`), nunca con nombres; en Android la app no tiene respaldos, así que no sale del teléfono (en iOS puede ir en el respaldo del teléfono: solo es el uid, si está encendido y la hora).
 - **Sesión:** al abrir la sesión de una familia se vuelve a programar si lo tiene encendido. Cerrar sesión (de cualquier rol, con o sin conexión) lo cancela antes que nada. Lo que eligió la familia se queda guardado: el aviso vuelve cuando esa misma familia entra otra vez en ese teléfono.
 - **Android:**
   - `android/app/build.gradle.kts` activa el *desugaring* (`isCoreLibraryDesugaringEnabled` y `desugar_jdk_libs`): el plugin usa `java.time` y la app funciona desde Android 7 (minSdk 24). Sin él no compila.

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bank_storage_app/data/plan_reminder.dart';
 import 'package:bank_storage_app/ui/screens/profile/plan_reminder_section.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
+import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 import 'package:bank_storage_app/ui/widgets/option_button.dart';
 import 'package:bank_storage_app/ui/widgets/pill.dart';
 
@@ -105,10 +106,8 @@ void main() {
     expect(scheduler.scheduled, const ReminderTime(9, 0));
     expect(_option(tester, 'Encendido').selected, isTrue);
     expect(find.text('Todos los días a las 9:00'), findsOneWidget);
-    expect(
-      find.text('Te recordaremos tu plan todos los días a las 9:00.'),
-      findsOneWidget,
-    );
+    // La sección ya lo muestra: sin snackbar (#50).
+    expect(find.byType(SnackBar), findsNothing);
     expect(await reminder.settingsFor(_uid), (
       on: true,
       time: const ReminderTime(9, 0),
@@ -159,7 +158,11 @@ void main() {
       'requestPermission',
     ]);
     expect(find.text(_deniedMessage), findsOneWidget);
-    expect(find.text('Abrir ajustes'), findsOneWidget);
+    // Como "Reintentar" debajo de un aviso (#51).
+    expect(
+      find.widgetWithText(SecondaryButton, 'Abrir ajustes'),
+      findsOneWidget,
+    );
     expect(_option(tester, 'Apagado').selected, isTrue);
     expect(find.textContaining('Todos los días'), findsNothing);
     expect(find.byType(SnackBar), findsNothing);
@@ -221,10 +224,7 @@ void main() {
     expect(asked, [const TimeOfDay(hour: 9, minute: 0)]);
     expect(scheduler.scheduled, const ReminderTime(20, 15));
     expect(find.text('Todos los días a las 20:15'), findsOneWidget);
-    expect(
-      find.text('Te recordaremos tu plan todos los días a las 20:15.'),
-      findsOneWidget,
-    );
+    expect(find.byType(SnackBar), findsNothing);
     expect(await reminder.settingsFor(_uid), (
       on: true,
       time: const ReminderTime(20, 15),
@@ -265,7 +265,7 @@ void main() {
     expect(scheduler.scheduled, isNull);
     expect(_option(tester, 'Apagado').selected, isTrue);
     expect(find.textContaining('Todos los días'), findsNothing);
-    expect(find.text('Apagaste el recordatorio del plan.'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(await reminder.settingsFor(_uid), (
       on: false,
       time: const ReminderTime(20, 15),
