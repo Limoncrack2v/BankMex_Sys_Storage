@@ -48,7 +48,7 @@ void main() {
     dietaryRestrictions: [],
   );
 
-  test('submit stays pending and approve flips status', () {
+  test('submit stays pending and approve records who approved it', () {
     final submitted = RecipeCatalog.submitRecipe(
       name: 'Nueva',
       ingredients: const [
@@ -59,27 +59,45 @@ void main() {
       caloriesPerServing: 1,
     );
     expect(submitted.status, RecipeStatus.pending);
-    expect(RecipeCatalog.approveRecipe(submitted).status, RecipeStatus.approved);
+    final approved = RecipeCatalog.approveRecipe(
+      submitted,
+      approvedBy: 'nutri1',
+      at: DateTime(2026, 10, 14),
+    );
+    expect(approved.status, RecipeStatus.approved);
+    expect(approved.approvedBy, 'nutri1');
+    expect(approved.approvedAt, DateTime(2026, 10, 14));
   });
 
-  test('publish marks the recipe approved for families', () {
-    final published = RecipeCatalog.publishRecipe(
-      name: 'Publicada',
-      ingredients: const [
-        RecipeIngredient(productName: 'arroz', quantity: 10, unit: 'g'),
-      ],
-      steps: const ['x'],
-      prepTimeMinutes: 1,
-      caloriesPerServing: 1,
+  test('Staff cannot submit a recipe as approved', () {
+    expect(
+      () => RecipeCatalog.submitRecipe(
+        name: 'Nueva',
+        ingredients: const [
+          RecipeIngredient(productName: 'arroz', quantity: 10, unit: 'g'),
+        ],
+        steps: const ['x'],
+        prepTimeMinutes: 1,
+        caloriesPerServing: 1,
+        status: RecipeStatus.approved,
+      ),
+      throwsArgumentError,
     );
-    expect(published.status, RecipeStatus.approved);
   });
 
   test('on-demand recipe prefers the one using food that expires first', () {
     final items = [
-      pantry(name: 'zanahoria', quantity: 500, expiration: DateTime(2026, 9, 22)),
+      pantry(
+        name: 'zanahoria',
+        quantity: 500,
+        expiration: DateTime(2026, 9, 22),
+      ),
       pantry(name: 'arroz', quantity: 2000, expiration: DateTime(2026, 10, 20)),
-      pantry(name: 'lentejas', quantity: 500, expiration: DateTime(2026, 11, 1)),
+      pantry(
+        name: 'lentejas',
+        quantity: 500,
+        expiration: DateTime(2026, 11, 1),
+      ),
     ];
     final recipes = [
       recipe('later', const [
@@ -103,7 +121,11 @@ void main() {
 
   test('meal plan is FIFO, deducts pantry, and skips pending recipes', () {
     final items = [
-      pantry(name: 'zanahoria', quantity: 400, expiration: DateTime(2026, 9, 22)),
+      pantry(
+        name: 'zanahoria',
+        quantity: 400,
+        expiration: DateTime(2026, 9, 22),
+      ),
       pantry(name: 'arroz', quantity: 2000, expiration: DateTime(2026, 10, 20)),
     ];
     final recipes = [
@@ -137,7 +159,9 @@ void main() {
       generated.plan.meals.every((meal) => meal.recipeId == 'zanahoria_rice'),
       isTrue,
     );
-    final carrots = generated.updatedPantry.firstWhere((item) => item.id == 'zanahoria');
+    final carrots = generated.updatedPantry.firstWhere(
+      (item) => item.id == 'zanahoria',
+    );
     expect(carrots.quantity, lessThan(400));
     expect(carrots.consumedQuantity, greaterThan(0));
   });

@@ -212,11 +212,20 @@ Map<String, Object?> updateWrite(String path, Map<String, Object?> changes) {
 }
 
 /// Escritura de set (crear o reemplazar) para usar dentro de [Db.commit].
+/// [requestTimeFields] son campos que valen la hora del servidor
+/// (FieldValue.serverTimestamp()), los que las reglas comparan con
+/// request.time.
 Map<String, Object?> setWrite(
   String path,
-  Map<String, Map<String, Object?>> fields,
-) => {
+  Map<String, Map<String, Object?>> fields, {
+  List<String> requestTimeFields = const [],
+}) => {
   'update': {'name': _name(path), 'fields': fields},
+  if (requestTimeFields.isNotEmpty)
+    'updateTransforms': [
+      for (final field in requestTimeFields)
+        {'fieldPath': field, 'setToServerValue': 'REQUEST_TIME'},
+    ],
 };
 
 /// Escritura de borrado para usar dentro de [Db.commit].

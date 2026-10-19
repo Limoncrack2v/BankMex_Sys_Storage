@@ -27,6 +27,7 @@ import 'package:bank_storage_app/firebase_options.dart';
 import 'package:bank_storage_app/main.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 import 'package:bank_storage_app/ui/widgets/app_text_field.dart';
+import 'package:bank_storage_app/ui/widgets/danger_buttons.dart';
 import 'package:bank_storage_app/ui/widgets/option_button.dart';
 
 const _takeScreenshots = bool.fromEnvironment('E2E_SCREENSHOTS');
@@ -166,9 +167,7 @@ void main() {
     await _scrollTo(tester, find.text('Tendencias de consumo'));
     await shot('demo_08_stats_trends');
 
-    await _tap(tester, find.byTooltip('Cuenta'));
-    await _tap(tester, find.text('Cerrar sesión'));
-    await _waitFor(tester, find.text(_signInTitle));
+    await _signOut(tester);
 
     // 6. La familia: la Cloud Function ya llenó su despensa con la entrega.
     await _signIn(tester, _ramirezEmail, _password);
@@ -202,7 +201,14 @@ void main() {
     await _tap(tester, find.text('Cambiar'));
     await _waitFor(tester, find.text('Dejar este día libre'));
     await shot('demo_12_change_day');
+    // Nada se guarda hasta confirmar.
     await _tap(tester, find.text('Dejar este día libre'));
+    await _tapButton(
+      tester,
+      find.widgetWithText(DangerButton, 'Dejar día libre'),
+    );
+    await _waitFor(tester, find.text('Plan actualizado'));
+    await _tap(tester, find.text('Listo'));
     await _waitFor(tester, find.text('Día libre'));
     await _scrollDownTo(
       tester,
@@ -245,16 +251,20 @@ void main() {
       list: find.text('María'),
     );
     await shot('demo_18_appliances');
-    await _tap(tester, find.text('Cerrar sesión'));
-    await _waitFor(tester, find.text(_signInTitle));
+    await _signOut(tester);
 
-    // 11. El nutriólogo entra a su propia pantalla.
+    // 11. El nutriólogo aprueba la receta pendiente del seed; hasta entonces
+    // ninguna familia la ve.
     await _signIn(tester, _nutritionistEmail, _password);
     await _retryIfSignInFailed(tester);
-    await _waitFor(tester, find.text('Nutriólogo'));
+    await _waitFor(tester, find.text('Ensalada de naranja'));
     await shot('demo_19_nutritionist');
-    await _tap(tester, find.text('Cerrar sesión'));
-    await _waitFor(tester, find.text(_signInTitle));
+    await _tapButton(tester, _primaryButton('Aprobar receta'));
+    await _confirmIdentityIfAsked(tester, _password);
+    await _waitFor(tester, find.text('Receta aprobada'));
+    await shot('demo_20_recipe_approved');
+    await _tap(tester, find.text('Listo'));
+    await _signOut(tester);
 
     semantics.dispose();
   }, timeout: const Timeout(Duration(minutes: 6)));
@@ -320,6 +330,15 @@ Future<void> _scrollDownTo(
     ),
   );
   await _scrollTo(tester, finder);
+}
+
+/// Los tres roles cierran sesión desde "Mi cuenta", en el ícono del header.
+/// La familia tiene un header por pestaña; vale el primero.
+Future<void> _signOut(WidgetTester tester) async {
+  await _tap(tester, find.byTooltip('Cuenta'));
+  await _waitFor(tester, find.text('Mi cuenta'));
+  await _tap(tester, find.text('Cerrar sesión'));
+  await _waitFor(tester, find.text(_signInTitle));
 }
 
 Future<void> _enter(WidgetTester tester, Finder finder, String text) async {

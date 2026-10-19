@@ -252,6 +252,26 @@ void main() {
       );
     });
 
+    test('staff corrige la cuota de recuperación y la deja Exenta', () async {
+      await assertAllowed(
+        staff().updateDoc('families/famA', {
+          'recoveryQuotaDefault': number(150),
+        }),
+      );
+      await assertAllowed(
+        staff().updateDoc('families/famA', {'recoveryQuotaDefault': nul()}),
+      );
+    });
+
+    test('staff no deja un nombre vacío ni una cuota negativa', () async {
+      await assertDenied(staff().updateDoc('families/famA', {'name': str('')}));
+      await assertDenied(
+        staff().updateDoc('families/famA', {
+          'recoveryQuotaDefault': number(-1),
+        }),
+      );
+    });
+
     test('staff no cambia la cuenta dueña', () async {
       await assertDenied(
         staff().updateDoc('families/famA', {'authUid': str('fam2')}),

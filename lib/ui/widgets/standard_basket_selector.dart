@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../data/models/standard_basket.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
-import 'app_buttons.dart';
 import 'app_text_field.dart';
+import 'danger_buttons.dart';
 import 'option_button.dart';
 import 'pill.dart';
 
@@ -106,7 +106,7 @@ class StandardBasketSelector extends StatelessWidget {
             foreground: AppColors.warningText,
           ),
           const SizedBox(height: 8),
-          SecondaryButton(label: 'Reemplazar productos', onPressed: onRefill),
+          DangerButton(label: 'Reemplazar productos', onPressed: onRefill),
         ],
       ],
     );

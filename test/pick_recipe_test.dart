@@ -611,7 +611,7 @@ void main() {
       expect((nothingFits.fitsTime, nothingFits.matchesCraving), (false, true));
     });
 
-    test('what the pantry covers beats time and craving', () {
+    test('time and craving beat what the pantry covers', () {
       final suggestion = pick(
         request: const RecipeRequest(craving: 'atún', maxPrepMinutes: 30),
         pantry: [
@@ -620,11 +620,11 @@ void main() {
         ],
       )!;
 
-      // Arroz con atún cabe en el tiempo y tiene el antojo, pero sin atún no
-      // alcanza; de las que alcanzan, la de lentejas es la que menos se pasa.
-      expect(suggestion.recipe.name, 'Sopa de lentejas');
-      expect(suggestion.fitsPantry, isTrue);
-      expect((suggestion.fitsTime, suggestion.matchesCraving), (false, false));
+      // Arroz con atún cabe en el tiempo y tiene el antojo: va primero aunque
+      // sin atún no alcance, y la tarjeta dice qué falta.
+      expect(suggestion.recipe.name, 'Arroz con atún');
+      expect(suggestion.fitsPantry, isFalse);
+      expect((suggestion.fitsTime, suggestion.matchesCraving), (true, true));
     });
 
     test('if none is fully covered, the one missing the fewest', () {

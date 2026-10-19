@@ -3,8 +3,8 @@ import '../domain/models/recipe.dart';
 import '../ui/models/recipe.dart' as ui;
 import 'repositories/recipe_repository.dart';
 
-/// Recetas approved desde Firestore. Si la colección está vacía, la UI sigue
-/// usando SampleData (el catálogo de Figma). La familia solo puede leer estas.
+/// Recetas approved desde Firestore, las únicas que puede leer la familia. Si
+/// no hay ninguna, la UI muestra un estado vacío: no usa datos de muestra.
 Stream<List<ui.Recipe>> watchApprovedCatalogRecipes() {
   return RecipeRepository()
       .watchByStatus(RecipeStatus.approved)
