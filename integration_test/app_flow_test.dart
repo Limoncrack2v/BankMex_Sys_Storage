@@ -378,8 +378,9 @@ void main() {
       await _waitFor(tester, find.textContaining('Usa Arroz'));
       await shot('17_plan_de_comidas');
 
-      // 9. Cerrar sesión de la familia.
-      await _tap(tester, find.text('Perfil'));
+      // 9. Cerrar sesión de la familia, desde "Mi cuenta" en el header.
+      await _tap(tester, find.byTooltip('Cuenta').first);
+      await _waitFor(tester, find.text('Mi cuenta'));
       await _tap(tester, find.text('Cerrar sesión'));
       await _waitFor(tester, find.text(_signInTitle));
 
