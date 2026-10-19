@@ -16,6 +16,7 @@ import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_text_field.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/pill.dart';
 import '../session/account_sheet.dart';
 import '../session/step_up_sheet.dart';
@@ -307,7 +308,7 @@ class _PendingRecipeCard extends StatelessWidget {
             onPressed: enabled ? onApprove : null,
           ),
           const SizedBox(height: 8),
-          SecondaryButton(
+          DangerButton(
             label: 'Rechazar con motivo',
             onPressed: enabled ? onReject : null,
           ),
@@ -382,7 +383,7 @@ class _RejectSheetState extends State<_RejectSheet> {
           ),
         ],
       ),
-      footer: PrimaryButton(
+      footer: DangerButton(
         label: 'Rechazar receta',
         onPressed: _valid
             ? () => Navigator.of(context).pop(_note.text.trim())
