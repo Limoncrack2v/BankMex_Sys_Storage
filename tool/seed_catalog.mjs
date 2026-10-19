@@ -3,18 +3,20 @@
 //
 // Uso: ./scripts/seed_catalog.sh
 
-import { PROJECT_ID, FirestoreError, setDocument } from './firestore_rest.mjs';
+import { PROJECT_ID, FirestoreError, deletePath, setDocument } from './firestore_rest.mjs';
 import { RECIPES } from './catalog_recipes.mjs';
 
 async function seed() {
   for (const [id, fields] of RECIPES) {
     await setDocument(`recipes/${id}`, fields);
   }
+  // Receta de prueba que ya no está en el catálogo; las cargas anteriores la
+  // dejaron en la BD real.
+  await deletePath('recipes/rec_nopal_prueba');
 
   const approved = RECIPES.filter(([, fields]) => fields.status.stringValue === 'approved').length;
   console.log(`Catálogo escrito en la BD real (${PROJECT_ID}):`);
   console.log(`  recipes/: ${approved} approved, 1 pending (Ensalada de naranja)`);
-  console.log('  Incluye Tacos de nopal PRUEBA-EMULADOR');
   console.log('  No se modificaron users, families ni pantryItems');
   console.log('  Consola: https://console.firebase.google.com/project/bank-storage-bamx/firestore');
 }

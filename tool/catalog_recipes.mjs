@@ -185,29 +185,9 @@ export const RECIPES = [
     }),
   ],
   [
-    'rec_nopal_prueba',
-    recipeFields({
-      name: 'Tacos de nopal PRUEBA-EMULADOR',
-      image: `${IMG}/sopa_de_lentejas.jpg`,
-      minutes: 15,
-      servings: 4,
-      kcal: 140,
-      ingredients: [
-        ingredient('Nopal PRUEBA-EMULADOR', 4, 'piece'),
-        ingredient('Jitomate', 0.2, 'kg'),
-      ],
-      nutritionalTags: ['bajoEnSodio', 'bajoEnAzucar', 'aptoDiabeticos', 'vegetariano'],
-      equipment: ['estufa'],
-      steps: [
-        'Esta receta se insertó en el emulador para ver el catálogo en Firestore.',
-        'Asa el nopal y sirve con jitomate.',
-      ],
-    }),
-  ],
-  [
     'rec_pending_demo',
     recipeFields({
-      name: 'Ensalada de naranja (pendiente)',
+      name: 'Ensalada de naranja',
       image: `${IMG}/avena_con_fruta.jpg`,
       minutes: 10,
       servings: 2,
@@ -215,7 +195,7 @@ export const RECIPES = [
       status: 'pending',
       ingredients: [ingredient('Naranja', 0.4, 'kg')],
       nutritionalTags: ['bajoEnSodio', 'bajoEnGrasa', 'vegetariano'],
-      steps: ['Pela y sirve.'],
+      steps: ['Pela la naranja y córtala en rodajas.', 'Sirve fría.'],
     }),
   ],
 ];

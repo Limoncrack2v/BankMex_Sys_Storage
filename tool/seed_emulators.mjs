@@ -604,13 +604,17 @@ async function seed() {
   for (const [id, fields] of RECIPES) {
     await setDocument(`recipes/${id}`, fields);
   }
+  // Receta de prueba que ya no está en el catálogo; los emuladores con
+  // --import todavía la tienen.
+  await deleteDocument('recipes/rec_nopal_prueba');
 
   // Un plan guardado de 7 días desde hoy (medianoche en Guadalajara), dentro
   // de los límites de validMeal: cada fecha dentro del rango y porciones > 0.
+  // Solo recetas sin alérgenos de los Ramírez (lácteos, gluten, cacahuate y
+  // huevo): la app nunca guardaría otras (filtro de alérgenos de "Cambiar").
   const today = guadalajaraDay(now);
   const planStart = guadalajaraTime(today.year, today.month, today.day);
-  const approvedIds = RECIPES.filter(([, fields]) => fields.status.stringValue === 'approved')
-    .map(([id]) => id);
+  const safeRecipeIds = ['rec_sopa_lentejas', 'rec_arroz_atun', 'rec_frijoles'];
   await setDocument('mealPlans/seed-meal-plan-1', {
     familyId: ref(`families/${FAMILY_ID}`),
     dateRangeStart: ts(planStart),
@@ -618,7 +622,7 @@ async function seed() {
     meals: arr(
       Array.from({ length: 7 }, (_, offset) => map({
         date: ts(addDays(planStart, offset)),
-        recipeId: str(approvedIds[offset % approvedIds.length]),
+        recipeId: str(safeRecipeIds[offset % safeRecipeIds.length]),
         servings: dbl(3.5),
       })),
     ),
