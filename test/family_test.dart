@@ -60,4 +60,109 @@ void main() {
       ]);
     });
   });
+
+  group('Family.validateDetails', () {
+    String? validate({
+      String name = 'Familia Ramírez',
+      String address = 'Calle 1',
+      double? quota = 250,
+    }) => Family.validateDetails(
+      name: name,
+      address: address,
+      recoveryQuotaDefault: quota,
+    );
+
+    test('acepta datos válidos y la cuota Exenta', () {
+      expect(validate(), isNull);
+      expect(validate(quota: null), isNull);
+      expect(validate(quota: 0), isNull);
+    });
+
+    test('pide nombre y dirección', () {
+      expect(validate(name: '  '), isNotNull);
+      expect(validate(address: ''), isNotNull);
+    });
+
+    test('usa los límites de validFamily', () {
+      expect(validate(name: 'a' * 100), isNull);
+      expect(validate(name: 'a' * 101), isNotNull);
+      expect(validate(address: 'a' * 200), isNull);
+      expect(validate(address: 'a' * 201), isNotNull);
+    });
+
+    test('rechaza una cuota negativa o que no es un número', () {
+      expect(validate(quota: -1), isNotNull);
+      expect(validate(quota: double.nan), isNotNull);
+      expect(validate(quota: double.infinity), isNotNull);
+    });
+  });
+
+  group('Family.detailChanges', () {
+    final family = Family(
+      familyId: 'familia-1',
+      name: 'Familia Ramírez',
+      address: 'Calle 1',
+      registrationDate: DateTime(2026, 9, 1),
+      recoveryQuotaDefault: 250,
+      authUid: 'familia-1',
+      appliances: const [],
+      nextDeliveryDate: DateTime(2026, 10, 20),
+    );
+
+    test('sin cambios no escribe nada', () {
+      expect(
+        family.detailChanges(
+          name: ' Familia Ramírez ',
+          address: 'Calle 1',
+          recoveryQuotaDefault: 250,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('solo trae los campos que cambian, sin espacios de más', () {
+      expect(
+        family.detailChanges(
+          name: 'Familia Ramírez',
+          address: ' Calle 2 ',
+          recoveryQuotaDefault: 250,
+        ),
+        {'address': 'Calle 2'},
+      );
+    });
+
+    test('Exenta escribe la cuota en null', () {
+      expect(
+        family.detailChanges(
+          name: 'Familia Ramírez',
+          address: 'Calle 1',
+          recoveryQuotaDefault: null,
+        ),
+        {'recoveryQuotaDefault': null},
+      );
+    });
+
+    test('nunca trae authUid ni nextDeliveryDate', () {
+      final changes = family.detailChanges(
+        name: 'Familia López',
+        address: 'Calle 2',
+        recoveryQuotaDefault: 100,
+      );
+      expect(
+        changes.keys,
+        unorderedEquals(['name', 'address', 'recoveryQuotaDefault']),
+      );
+    });
+
+    test('a un hogar sin nombre le agrega el nombre', () {
+      expect(
+        buildFamily().detailChanges(
+          name: 'Familia Nueva',
+          address: 'Calle 1',
+          recoveryQuotaDefault: null,
+        ),
+        {'name': 'Familia Nueva'},
+      );
+    });
+  });
 }

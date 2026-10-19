@@ -13,6 +13,7 @@ abstract final class AppIcons {
   static const cloudSynced = '$_base/cloud_synced.svg';
   static const eye = '$_base/eye.svg';
   static const filter = '$_base/filter.svg';
+  static const home = '$_base/home.svg';
   static const plus = '$_base/plus.svg';
   static const urgencyClock = '$_base/urgency_clock.svg';
   static const users = '$_base/users.svg';

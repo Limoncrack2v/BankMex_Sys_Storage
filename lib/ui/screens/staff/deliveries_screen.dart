@@ -26,6 +26,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
+import '../../widgets/recovery_quota_field.dart';
 import '../../widgets/standard_basket_selector.dart';
 import '../session/step_up_sheet.dart';
 
@@ -120,7 +121,11 @@ class _SectionTitle extends StatelessWidget {
 /// streams, así que no necesita Firebase.
 @visibleForTesting
 class DeliveryForm extends StatefulWidget {
-  const DeliveryForm({super.key, required this.families, required this.baskets});
+  const DeliveryForm({
+    super.key,
+    required this.families,
+    required this.baskets,
+  });
 
   final Stream<List<Family>> families;
 
@@ -643,46 +648,11 @@ class _DeliveryFormState extends State<DeliveryForm> {
         const SizedBox(height: 16),
         LabeledField(
           label: 'Cuota de recuperación',
-          // IntrinsicHeight: "Exenta" mide lo mismo que el campo, también con
-          // letra grande.
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                Expanded(
-                  child: AppTextField(
-                    controller: _fee,
-                    hint: '0',
-                    prefixText: r'$',
-                    enabled: !_exempt,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    textInputAction: TextInputAction.next,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    maxLength: 9,
-                    onChanged: _onQuotaEdited,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Builder(
-                  builder: (context) {
-                    final exempt = OptionButton(
-                      label: 'Exenta',
-                      selected: _exempt,
-                      onTap: _toggleExempt,
-                    );
-                    // 84 como en el diseño; con letra grande, lo que pida la
-                    // palabra para no partirse ("Exen ta").
-                    return SizedBox(
-                      width: math.max(84, exempt.minWidth(context)),
-                      child: exempt,
-                    );
-                  },
-                ),
-              ],
-            ),
+          child: RecoveryQuotaField(
+            controller: _fee,
+            exempt: _exempt,
+            onToggleExempt: _toggleExempt,
+            onChanged: _onQuotaEdited,
           ),
         ),
         if (!_exempt) ...[
