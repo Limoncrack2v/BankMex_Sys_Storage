@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bank_storage_app/data/models/app_user.dart';
+import 'package:bank_storage_app/data/plan_reminder.dart';
 import 'package:bank_storage_app/data/repositories/auth_repository.dart';
+
+import 'helpers/fake_reminder_scheduler.dart';
 
 const _weakPassword = 'La contraseña debe tener al menos 8 caracteres.';
 
@@ -57,5 +62,27 @@ void main() {
         throwsA(isNot(isA<AuthException>())),
       );
     });
+  });
+
+  // Sin Firebase en estas pruebas, cerrar la sesión de Firebase falla: si se
+  // llega a ese paso, el recordatorio ya se canceló.
+  test('cerrar sesión cancela primero el recordatorio del plan', () async {
+    final scheduler = FakeReminderScheduler()..cancelGate = Completer<void>();
+    final repository = AuthRepository(
+      planReminder: PlanReminder(scheduler: scheduler, isWeb: false),
+    );
+
+    Object? firebaseError;
+    final signOut = repository.signOut().catchError((Object error) {
+      firebaseError = error;
+    });
+    await pumpEventQueue();
+    // Mientras el teléfono cancela, todavía no toca Firebase.
+    expect(scheduler.calls, ['cancel']);
+    expect(firebaseError, isNull);
+
+    scheduler.cancelGate!.complete();
+    await signOut;
+    expect(firebaseError, isNotNull);
   });
 }

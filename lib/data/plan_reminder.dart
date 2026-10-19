@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_10y.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'models/app_user.dart';
+
 /// Hora del día del recordatorio, en formato de 24 horas.
 @immutable
 class ReminderTime {
@@ -331,6 +333,13 @@ class PlanReminder {
       // La sesión se abre igual; se vuelve a intentar en la siguiente.
     }
   }
+
+  /// Al abrir una sesión en este teléfono (al entrar o al abrir la app con la
+  /// sesión guardada): a una familia le vuelve a programar el suyo
+  /// ([restoreFor]); con otro rol lo cancela ([cancelAll]), por si quedó el
+  /// de una familia. No lanza errores.
+  Future<void> sessionStarted(String uid, {required String role}) =>
+      role == AppUser.roleFamily ? restoreFor(uid) : cancelAll();
 
   /// Cancela el recordatorio de este teléfono, sea de la cuenta que sea. Es
   /// para cerrar sesión: también funciona sin conexión, espera a lo más 2 s y

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_10y.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'package:bank_storage_app/data/models/app_user.dart';
 import 'package:bank_storage_app/data/plan_reminder.dart';
 
 import 'helpers/fake_reminder_scheduler.dart';
@@ -396,6 +397,25 @@ void main() {
       await reminder.restoreFor('fam1');
 
       expect(scheduler.calls, ['init']);
+    });
+
+    test('a family session brings its reminder back; a staff or '
+        'nutritionist session on the same phone cancels it', () async {
+      SharedPreferences.setMockInitialValues({
+        _onKey: true,
+        _timeKey: '06:45',
+        // Solo las familias lo reciben, aunque otra cuenta tenga algo guardado.
+        'plan_reminder_on.user1': true,
+        'plan_reminder_time.user1': '07:00',
+      });
+
+      for (final role in [AppUser.roleStaff, AppUser.roleNutritionist]) {
+        await reminder.sessionStarted('fam1', role: AppUser.roleFamily);
+        expect(scheduler.scheduled, const ReminderTime(6, 45));
+
+        await reminder.sessionStarted('user1', role: role);
+        expect(scheduler.scheduled, isNull, reason: role);
+      }
     });
 
     test(
