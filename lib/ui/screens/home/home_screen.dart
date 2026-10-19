@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../data/models/app_user.dart';
 import '../../../data/models/family.dart';
+import '../../../data/repositories/device_token_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_bottom_nav.dart';
 import '../meal_plan/meal_plan_screen.dart';
@@ -29,6 +32,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with OpenPlanFromReminder {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // familyId es el uid de la familia. Solo la familia recibe alertas.
+    unawaited(DeviceTokenRepository.instance.register(widget.family.familyId));
+  }
 
   @override
   void showPlan() => _index = HomeScreen.planTab;
