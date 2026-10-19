@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../data/models/member.dart';
 import '../../data/models/pantry_item.dart';
 import '../../domain/energy_requirement.dart';
+import '../../domain/ingredient_names.dart';
 import '../../domain/exclusion_list.dart';
 import '../../domain/meal_plan_length.dart';
 import '../../domain/models/child_profile.dart';
@@ -12,6 +13,7 @@ import '../formatting.dart';
 import 'expiration_urgency.dart';
 
 export '../../domain/exclusion_list.dart';
+export '../../domain/ingredient_names.dart' show normalizeName;
 
 // Las recetas siguen siendo un catálogo de ejemplo (aún no hay colección en
 // Firestore), pero se comparan con la despensa real, se ajustan a la edad y el
@@ -33,6 +35,8 @@ class RecipeIngredient {
 class Recipe {
   const Recipe({
     this.id = '',
+    this.signature = '',
+    this.adaptation,
     required this.name,
     required this.image,
     required this.minutes,
@@ -46,6 +50,14 @@ class Recipe {
   /// Id del documento recipes/{id}. Las de SampleData llevan el de
   /// tool/catalog_recipes.mjs; vacío si la receta no tiene uno.
   final String id;
+
+  /// [recipeSignature] de la receta del catálogo; sirve para saber si una
+  /// adaptación aprobada todavía es de esta versión de la receta.
+  final String signature;
+
+  /// El resumen de la adaptación aprobada que ya trae esta receta (qué cambió
+  /// y por qué), o null si es la receta del catálogo tal cual.
+  final String? adaptation;
   final String name;
   final String image;
   final int minutes;
@@ -102,83 +114,6 @@ class IngredientAvailability {
 
 const _epsilon = 1e-9;
 
-const _diacritics = {
-  'á': 'a',
-  'à': 'a',
-  'â': 'a',
-  'ä': 'a',
-  'é': 'e',
-  'è': 'e',
-  'ê': 'e',
-  'ë': 'e',
-  'í': 'i',
-  'ì': 'i',
-  'î': 'i',
-  'ï': 'i',
-  'ó': 'o',
-  'ò': 'o',
-  'ô': 'o',
-  'ö': 'o',
-  'ú': 'u',
-  'ù': 'u',
-  'û': 'u',
-  'ü': 'u',
-  'ñ': 'n',
-  'ç': 'c',
-};
-
-/// Forma comparable de un nombre de producto: minúsculas, sin acentos, sin
-/// signos, espacios simples y cada palabra en singular.
-/// "  Frijoles  NEGROS" -> "frijol negro", "Atún en lata" -> "atun en lata".
-String normalizeName(String text) {
-  final buffer = StringBuffer();
-  for (final rune in text.toLowerCase().runes) {
-    // Acentos escritos como carácter aparte (combining marks).
-    if (rune >= 0x300 && rune <= 0x36f) continue;
-    final char = String.fromCharCode(rune);
-    buffer.write(_diacritics[char] ?? char);
-  }
-  return buffer
-      .toString()
-      .replaceAll(RegExp('[^a-z0-9]+'), ' ')
-      .trim()
-      .split(' ')
-      .where((word) => word.isNotEmpty)
-      .map(_singular)
-      .join(' ');
-}
-
-/// Quita el plural de forma conservadora: "frijoles" -> "frijol",
-/// "lentejas" -> "lenteja", "jitomates" -> "jitomate". Las palabras de 3
-/// letras o menos ("de", "mas") no se tocan.
-String _singular(String word) {
-  if (word.length <= 3 || !word.endsWith('s')) return word;
-  final stem = word.substring(0, word.length - 2);
-  if (word.endsWith('es') && stem.length >= 3 && _esPluralStem.hasMatch(stem)) {
-    return stem;
-  }
-  if (_vowel.hasMatch(word[word.length - 2])) {
-    return word.substring(0, word.length - 1);
-  }
-  return word;
-}
-
-final _esPluralStem = RegExp(r'[lnrdjy]$');
-final _vowel = RegExp('[aeiou]');
-
-/// Si dos palabras ya normalizadas son la misma. Cubre plurales que
-/// [_singular] no puede resolver solo: "chiles" -> "chil" (igual a "chile") y
-/// "nueces" -> "nuece" (igual a "nuez").
-bool _sameWord(String a, String b) {
-  if (a == b) return true;
-  final (short, long) = a.length <= b.length ? (a, b) : (b, a);
-  if (long == '${short}e' && _esPluralStem.hasMatch(short)) return true;
-  return short.endsWith('z') &&
-      long.endsWith('ce') &&
-      long.length == short.length + 1 &&
-      long.startsWith(short.substring(0, short.length - 1));
-}
-
 /// Iguales, o uno es el inicio del otro palabra por palabra ("leche" y
 /// "leche entera").
 bool _namesMatch(String a, String b) {
@@ -187,7 +122,7 @@ bool _namesMatch(String a, String b) {
   final wordsB = b.split(' ');
   final count = math.min(wordsA.length, wordsB.length);
   for (var i = 0; i < count; i++) {
-    if (!_sameWord(wordsA[i], wordsB[i])) return false;
+    if (!sameIngredientWord(wordsA[i], wordsB[i])) return false;
   }
   return true;
 }
@@ -335,6 +270,8 @@ Recipe scaledRecipe(Recipe recipe, int householdSize, {double? portions}) {
   final factor = target / recipe.servings;
   return Recipe(
     id: recipe.id,
+    signature: recipe.signature,
+    adaptation: recipe.adaptation,
     requiredEquipment: recipe.requiredEquipment,
     name: recipe.name,
     image: recipe.image,
@@ -393,21 +330,6 @@ double _scaledQuantity(RecipeIngredient ingredient, double factor) {
 // ---------------------------------------------------------------------------
 // Alergias de la familia.
 
-/// Si el nombre de un ingrediente contiene el alérgeno: "Leche entera" y
-/// "Quesos" llevan lácteos. Se compara palabra por palabra, así que
-/// "Lechuga" no cuenta como leche ni "Panela" como pan.
-bool containsAllergen(String ingredientName, Allergy allergy) =>
-    _containsKeyword(ingredientName, allergenKeywords[allergy]);
-
-bool _containsKeyword(String ingredientName, List<String>? keywords) {
-  final normalized = [
-    for (final keyword in keywords ?? const <String>[]) normalizeName(keyword),
-  ];
-  return normalizeName(ingredientName)
-      .split(' ')
-      .any((word) => normalized.any((keyword) => _sameWord(word, keyword)));
-}
-
 /// Una alergia de la familia que choca con una receta: quiénes la tienen y
 /// qué ingredientes la contienen.
 typedef AllergyConflict = ({
@@ -441,6 +363,23 @@ List<AllergyConflict> allergyConflicts(Recipe recipe, List<Member> members) {
   return conflicts;
 }
 
+/// Las recetas de [recipes] que no chocan con el hogar [members]: sin ningún
+/// alérgeno de alguien, y sin lo que conviene evitar con una enfermedad solo
+/// si [excludeRecipesForChronicConditions] lo pide. Es lo que usan el plan de
+/// comidas y las sugerencias; el catálogo completo sigue mostrando todas, con
+/// su aviso. Hace lo mismo que `AllergenFilter` (lib/domain) con la misma
+/// regla.
+List<Recipe> recipesSafeForHousehold(
+  List<Recipe> recipes,
+  List<Member> members, {
+  bool excludeConditions = excludeRecipesForChronicConditions,
+}) => [
+  for (final recipe in recipes)
+    if (allergyConflicts(recipe, members).isEmpty &&
+        (!excludeConditions || conditionConflicts(recipe, members).isEmpty))
+      recipe,
+];
+
 /// "Atención: esta receta contiene lácteos (Leche entera), y María tiene
 /// alergia." No supone el género de los integrantes (de los adultos no se
 /// captura).
@@ -454,11 +393,6 @@ String allergyWarning(AllergyConflict conflict) {
 
 // ---------------------------------------------------------------------------
 // Enfermedades crónicas de la familia.
-
-/// Si el nombre de un ingrediente lleva algo que conviene evitar con
-/// [condition]: "Sal de mesa" con hipertensión, pero no "Salsa verde".
-bool containsRestricted(String ingredientName, ChronicCondition condition) =>
-    _containsKeyword(ingredientName, conditionKeywords[condition]);
 
 /// Una enfermedad crónica de la familia que choca con una receta: quiénes la
 /// tienen y qué ingredientes conviene evitar.
@@ -740,7 +674,7 @@ bool _matchesCraving(
       final partial = word.length >= 3 && !catalogWords.contains(word);
       return known.any(
         (other) =>
-            _sameWord(other, word) || (partial && other.startsWith(word)),
+            sameIngredientWord(other, word) || (partial && other.startsWith(word)),
       );
     });
   }
@@ -773,7 +707,7 @@ bool _containsWords(String text, List<String> words) {
   for (var start = 0; start + words.length <= haystack.length; start++) {
     var found = true;
     for (var i = 0; i < words.length && found; i++) {
-      found = _sameWord(haystack[start + i], words[i]);
+      found = sameIngredientWord(haystack[start + i], words[i]);
     }
     if (found) return true;
   }
@@ -928,16 +862,18 @@ RecipeSuggestion? pickRecipe(
   );
 }
 
-// Antes lo que evita enfermedades y alcanza con la despensa (o le falta
-// menos); luego el tiempo, el antojo, los minutos de más y el plan.
+// Antes lo que evita enfermedades; luego lo que pidió la familia (el tiempo
+// y el antojo), lo que alcanza con la despensa (o le falta menos), los
+// minutos de más y el plan. Si escribió "avena", la avena va primero aunque le
+// falte algo.
 int _compareCandidates(_Candidate a, _Candidate b) {
   if (a.avoidsConditions != b.avoidsConditions) {
     return a.avoidsConditions ? -1 : 1;
   }
-  final byMissing = a.ranked.missing.compareTo(b.ranked.missing);
-  if (byMissing != 0) return byMissing;
   if (a.fitsTime != b.fitsTime) return a.fitsTime ? -1 : 1;
   if (a.matchesCraving != b.matchesCraving) return a.matchesCraving ? -1 : 1;
+  final byMissing = a.ranked.missing.compareTo(b.ranked.missing);
+  if (byMissing != 0) return byMissing;
   // Si ninguna cabe, la que no dice cuánto tarda va después.
   final (aKnown, bKnown) = (a.recipe.minutes > 0, b.recipe.minutes > 0);
   if (!a.fitsTime && aKnown != bKnown) return aKnown ? -1 : 1;

@@ -12,6 +12,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/pill.dart';
 import '../session/step_up_sheet.dart';
 
@@ -255,17 +256,15 @@ class _StaffRequestsSheetState extends State<_StaffRequestsSheet> {
               onPressed: _alreadyReviewed ? null : _confirm,
             )
           else
-            _DangerButton(
+            DangerButton(
               label: 'Rechazar solicitud',
               loading: _saving,
               onPressed: _alreadyReviewed ? null : _confirm,
             ),
           const SizedBox(height: 8),
-          Center(
-            child: Opacity(
-              opacity: _saving ? 0.4 : 1,
-              child: TextLinkButton(label: 'Volver', onPressed: _backToList),
-            ),
+          Opacity(
+            opacity: _saving ? 0.4 : 1,
+            child: SecondaryButton(label: 'Volver', onPressed: _backToList),
           ),
         ],
       ),
@@ -308,112 +307,14 @@ class _RequestCard extends StatelessWidget {
             style: AppText.nunito(14, 21, color: AppColors.textMuted),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: SecondaryButton(
-                  label: 'Aprobar',
-                  icon: AppIcons.check,
-                  onPressed: onApprove,
-                ),
-              ),
-              const SizedBox(width: 8),
-              _DangerLinkButton(label: 'Rechazar', onPressed: onReject),
-            ],
+          SecondaryButton(
+            label: 'Aprobar',
+            icon: AppIcons.check,
+            onPressed: onApprove,
           ),
+          const SizedBox(height: 8),
+          DangerButton(label: 'Rechazar', onPressed: onReject),
         ],
-      ),
-    );
-  }
-}
-
-/// Botón rojo de ancho completo para confirmar el rechazo. Misma forma y
-/// tamaño que [PrimaryButton]; con [onPressed] nulo se ve deshabilitado.
-class _DangerButton extends StatelessWidget {
-  const _DangerButton({
-    required this.label,
-    required this.onPressed,
-    this.loading = false,
-  });
-
-  final String label;
-  final VoidCallback? onPressed;
-  final bool loading;
-
-  static const _shape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.all(Radius.circular(16)),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    final foreground = enabled ? Colors.white : AppColors.textMuted;
-    return SizedBox(
-      width: double.infinity,
-      child: Material(
-        color: enabled ? AppColors.danger : AppColors.border,
-        shape: _shape,
-        child: InkWell(
-          onTap: loading ? null : onPressed,
-          customBorder: _shape,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-              child: Center(
-                child: loading
-                    ? SizedBox.square(
-                        dimension: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: foreground,
-                        ),
-                      )
-                    : Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: AppText.nunito(
-                          17,
-                          25.5,
-                          weight: FontWeight.w700,
-                          color: foreground,
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Enlace rojo subrayado, como [TextLinkButton], para rechazar.
-class _DangerLinkButton extends StatelessWidget {
-  const _DangerLinkButton({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        child: Text(
-          label,
-          style: AppText.nunito(
-            15,
-            22.5,
-            weight: FontWeight.w700,
-            color: AppColors.dangerText,
-          ).copyWith(
-            decoration: TextDecoration.underline,
-            decorationColor: AppColors.dangerText,
-          ),
-        ),
       ),
     );
   }

@@ -50,10 +50,10 @@ const _ingredients = [
   RecipeIngredient(productName: 'Frijol', quantity: 0.5, unit: 'kg'),
 ];
 
-Recipe _publish({
+Recipe _submit({
   List<String> nutritionalTags = const [],
   List<String> requiredEquipment = const [],
-}) => RecipeCatalog.publishRecipe(
+}) => RecipeCatalog.submitRecipe(
   name: 'Frijoles de la olla',
   ingredients: _ingredients,
   steps: const ['Cocer'],
@@ -81,7 +81,7 @@ void main() {
     });
 
     test('toMap y fromMap conservan etiquetas y electrodomésticos', () {
-      final recipe = _publish(
+      final recipe = _submit(
         nutritionalTags: [
           NutritionalTag.highFiber.id,
           NutritionalTag.lowFat.id,
@@ -98,7 +98,7 @@ void main() {
     });
 
     test('copyWith cambia solo lo que se pasa', () {
-      final recipe = _publish(requiredEquipment: [Appliance.stove.id]);
+      final recipe = _submit(requiredEquipment: [Appliance.stove.id]);
       final edited = recipe.copyWith(
         nutritionalTags: [NutritionalTag.vegetarian.id],
       );
@@ -125,19 +125,19 @@ void main() {
   });
 
   group('RecipeCatalog', () {
-    test('publica sin electrodomésticos', () {
-      final recipe = _publish();
+    test('guarda sin electrodomésticos', () {
+      final recipe = _submit();
       expect(recipe.requiredEquipment, isEmpty);
-      expect(recipe.status, RecipeStatus.approved);
+      expect(recipe.status, RecipeStatus.pending);
     });
 
     test('rechaza etiquetas o electrodomésticos desconocidos', () {
       expect(
-        () => _publish(nutritionalTags: const ['picante']),
+        () => _submit(nutritionalTags: const ['picante']),
         throwsArgumentError,
       );
       expect(
-        () => _publish(requiredEquipment: const ['Estufa']),
+        () => _submit(requiredEquipment: const ['Estufa']),
         throwsArgumentError,
       );
     });
@@ -146,7 +146,7 @@ void main() {
   group('editar una receta con ids que esta versión no conoce', () {
     final stored = Recipe.fromMap('r1', {
       'name': 'Guardada',
-      'status': 'approved',
+      'status': 'pending',
       'nutritionalTags': ['bajoEnSodio', 'sinGluten'],
       'requiredEquipment': ['estufa', 'freidoraDeAire'],
     });
@@ -216,19 +216,11 @@ void main() {
       expect(recipes.saved, isEmpty);
     });
 
-    test('publicar o dejar pendiente con un id desconocido también llega '
+    test('dejar pendiente con un id desconocido también llega '
         'como Future fallido', () async {
       final recipes = _FakeRecipes();
       final facade = _facade(recipes);
       final creates = <Future<Recipe> Function()>[
-        () => facade.publishRecipe(
-          name: 'Nueva',
-          ingredients: _ingredients,
-          steps: const ['Cocer'],
-          prepTimeMinutes: 30,
-          caloriesPerServing: 150,
-          nutritionalTags: const ['picante'],
-        ),
         () => facade.submitRecipe(
           name: 'Nueva',
           ingredients: _ingredients,

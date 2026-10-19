@@ -13,6 +13,7 @@ import '../../theme/app_text.dart';
 import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_text_field.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
 
@@ -384,11 +385,11 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
           ),
           if (_isEditing) ...[
             const SizedBox(height: 8),
-            Center(
-              child: _DangerLinkButton(
-                label: 'Eliminar integrante',
-                onPressed: _saving ? null : _askDelete,
-              ),
+            DangerButton(
+              label: 'Eliminar integrante',
+              onPressed: () {
+                if (!_saving) _askDelete();
+              },
             ),
           ],
         ],
@@ -419,20 +420,15 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
             ),
             const SizedBox(height: 8),
           ],
-          _DangerButton(
+          DangerButton(
             label: 'Eliminar',
             loading: _deleting,
             onPressed: _delete,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: AbsorbPointer(
-              absorbing: _deleting,
-              child: TextLinkButton(
-                label: 'Cancelar',
-                onPressed: _cancelDelete,
-              ),
-            ),
+          AbsorbPointer(
+            absorbing: _deleting,
+            child: SecondaryButton(label: 'Cancelar', onPressed: _cancelDelete),
           ),
         ],
       ),
@@ -585,99 +581,6 @@ class _MemberFormSheetState extends State<MemberFormSheet> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Botón rojo de ancho completo para confirmar una acción que no se puede
-/// deshacer. Misma forma y tamaño que [PrimaryButton].
-class _DangerButton extends StatelessWidget {
-  const _DangerButton({
-    required this.label,
-    required this.onPressed,
-    this.loading = false,
-  });
-
-  final String label;
-  final VoidCallback onPressed;
-  final bool loading;
-
-  static const _shape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.all(Radius.circular(16)),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: Material(
-        color: AppColors.danger,
-        shape: _shape,
-        child: InkWell(
-          onTap: loading ? null : onPressed,
-          customBorder: _shape,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-              child: Center(
-                child: loading
-                    ? const SizedBox.square(
-                        dimension: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: AppText.nunito(
-                          17,
-                          25.5,
-                          weight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Enlace rojo subrayado, como [TextLinkButton], para acciones de borrar.
-/// Con [onPressed] nulo no responde (p. ej. mientras se guarda).
-class _DangerLinkButton extends StatelessWidget {
-  const _DangerLinkButton({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style:
-              AppText.nunito(
-                15,
-                22.5,
-                weight: FontWeight.w700,
-                color: AppColors.dangerText,
-              ).copyWith(
-                decoration: TextDecoration.underline,
-                decorationColor: AppColors.dangerText,
-              ),
-        ),
-      ),
     );
   }
 }

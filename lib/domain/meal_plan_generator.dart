@@ -1,3 +1,4 @@
+import 'allergen_filter.dart';
 import 'firestore_codec.dart';
 import 'models/family_profile.dart';
 import 'models/meal_plan.dart';
@@ -55,9 +56,12 @@ class MealPlanGenerator {
     final servings = roundQuantity(PortionAdjuster.familyServingFactor(family));
     var remaining = pantryItems.map((item) => item.copyWith()).toList();
     final meals = <MealPlanMeal>[];
-    final approved = recipes
-        .where((recipe) => recipe.status == RecipeStatus.approved)
-        .toList();
+    final approved = AllergenFilter.safeRecipes(
+      recipes: recipes
+          .where((recipe) => recipe.status == RecipeStatus.approved)
+          .toList(),
+      family: family,
+    );
 
     for (var offset = 0; offset < days; offset++) {
       final day = DateTime(start.year, start.month, start.day + offset);

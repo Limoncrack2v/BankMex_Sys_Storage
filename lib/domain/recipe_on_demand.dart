@@ -1,3 +1,4 @@
+import 'allergen_filter.dart';
 import 'models/family_profile.dart';
 import 'models/pantry_item.dart';
 import 'models/recipe.dart';
@@ -13,7 +14,12 @@ class RecipeOnDemand {
     DateTime? now,
   }) {
     final clock = now ?? DateTime.now();
-    final approved = recipes.where((recipe) => recipe.status == RecipeStatus.approved);
+    final approved = AllergenFilter.safeRecipes(
+      recipes: recipes
+          .where((recipe) => recipe.status == RecipeStatus.approved)
+          .toList(),
+      family: family,
+    );
     final adjusted = approved
         .map((recipe) => PortionAdjuster.adjustPortions(recipe, family))
         .toList();

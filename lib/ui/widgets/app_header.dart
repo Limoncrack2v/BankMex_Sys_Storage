@@ -14,11 +14,15 @@ class AppHeader extends StatelessWidget {
     required this.title,
     this.trailing = const ConnectionChip(),
     this.horizontalPadding = 16,
+    this.onAccount,
   });
 
   final String title;
   final Widget trailing;
   final double horizontalPadding;
+
+  /// Abre "Mi cuenta"; con él, el botón de cuenta va después de [trailing].
+  final VoidCallback? onAccount;
 
   /// Distancia del borde de la pantalla al contenido en el diseño (24 de
   /// barra de estado + 32).
@@ -50,16 +54,61 @@ class AppHeader extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.baloo(22, 33, color: AppColors.primaryDark),
+                // Con letra grande el título se encoge en vez de cortarse
+                // ("Plan de comi…").
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    style: AppText.baloo(22, 33, color: AppColors.primaryDark),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               trailing,
+              if (onAccount case final onAccount?) ...[
+                const SizedBox(width: 8),
+                AccountButton(onPressed: onAccount),
+              ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón de cuenta del header, el mismo para los tres roles: el ícono de
+/// persona dentro de una píldora con borde.
+class AccountButton extends StatelessWidget {
+  const AccountButton({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: const ShapeDecoration(
+        color: AppColors.surface,
+        shape: StadiumBorder(
+          side: BorderSide(color: AppColors.border, width: 2),
+        ),
+      ),
+      child: Tooltip(
+        message: 'Cuenta',
+        child: Material(
+          type: MaterialType.transparency,
+          shape: const CircleBorder(),
+          child: InkWell(
+            onTap: onPressed,
+            customBorder: const CircleBorder(),
+            child: const SizedBox.square(
+              dimension: 40,
+              child: Center(child: AppIcon(AppIcons.person, size: 20)),
+            ),
           ),
         ),
       ),

@@ -288,10 +288,19 @@ class SavedPlanView extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 24),
-        Center(
-          child: DangerLinkButton(
+        // Un botón, no un enlace: se ve en cuanto se llega al final del plan.
+        Semantics(
+          container: true,
+          button: true,
+          label: 'Eliminar plan $range',
+          excludeSemantics: true,
+          onTap: () => showDeleteMealPlanSheet(
+            context,
+            range: range,
+            onDelete: onDelete,
+          ),
+          child: DangerButton(
             label: 'Eliminar plan',
-            semanticLabel: 'Eliminar plan $range',
             onPressed: () => showDeleteMealPlanSheet(
               context,
               range: range,

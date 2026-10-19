@@ -1,25 +1,24 @@
+import '../firestore_codec.dart';
 import 'appliance.dart';
 
+/// draft: Staff la prepara y las familias no la ven. pending: espera la
+/// revisión del nutriólogo. approved: la aprobó el nutriólogo y las familias
+/// la ven. Solo el nutriólogo la aprueba (firestore.rules).
 enum RecipeStatus {
+  draft,
   pending,
   approved;
 
-  String get firestoreValue {
-    switch (this) {
-      case RecipeStatus.pending:
-        return 'pending';
-      case RecipeStatus.approved:
-        return 'approved';
-    }
-  }
+  String get firestoreValue => name;
 
+  /// Un valor que no se reconoce se lee como pending: espera revisión y las
+  /// familias no la ven.
   static RecipeStatus fromFirestore(String? value) {
-    switch (value) {
-      case 'approved':
-        return RecipeStatus.approved;
-      default:
-        return RecipeStatus.pending;
-    }
+    return switch (value) {
+      'draft' => RecipeStatus.draft,
+      'approved' => RecipeStatus.approved,
+      _ => RecipeStatus.pending,
+    };
   }
 }
 
@@ -101,6 +100,11 @@ class Recipe {
     this.requiredEquipment = const [],
     this.image = '',
     this.servings = 4,
+    this.approvedBy,
+    this.approvedAt,
+    this.reviewNote,
+    this.rejectedBy,
+    this.rejectedAt,
   });
 
   final String id;
@@ -121,6 +125,19 @@ class Recipe {
   final List<String> requiredEquipment;
   final String image;
   final int servings;
+
+  /// Quién la aprobó y cuándo (uid del nutriólogo). Solo en una approved.
+  final String? approvedBy;
+  final DateTime? approvedAt;
+
+  /// Por qué la rechazó el nutriólogo, quién y cuándo. Solo en un draft que
+  /// regresó de revisión; Staff los borra al volver a enviarla.
+  final String? reviewNote;
+  final String? rejectedBy;
+  final DateTime? rejectedAt;
+
+  /// Máximo del motivo de un rechazo (firestore.rules: validReview).
+  static const int maxReviewNoteLength = 300;
 
   factory Recipe.fromMap(String id, Map<String, dynamic> map) {
     final rawIngredients = map['ingredients'] as List<dynamic>? ?? const [];
@@ -144,9 +161,16 @@ class Recipe {
       requiredEquipment: rawEquipment.map((item) => item.toString()).toList(),
       image: map['image'] as String? ?? '',
       servings: (map['servings'] as num?)?.toInt() ?? 4,
+      approvedBy: map['approvedBy'] as String?,
+      approvedAt: decodeDate(map['approvedAt']),
+      reviewNote: map['reviewNote'] as String?,
+      rejectedBy: map['rejectedBy'] as String?,
+      rejectedAt: decodeDate(map['rejectedAt']),
     );
   }
 
+  /// Los campos de revisión solo van si tienen valor: Staff nunca los escribe
+  /// (las reglas lo niegan), así que su ausencia es lo normal.
   Map<String, dynamic> toMap() => {
         'name': name,
         'ingredients': ingredients.map((item) => item.toMap()).toList(),
@@ -159,6 +183,11 @@ class Recipe {
         'requiredEquipment': requiredEquipment,
         'image': image,
         'servings': servings,
+        if (approvedBy != null) 'approvedBy': approvedBy,
+        if (approvedAt != null) 'approvedAt': approvedAt,
+        if (reviewNote != null) 'reviewNote': reviewNote,
+        if (rejectedBy != null) 'rejectedBy': rejectedBy,
+        if (rejectedAt != null) 'rejectedAt': rejectedAt,
       };
 
   Map<String, dynamic> toJson() => {'id': id, ...toMap()};
@@ -190,6 +219,37 @@ class Recipe {
       requiredEquipment: requiredEquipment ?? this.requiredEquipment,
       image: image ?? this.image,
       servings: servings ?? this.servings,
+      approvedBy: approvedBy,
+      approvedAt: approvedAt,
+      reviewNote: reviewNote,
+      rejectedBy: rejectedBy,
+      rejectedAt: rejectedAt,
+    );
+  }
+
+  /// La receta con otro [status], como la deja Staff: sale de approved o
+  /// vuelve a revisión, así que se borra lo que dejó el nutriólogo (quién la
+  /// aprobó, y el motivo del rechazo si ya se reenvía). Un draft conserva el
+  /// motivo de su rechazo.
+  Recipe withStaffStatus(RecipeStatus status) {
+    assert(status != RecipeStatus.approved, 'Staff no aprueba recetas');
+    final keepsRejection = status == RecipeStatus.draft;
+    return Recipe(
+      id: id,
+      name: name,
+      ingredients: ingredients,
+      steps: steps,
+      prepTimeMinutes: prepTimeMinutes,
+      caloriesPerServing: caloriesPerServing,
+      status: status,
+      dietaryTags: dietaryTags,
+      nutritionalTags: nutritionalTags,
+      requiredEquipment: requiredEquipment,
+      image: image,
+      servings: servings,
+      reviewNote: keepsRejection ? reviewNote : null,
+      rejectedBy: keepsRejection ? rejectedBy : null,
+      rejectedAt: keepsRejection ? rejectedAt : null,
     );
   }
 

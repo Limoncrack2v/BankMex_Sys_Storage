@@ -20,18 +20,24 @@ import '../../widgets/pill.dart';
 
 /// "Registrar consumo": la familia indica cuánto usó de cada producto de
 /// [items] y se descuenta de su despensa. Después de guardar, el mismo sheet
-/// muestra la confirmación.
+/// muestra la confirmación. Con [focusedItemId] (el producto que se tocó en
+/// Despensa) abre con ese producto elegido y a la vista.
 Future<void> showConsumptionSheet(
   BuildContext context, {
   required String familyId,
   required List<PantryItem> items,
+  String? focusedItemId,
 }) {
   return showAppBottomSheet<void>(
     context,
     // Arrastrar para cerrar ignora AppSheet.busy; así no se cierra a medio
     // guardar.
     enableDrag: false,
-    builder: (_) => _ConsumptionSheet(familyId: familyId, items: items),
+    builder: (_) => _ConsumptionSheet(
+      familyId: familyId,
+      items: items,
+      focusedItemId: focusedItemId,
+    ),
   );
 }
 
@@ -78,10 +84,15 @@ String _searchKey(String text) {
 }
 
 class _ConsumptionSheet extends StatefulWidget {
-  const _ConsumptionSheet({required this.familyId, required this.items});
+  const _ConsumptionSheet({
+    required this.familyId,
+    required this.items,
+    this.focusedItemId,
+  });
 
   final String familyId;
   final List<PantryItem> items;
+  final String? focusedItemId;
 
   @override
   State<_ConsumptionSheet> createState() => _ConsumptionSheetState();
@@ -99,6 +110,21 @@ class _ConsumptionSheetState extends State<_ConsumptionSheet> {
   bool _pendingSync = false;
 
   bool get _canSave => _amounts.values.any((amount) => amount > 0);
+
+  // La tarjeta del producto que se tocó en Despensa, para llevarla a la vista.
+  final _initialCard = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusedId = widget.focusedItemId;
+    if (_focusedId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final card = _initialCard.currentContext;
+        if (card != null) Scrollable.ensureVisible(card, alignment: 0.5);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -283,6 +309,9 @@ class _ConsumptionSheetState extends State<_ConsumptionSheet> {
         for (final item in visible) ...[
           const SizedBox(height: 12),
           _ConsumptionCard(
+            key: item.pantryItemId == widget.focusedItemId
+                ? _initialCard
+                : null,
             item: item,
             amount: _amountOf(item),
             focused: _focusedId == item.pantryItemId,
@@ -322,6 +351,7 @@ class _ConsumptionSheetState extends State<_ConsumptionSheet> {
 
 class _ConsumptionCard extends StatelessWidget {
   const _ConsumptionCard({
+    super.key,
     required this.item,
     required this.amount,
     required this.focused,
@@ -347,85 +377,91 @@ class _ConsumptionCard extends StatelessWidget {
     final days = daysLeft(item);
     final urgency = ExpirationUrgency.fromDays(days);
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border.all(
-            color: focused ? AppColors.primary : AppColors.border,
+    // Cada tarjeta es su propio nodo: el lector de pantalla dice cuál está
+    // elegida.
+    return Semantics(
+      container: true,
+      selected: focused,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(
+              color: focused ? AppColors.primary : AppColors.border,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: focused
+                ? const [BoxShadow(color: _focusRing, spreadRadius: 2)]
+                : null,
           ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: focused
-              ? const [BoxShadow(color: _focusRing, spreadRadius: 2)]
-              : null,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.baloo(17, 21.25, weight: FontWeight.w600),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          remainingLabel(item.quantity, item.unit),
-                          style: AppText.nunito(
-                            14,
-                            21,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        Pill(
-                          label: daysShortLabel(days),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          fontSize: 13,
-                          lineHeight: 19.5,
-                          background: urgency.background,
-                          foreground: urgency.foreground,
-                        ),
-                      ],
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.baloo(17, 21.25, weight: FontWeight.w600),
                     ),
-                  ),
-                ],
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            remainingLabel(item.quantity, item.unit),
+                            style: AppText.nunito(
+                              14,
+                              21,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          Pill(
+                            label: daysShortLabel(days),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            fontSize: 13,
+                            lineHeight: 19.5,
+                            background: urgency.background,
+                            foreground: urgency.foreground,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            _StepperButton(
-              icon: AppIcons.stepperMinus,
-              label: 'Quitar consumo de $name',
-              onTap: amount > 0 ? onDecrease : null,
-            ),
-            const SizedBox(width: 8),
-            _AmountButton(
-              label: formatAmount(amount, item.unit),
-              semanticsLabel:
-                  'Consumo de $name: ${formatAmount(amount, item.unit)}',
-              onTap: onEditAmount,
-            ),
-            const SizedBox(width: 8),
-            _StepperButton(
-              icon: AppIcons.stepperPlus,
-              label: 'Agregar consumo de $name',
-              onTap: amount < item.quantity - _epsilon ? onIncrease : null,
-            ),
-          ],
+              const SizedBox(width: 12),
+              _StepperButton(
+                icon: AppIcons.stepperMinus,
+                label: 'Quitar consumo de $name',
+                onTap: amount > 0 ? onDecrease : null,
+              ),
+              const SizedBox(width: 8),
+              _AmountButton(
+                label: formatAmount(amount, item.unit),
+                semanticsLabel:
+                    'Consumo de $name: ${formatAmount(amount, item.unit)}',
+                onTap: onEditAmount,
+              ),
+              const SizedBox(width: 8),
+              _StepperButton(
+                icon: AppIcons.stepperPlus,
+                label: 'Agregar consumo de $name',
+                onTap: amount < item.quantity - _epsilon ? onIncrease : null,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -656,11 +692,9 @@ class _AmountDialogState extends State<_AmountDialog> {
               onPressed: _submit,
             ),
             const SizedBox(height: 8),
-            Center(
-              child: TextLinkButton(
-                label: 'Cancelar',
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+            SecondaryButton(
+              label: 'Cancelar',
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ],
         ),

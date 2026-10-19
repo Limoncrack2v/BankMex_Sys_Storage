@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_assets.dart';
 import '../theme/app_colors.dart';
+import '../text_width.dart';
 import '../theme/app_text.dart';
 import 'app_icon.dart';
 
@@ -159,18 +160,29 @@ class _NavItem extends StatelessWidget {
                   child: AppIcon(icon, size: 24),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  style: AppText.nunito(
-                    12,
-                    15,
-                    weight: FontWeight.w700,
-                    color: selected
-                        ? AppColors.primaryDark
-                        : AppColors.textMuted,
-                  ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final style = AppText.nunito(
+                      12,
+                      15,
+                      weight: FontWeight.w700,
+                      color: selected
+                          ? AppColors.primaryDark
+                          : AppColors.textMuted,
+                    );
+                    final text = Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: style,
+                    );
+                    // Con letra grande una palabra puede no caber ("Despen
+                    // sa"): entonces la etiqueta se encoge en vez de partirse.
+                    return longestWordWidth(context, label, style) <=
+                            constraints.maxWidth
+                        ? text
+                        : FittedBox(fit: BoxFit.scaleDown, child: text);
+                  },
                 ),
               ],
             ),
