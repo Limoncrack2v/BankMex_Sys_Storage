@@ -7,7 +7,6 @@ import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../domain/energy_requirement.dart';
 import '../../formatting.dart';
-import '../../session_navigation.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -20,9 +19,12 @@ import 'plan_reminder_section.dart';
 
 /// Perfil del hogar: resumen de la familia, integrantes y electrodomésticos.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, required this.family});
+  const ProfileScreen({super.key, required this.family, this.onAccount});
 
   final Family family;
+
+  /// Abre "Mi cuenta" desde el header (lo pasa HomeScreen).
+  final VoidCallback? onAccount;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -31,7 +33,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   late final Stream<({Family? family, bool pendingSync})> _family;
   late Stream<List<Member>> _members;
-  bool _signingOut = false;
 
   @override
   void initState() {
@@ -59,20 +60,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// signOutAndReturnToSignIn navega primero y cierra la sesión después, así
-  /// que no falla aquí. La bandera evita un segundo toque durante la
-  /// transición.
-  Future<void> _signOut() async {
-    if (_signingOut) return;
-    _signingOut = true;
-    await signOutAndReturnToSignIn(context);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const AppHeader(title: 'Perfil'),
+        AppHeader(title: 'Perfil', onAccount: widget.onAccount),
         Expanded(
           child: StreamBuilder<({Family? family, bool pendingSync})>(
             stream: _family,
@@ -128,9 +120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             foreground: AppColors.dangerText,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: TextLinkButton(label: 'Reintentar', onPressed: _retry),
-          ),
+          SecondaryButton(label: 'Reintentar', onPressed: _retry),
         ] else if (members == null)
           const Padding(
             padding: EdgeInsets.only(top: 24, bottom: 8),
@@ -168,10 +158,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 24),
           PlanReminderSection(uid: family.authUid),
         ],
-        const SizedBox(height: 24),
-        Center(
-          child: TextLinkButton(label: 'Cerrar sesión', onPressed: _signOut),
-        ),
       ],
     );
   }

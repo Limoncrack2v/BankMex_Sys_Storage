@@ -15,7 +15,7 @@ import 'screens/staff/staff_home_screen.dart';
 Widget homeFor(AuthSession session) => switch (session.user.role) {
   AppUser.roleStaff => StaffHomeScreen(session: session),
   AppUser.roleNutritionist => NutritionistHomeScreen(session: session),
-  _ => HomeScreen(family: session.family!),
+  _ => HomeScreen(family: session.family!, user: session.user),
 };
 
 /// Abre la pantalla principal según el rol y borra el historial de rutas.

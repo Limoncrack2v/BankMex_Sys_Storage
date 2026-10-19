@@ -129,13 +129,11 @@ class _DeleteMealPlanSheetState extends State<DeleteMealPlanSheet> {
             onPressed: _delete,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: AbsorbPointer(
-              absorbing: _deleting,
-              child: TextLinkButton(
-                label: 'Cancelar',
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+          AbsorbPointer(
+            absorbing: _deleting,
+            child: SecondaryButton(
+              label: 'Cancelar',
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ),
         ],

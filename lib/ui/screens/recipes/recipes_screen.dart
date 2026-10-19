@@ -46,6 +46,7 @@ class RecipesScreen extends StatefulWidget {
     this.members,
     this.catalog,
     this.adjustments,
+    this.onAccount,
   });
 
   final String familyId;
@@ -59,6 +60,9 @@ class RecipesScreen extends StatefulWidget {
   /// Las adaptaciones aprobadas de la familia: la receta que ve es la
   /// adaptada solo si el nutriólogo ya la aprobó; si no, la receta base.
   final Stream<List<RecipeAdjustment>>? adjustments;
+
+  /// Abre "Mi cuenta" desde el header (lo pasa HomeScreen).
+  final VoidCallback? onAccount;
 
   @override
   State<RecipesScreen> createState() => _RecipesScreenState();
@@ -99,7 +103,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const AppHeader(title: 'Recetas'),
+        AppHeader(title: 'Recetas', onAccount: widget.onAccount),
         Expanded(
           // Mientras cargan los integrantes (o si fallan) las recetas se
           // muestran con sus porciones originales y sin revisar alergias.

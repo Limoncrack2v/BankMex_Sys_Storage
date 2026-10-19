@@ -141,6 +141,20 @@ void main() {
     expect(find.textContaining('No se pudieron cargar'), findsOneWidget);
   });
 
+  testWidgets('the name, role and sign-out are in "Mi cuenta"', (tester) async {
+    await _pump(tester, recipes: Stream.value([_recipe('r1', 'Sopa')]));
+    expect(find.text('Ana Nutrióloga'), findsNothing);
+    expect(find.text('Cerrar sesión'), findsNothing);
+
+    await tester.tap(find.byTooltip('Cuenta'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mi cuenta'), findsOneWidget);
+    expect(find.text('Ana Nutrióloga'), findsOneWidget);
+    expect(find.text('Nutriólogo'), findsOneWidget);
+    expect(find.text('Cerrar sesión'), findsOneWidget);
+  });
+
   group('approve', () {
     testWidgets('asks for the password first, then approves', (tester) async {
       final calls = _Calls();
@@ -153,6 +167,8 @@ void main() {
       await _tapButton(tester, 'Aprobar receta');
 
       expect(calls.log, ['confirm', 'approve r1']);
+      // Confirma con la palomita (#44, item 8).
+      expect(find.text('Receta aprobada'), findsOneWidget);
       expect(find.textContaining('«Sopa» aprobada'), findsOneWidget);
     });
 
@@ -182,6 +198,7 @@ void main() {
       await _tapButton(tester, 'Aprobar receta');
 
       expect(find.textContaining('No se pudo aprobar «Sopa»'), findsOneWidget);
+      expect(find.text('Receta aprobada'), findsNothing);
     });
 
     testWidgets('says it will sync when offline', (tester) async {

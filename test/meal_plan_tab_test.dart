@@ -351,6 +351,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(rice);
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Cambiar receta'));
+    await tester.pumpAndSettle();
     expect(
       MealPlanEdits.mealOn(changed.single, DateTime(2026, 10, 14))?.recipeId,
       'rec_arroz_atun',

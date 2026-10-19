@@ -28,6 +28,7 @@ import 'package:bank_storage_app/firebase_options.dart';
 import 'package:bank_storage_app/main.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 import 'package:bank_storage_app/ui/widgets/app_text_field.dart';
+import 'package:bank_storage_app/ui/widgets/danger_buttons.dart';
 
 const _takeScreenshots = bool.fromEnvironment('E2E_SCREENSHOTS');
 
@@ -253,7 +254,10 @@ void main() {
       // La nueva (programada para la Familia Ramírez) es ahora la más
       // reciente; se cancela.
       await _tap(tester, find.text('Cancelar').first);
-      await _waitFor(tester, _primaryButton('Cancelar entrega'));
+      await _waitFor(
+        tester,
+        find.widgetWithText(DangerButton, 'Cancelar entrega'),
+      );
       expect(
         find.descendant(
           of: find.byType(BottomSheet),
@@ -262,7 +266,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      await _tapButton(tester, _primaryButton('Cancelar entrega'));
+      await _tapButton(
+        tester,
+        find.widgetWithText(DangerButton, 'Cancelar entrega'),
+      );
       await _confirmIdentityIfAsked(tester, _password);
       await _waitFor(tester, find.text('Entrega cancelada'));
       await _tap(tester, find.text('Listo'));
@@ -378,8 +385,9 @@ void main() {
       await _waitFor(tester, find.textContaining('Usa Arroz'));
       await shot('17_plan_de_comidas');
 
-      // 9. Cerrar sesión de la familia.
-      await _tap(tester, find.text('Perfil'));
+      // 9. Cerrar sesión de la familia, desde "Mi cuenta" en el header.
+      await _tap(tester, find.byTooltip('Cuenta').first);
+      await _waitFor(tester, find.text('Mi cuenta'));
       await _tap(tester, find.text('Cerrar sesión'));
       await _waitFor(tester, find.text(_signInTitle));
 

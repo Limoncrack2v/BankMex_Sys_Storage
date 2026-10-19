@@ -21,9 +21,12 @@ typedef _PantryRow = ({PantryItem item, bool pendingSync});
 
 /// Despensa activa de la familia, ordenada por lo que caduca primero.
 class PantryScreen extends StatefulWidget {
-  const PantryScreen({super.key, required this.familyId});
+  const PantryScreen({super.key, required this.familyId, this.onAccount});
 
   final String familyId;
+
+  /// Abre "Mi cuenta" desde el header (lo pasa HomeScreen).
+  final VoidCallback? onAccount;
 
   @override
   State<PantryScreen> createState() => _PantryScreenState();
@@ -66,7 +69,7 @@ class _PantryScreenState extends State<PantryScreen> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const AppHeader(title: 'Despensa'),
+        AppHeader(title: 'Despensa', onAccount: widget.onAccount),
         Expanded(
           // El aviso de la próxima entrega va dentro de la lista, como los
           // otros avisos: así lleva su mismo espaciado y se desplaza con ella.
@@ -275,9 +278,7 @@ class _PantryError extends StatelessWidget {
           foreground: AppColors.dangerText,
         ),
         const SizedBox(height: 12),
-        Center(
-          child: TextLinkButton(label: 'Reintentar', onPressed: onRetry),
-        ),
+        SecondaryButton(label: 'Reintentar', onPressed: onRetry),
       ],
     );
   }
