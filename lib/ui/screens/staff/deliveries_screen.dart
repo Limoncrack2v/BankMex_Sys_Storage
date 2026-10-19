@@ -1843,9 +1843,10 @@ class _DeliveryActionSheetState extends State<_DeliveryActionSheet> {
       } else {
         final saved = await _awaitSave(
           DeliveryRepository().cancelDelivery(delivery),
-          onLateError: (error) => _showSnack(
+          onLateError: (error) async => _showSnack(
             messenger,
-            _lateErrorMessage(error, delivery, deliver: false),
+            await _lateStaleMessage(error, delivery) ??
+                _lateErrorMessage(error, delivery, deliver: false),
           ),
         );
         message =
@@ -1854,18 +1855,24 @@ class _DeliveryActionSheetState extends State<_DeliveryActionSheet> {
         if (!saved.synced) message = '$message $_pendingSyncNote';
       }
     } catch (e) {
+      // Entregar no pide una sesión reciente; cancelar sí.
+      final stale = isDeliver
+          ? null
+          : await AuthRepository().staleSignInError(e);
       if (!mounted) return;
-      final alreadyChanged = _isAlreadyChanged(e);
+      final alreadyChanged = stale == null && _isAlreadyChanged(e);
       setState(() {
         _saving = false;
         _alreadyChanged = alreadyChanged;
-        _error = alreadyChanged
-            ? 'Esta entrega ya se había marcado desde otro dispositivo.'
-            : isDeliver
-            ? 'No se pudo marcar la entrega como entregada. Revisa tu '
-                  'conexión e intenta de nuevo.'
-            : 'No se pudo cancelar la entrega. Revisa tu conexión e intenta '
-                  'de nuevo.';
+        _error =
+            stale ??
+            (alreadyChanged
+                ? 'Esta entrega ya se había marcado desde otro dispositivo.'
+                : isDeliver
+                ? 'No se pudo marcar la entrega como entregada. Revisa tu '
+                      'conexión e intenta de nuevo.'
+                : 'No se pudo cancelar la entrega. Revisa tu conexión e '
+                      'intenta de nuevo.');
       });
       return;
     }
@@ -2070,8 +2077,11 @@ class _ReassignSheetState extends State<_ReassignSheet> {
     try {
       final saved = await _awaitSave(
         DeliveryRepository().reassignDelivery(delivery, receiver),
-        onLateError: (error) =>
-            _showSnack(messenger, _lateReassignMessage(error, delivery)),
+        onLateError: (error) async => _showSnack(
+          messenger,
+          await _lateStaleMessage(error, delivery) ??
+              _lateReassignMessage(error, delivery),
+        ),
       );
       message =
           'La entrega del ${formatDateLong(delivery.deliveryDate)} ahora es '
@@ -2079,15 +2089,18 @@ class _ReassignSheetState extends State<_ReassignSheet> {
           '${delivery.familyName} quedó como «Reasignada».';
       if (!saved.synced) message = '$message $_pendingSyncNote';
     } catch (e) {
+      final stale = await AuthRepository().staleSignInError(e);
       if (!mounted) return;
-      final alreadyChanged = _isAlreadyChanged(e);
+      final alreadyChanged = stale == null && _isAlreadyChanged(e);
       setState(() {
         _saving = false;
         _alreadyChanged = alreadyChanged;
-        _error = alreadyChanged
-            ? 'Esta entrega ya se había marcado desde otro dispositivo.'
-            : 'No se pudo reasignar la entrega. Revisa tu conexión e intenta '
-                  'de nuevo.';
+        _error =
+            stale ??
+            (alreadyChanged
+                ? 'Esta entrega ya se había marcado desde otro dispositivo.'
+                : 'No se pudo reasignar la entrega. Revisa tu conexión e '
+                      'intenta de nuevo.');
       });
       return;
     }
@@ -2200,6 +2213,17 @@ String _lateReassignMessage(Object error, Delivery delivery) {
             'así que no se reasignó.'
       : 'No se pudo sincronizar la reasignación de la entrega de $family. '
             'Revisa la tabla e intenta de nuevo.';
+}
+
+/// Si un cambio que pide sesión reciente (cancelar o reasignar) se negó al
+/// sincronizar porque la sesión ya no es reciente, el aviso para la entrega
+/// de [delivery]; si no, null.
+Future<String?> _lateStaleMessage(Object error, Delivery delivery) async {
+  final stale = await AuthRepository().staleSignInError(error);
+  return stale == null
+      ? null
+      : 'No se pudo sincronizar el cambio a la entrega de '
+            '${delivery.familyName}. $stale';
 }
 
 /// Otro dispositivo ya la entregó o la canceló: las reglas solo dejan

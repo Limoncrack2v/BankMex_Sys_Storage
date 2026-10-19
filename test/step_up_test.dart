@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bank_storage_app/data/repositories/auth_repository.dart';
@@ -32,5 +33,36 @@ void main() {
 
   test('30 s en el futuro (reloj atrasado) cuenta como reciente', () {
     expect(recent(now.add(const Duration(seconds: 30))), isTrue);
+  });
+
+  group('mensaje cuando las reglas niegan por sesión vieja', () {
+    final denied = FirebaseException(
+      plugin: 'cloud_firestore',
+      code: 'permission-denied',
+    );
+    String? message(Object error, {required bool recentSignIn}) =>
+        AuthRepository.staleSignInMessageFor(error, recentSignIn: recentSignIn);
+
+    test('negada con sesión vieja pide confirmar la sesión', () {
+      expect(
+        message(denied, recentSignIn: false),
+        AuthRepository.staleSignInMessage,
+      );
+    });
+
+    test('negada con sesión reciente deja el mensaje de la pantalla', () {
+      expect(message(denied, recentSignIn: true), isNull);
+    });
+
+    test('otro error con sesión vieja deja el mensaje de la pantalla', () {
+      expect(
+        message(
+          FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
+          recentSignIn: false,
+        ),
+        isNull,
+      );
+      expect(message(StateError('ya cambió'), recentSignIn: false), isNull);
+    });
   });
 }
