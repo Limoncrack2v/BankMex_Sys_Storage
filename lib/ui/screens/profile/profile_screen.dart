@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/family.dart';
@@ -15,6 +16,7 @@ import '../../widgets/app_header.dart';
 import '../../widgets/pill.dart';
 import 'appliances_section.dart';
 import 'member_form_sheet.dart';
+import 'plan_reminder_section.dart';
 
 /// Perfil del hogar: resumen de la familia, integrantes y electrodomésticos.
 class ProfileScreen extends StatefulWidget {
@@ -162,6 +164,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onSave: (ids, {keep = const {}}) => FamilyRepository()
               .updateAppliances(family.familyId, ids, keep: keep),
         ),
+        if (!kIsWeb) ...[
+          const SizedBox(height: 24),
+          PlanReminderSection(uid: family.authUid),
+        ],
         const SizedBox(height: 24),
         Center(
           child: TextLinkButton(label: 'Cerrar sesión', onPressed: _signOut),
