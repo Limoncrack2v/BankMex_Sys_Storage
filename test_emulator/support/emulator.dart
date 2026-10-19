@@ -125,6 +125,57 @@ class Db {
     String? orderBy,
     int? limit,
   }) {
+    final (url, body) = _runQuery(
+      collectionId,
+      parent: parent,
+      where: where,
+      orderBy: orderBy,
+      limit: limit,
+    );
+    return _send('POST', url, body);
+  }
+
+  /// Los ids de los documentos que trae la misma consulta que [listDocs] (en
+  /// la raíz), en el orden en que llegan. Falla si las reglas la rechazan.
+  Future<List<String>> listIds(
+    String collectionId, {
+    (String, Map<String, Object?>)? where,
+  }) async {
+    final (url, body) = _runQuery(collectionId, parent: '', where: where);
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse(url));
+      request.headers.contentType = ContentType.json;
+      if (_authorization != null) {
+        request.headers.set(HttpHeaders.authorizationHeader, _authorization);
+      }
+      request.write(jsonEncode(body));
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      if (response.statusCode != _ok) {
+        throw StateError(
+          'La consulta de $collectionId regresó HTTP ${response.statusCode}: '
+          '$text',
+        );
+      }
+      // Un resultado sin "document" solo trae readTime (no hubo ninguno).
+      return [
+        for (final result in jsonDecode(text) as List<Object?>)
+          if (result case {'document': {'name': final String name}})
+            name.split('/').last,
+      ];
+    } finally {
+      client.close();
+    }
+  }
+
+  (String, Map<String, Object?>) _runQuery(
+    String collectionId, {
+    required String parent,
+    (String, Map<String, Object?>)? where,
+    String? orderBy,
+    int? limit,
+  }) {
     final query = <String, Object?>{
       'from': [
         {'collectionId': collectionId},
@@ -149,7 +200,7 @@ class Db {
     final url = parent.isEmpty
         ? '$_documents:runQuery'
         : '$_documents/$parent:runQuery';
-    return _send('POST', url, {'structuredQuery': query});
+    return (url, {'structuredQuery': query});
   }
 
   /// Varias escrituras en un solo batch, como writeBatch: si las reglas

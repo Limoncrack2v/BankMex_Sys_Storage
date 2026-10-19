@@ -11,6 +11,7 @@ import '../firestore_cache.dart';
 import '../models/app_user.dart';
 import '../models/family.dart';
 import '../models/staff_request.dart';
+import '../plan_reminder.dart';
 import 'family_repository.dart';
 import 'staff_request_repository.dart';
 import 'user_repository.dart';
@@ -36,6 +37,10 @@ class AuthException implements Exception {
 }
 
 class AuthRepository {
+  /// [planReminder] es para las pruebas.
+  AuthRepository({PlanReminder? planReminder})
+    : _planReminder = planReminder ?? PlanReminder.instance;
+
   /// Mínimo de caracteres de cualquier contraseña nueva: la del Registro de
   /// Staff y la de las cuentas que crea el staff. Firebase solo exige 6.
   static const minPasswordLength = 8;
@@ -52,6 +57,7 @@ class AuthRepository {
   // late: se toma al usarlo, así las pruebas pueden crear el repositorio sin
   // Firebase (las validaciones de contraseña fallan antes de tocarlo).
   late final _auth = FirebaseAuth.instance;
+  final PlanReminder _planReminder;
 
   /// Lanza [AuthException] si [password] es más corta que
   /// [minPasswordLength]. Las pantallas ya no dejan enviarla; esto cubre a
@@ -131,10 +137,15 @@ class AuthRepository {
     });
   }
 
-  /// Cierra la sesión y borra la caché local de Firestore (ver
-  /// signOutAndClearCache).
-  Future<void> signOut() =>
-      signOutAndClearCache(auth: _auth, firestore: FirebaseFirestore.instance);
+  /// Cancela el recordatorio del plan (también sin conexión), cierra la
+  /// sesión y borra la caché local de Firestore (ver signOutAndClearCache).
+  Future<void> signOut() async {
+    await _planReminder.cancelAll();
+    await signOutAndClearCache(
+      auth: _auth,
+      firestore: FirebaseFirestore.instance,
+    );
+  }
 
   /// Antigüedad máxima del inicio de sesión para hacer una acción sensible
   /// sin volver a pedir la contraseña. La regla (recentlySignedIn en

@@ -20,7 +20,10 @@ import 'package:bank_storage_app/domain/recipe_catalog.dart';
 // rules_recipes_test.dart, rules_consumption_logs_test.dart and
 // rules_adjustments_test.dart.
 void main() {
-  final rules = File('firestore.rules').readAsStringSync();
+  // On Windows, git can check the rules out with CRLF line endings.
+  final rules = File('firestore.rules')
+      .readAsStringSync()
+      .replaceAll('\r\n', '\n');
 
   /// The text of `function [name](...) { ... }` in the rules.
   String body(String name) {

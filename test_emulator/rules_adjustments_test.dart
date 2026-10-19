@@ -534,6 +534,42 @@ void main() {
     );
   });
 
+  // Lo que lee la cola "Adaptaciones por revisar" (AdjustmentQueue).
+  group('la cola del nutriólogo', () {
+    setUp(() async {
+      final admin = Db.admin();
+      await admin.setDoc('adjustments/a1', stored());
+      await admin.setDoc('adjustments/b1', stored(familyId: 'famB'));
+      await admin.setDoc('adjustments/a2', stored(status: 'approved'));
+      await admin.setDoc('adjustments/a3', stored(status: 'rejected'));
+    });
+
+    test(
+      'pide las pendientes de todas las familias y solo le llegan esas',
+      () async {
+        final pending = ('status', str('pending'));
+        await assertAllowed(nutri().listDocs('adjustments', where: pending));
+        expect(
+          await nutri().listIds('adjustments', where: pending),
+          unorderedEquals(['a1', 'b1']),
+        );
+      },
+    );
+
+    test('lista las recetas publicadas para el nombre y la versión', () async {
+      final approved = ('status', str('approved'));
+      await assertAllowed(nutri().listDocs('recipes', where: approved));
+      // r2 está pendiente (setUp).
+      expect(
+        await nutri().listIds('recipes', where: approved),
+        unorderedEquals(['r1', 'r3']),
+      );
+      await assertDenied(
+        nutri().listDocs('recipes', where: ('status', str('draft'))),
+      );
+    });
+  });
+
   group('el nutriólogo decide', () {
     setUp(() async {
       await Db.admin().setDoc('adjustments/a1', stored());

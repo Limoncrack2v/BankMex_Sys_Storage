@@ -111,7 +111,7 @@ Las reglas de `recipes` y de `adjustments` cambian lo que la app puede hacer, as
 
 - **Reglas primero:** Staff, con la app vieja, ya no puede publicar recetas (las reglas niegan guardar una receta como `approved`) y la app no le explica por qué.
 - **App primero:** las reglas viejas no tienen `adjustments`, así que la familia no puede leer adaptaciones; ve la receta base y nada se rompe, pero tampoco se guardan sugerencias.
-- Solo el nutriólogo aprueba o rechaza una receta. Su pantalla de inicio tiene hoy una lista mínima de las recetas pendientes, con "Aprobar receta" y "Rechazar con motivo" (las dos piden la contraseña si la sesión tiene más de 5 minutos). Todavía no tiene una cola para las adaptaciones (`adjustments`): hasta que exista, se aprueban o rechazan desde la consola, y mientras tanto la familia ve la receta base.
+- Solo el nutriólogo aprueba o rechaza una receta. Su pantalla de inicio tiene hoy una lista mínima de las recetas pendientes, con "Aprobar receta" y "Rechazar con motivo" (las dos piden la contraseña si la sesión tiene más de 5 minutos). Debajo está "Adaptaciones por revisar" (`adjustments`): las pendientes de todas las familias, la más vieja primero, cada una con la receta, el tamaño del hogar, sus alergias y qué cambia, sin nombres ni ids. Al abrir una se ven la receta base, los cambios y los ingredientes adaptados; "Aprobar adaptación" y "Rechazar con motivo" también piden la contraseña, y el motivo es obligatorio. No se puede aprobar si la receta cambió después de la sugerencia o si la adaptación todavía lleva un alérgeno del hogar; tampoco mientras la receta esté en revisión o en borrador, pero si vuelve a publicarse sin cambios, la adaptación se puede aprobar después.
 
 ## Despensa y entregas
 
@@ -163,6 +163,26 @@ Cuando una familia abre una receta, la app sugiere cómo adaptarla a su hogar: l
 
 - **Familias:** las crea el staff desde "Registrar cuenta", en el panel de staff.
 - **Staff:** las crea otro staff desde "Registrar cuenta", o la persona las solicita desde "¿Eres personal de BAMX? Regístrate" en el inicio de sesión. La solicitud se guarda en `staffRequests/{uid}` y la persona no puede entrar hasta que un staff la aprueba desde "Solicitudes de staff". Al aprobarla se crea su perfil `users/{uid}` con rol staff.
+
+## Recordatorio del plan (notificación local)
+
+La familia puede encender en su Perfil un aviso diario, a la hora que elija (9:00 si no elige otra), que dice "Revisa tu plan de comidas de hoy". Es una notificación local que programa el propio teléfono con `flutter_local_notifications`: no hay servidor, FCM ni tokens, y funciona sin conexión. El texto es fijo y no muestra recetas ni datos de la familia en la pantalla bloqueada (MASVS-PLATFORM-3, OWASP Mobile M6). Es solo para familias y no existe en web.
+
+- **Código:** `PlanReminder` en `lib/data/plan_reminder.dart`. Si está encendido y a qué hora se guarda en el teléfono por cuenta (`plan_reminder_on.<uid>` y `plan_reminder_time.<uid>`), nunca con nombres; en Android la app no tiene respaldos, así que no sale del teléfono (en iOS puede ir en el respaldo del teléfono: solo es el uid, si está encendido y la hora).
+- **Sesión:** al abrir la sesión de una familia se vuelve a programar si lo tiene encendido. Cerrar sesión (de cualquier rol, con o sin conexión) lo cancela antes que nada. Lo que eligió la familia se queda guardado: el aviso vuelve cuando esa misma familia entra otra vez en ese teléfono.
+- **Android:**
+  - `android/app/build.gradle.kts` activa el *desugaring* (`isCoreLibraryDesugaringEnabled` y `desugar_jdk_libs`): el plugin usa `java.time` y la app funciona desde Android 7 (minSdk 24). Sin él no compila.
+  - `AndroidManifest.xml` declara `RECEIVE_BOOT_COMPLETED` y los dos receivers del plugin: `ScheduledNotificationReceiver` muestra el aviso y lo programa para el día siguiente, y `ScheduledNotificationBootReceiver` lo vuelve a programar después de reiniciar el teléfono o de actualizar la app. No usa alarmas exactas (ni pide ese permiso), así que el aviso puede llegar tarde: desde Android 12 el sistema solo promete mostrarlo dentro de la hora siguiente.
+  - El ícono es `res/drawable/ic_stat_plan_reminder.xml` (el calendario de la pestaña Plan, en blanco). Dart lo pide solo por su nombre y el build release quita los recursos que no ve usados; `res/raw/keep_bank_storage_app.xml` evita que lo borre. Sin ese archivo, en release el plugin falla con `invalid_icon` y no hay aviso.
+- **iOS:** `AppDelegate.swift` registra la app como delegado de `UNUserNotificationCenter`, para que el aviso también se vea con la app abierta y el toque llegue a la app.
+
+Para revisarlo en un teléfono o emulador Android, usa un build release (solo ahí se quitan recursos): enciéndelo en Perfil con una hora 1 o 2 minutos adelante y cierra la app. La alarma programada se ve con:
+
+```sh
+adb shell dumpsys alarm | grep <paquete>       # en Windows: findstr en lugar de grep
+```
+
+`<paquete>` es el `applicationId` de `android/app/build.gradle.kts`. Después de cerrar sesión ya no debe aparecer.
 
 ## Pruebas
 

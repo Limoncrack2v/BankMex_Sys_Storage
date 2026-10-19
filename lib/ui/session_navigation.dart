@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/models/app_user.dart';
+import '../data/plan_reminder.dart';
 import '../data/repositories/auth_repository.dart';
 import 'connection_status.dart';
 import 'screens/home/home_screen.dart';
@@ -20,6 +23,13 @@ void openSessionHome(BuildContext context, AuthSession session) {
   final Widget home = homeFor(session);
 
   ConnectionStatus.instance.watch(session.user.userId);
+  // El recordatorio del plan es solo para familias.
+  unawaited(
+    PlanReminder.instance.sessionStarted(
+      session.user.userId,
+      role: session.user.role,
+    ),
+  );
   Navigator.of(
     context,
   ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => home), (_) => false);
