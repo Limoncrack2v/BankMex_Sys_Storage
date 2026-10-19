@@ -118,9 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             foreground: AppColors.dangerText,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: TextLinkButton(label: 'Reintentar', onPressed: _retry),
-          ),
+          SecondaryButton(label: 'Reintentar', onPressed: _retry),
         ] else if (members == null)
           const Padding(
             padding: EdgeInsets.only(top: 24, bottom: 8),

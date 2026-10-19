@@ -692,11 +692,9 @@ class _AmountDialogState extends State<_AmountDialog> {
               onPressed: _submit,
             ),
             const SizedBox(height: 8),
-            Center(
-              child: TextLinkButton(
-                label: 'Cancelar',
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+            SecondaryButton(
+              label: 'Cancelar',
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ],
         ),

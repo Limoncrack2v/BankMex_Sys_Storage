@@ -24,6 +24,7 @@ import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
 import '../../widgets/recovery_quota_field.dart';
@@ -1692,11 +1693,11 @@ class _DeliveriesTable extends StatelessWidget {
                   icon: AppIcons.truck,
                   onPressed: () => open(_DeliveryAction.deliver),
                 ),
-                const SizedBox(height: 4),
-                _LinkButton(label: 'Reasignar', onPressed: reassign),
-                _LinkButton(
+                const SizedBox(height: 8),
+                SecondaryButton(label: 'Reasignar', onPressed: reassign),
+                const SizedBox(height: 8),
+                DangerButton(
                   label: 'Cancelar',
-                  color: AppColors.dangerText,
                   onPressed: () => open(_DeliveryAction.cancel),
                 ),
               ],
@@ -1761,40 +1762,6 @@ class _StatusBadge extends StatelessWidget {
         shape: StadiumBorder(side: BorderSide(color: AppColors.border)),
       ),
       child: pill,
-    );
-  }
-}
-
-/// Enlace subrayado de la columna Acción: verde para "Reasignar" y rojo para
-/// "Cancelar", que no se puede deshacer.
-class _LinkButton extends StatelessWidget {
-  const _LinkButton({
-    required this.label,
-    required this.onPressed,
-    this.color = AppColors.primaryDark,
-  });
-
-  final String label;
-  final VoidCallback onPressed;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppText.nunito(15, 22.5, weight: FontWeight.w700, color: color)
-              .copyWith(
-                decoration: TextDecoration.underline,
-                decorationColor: color,
-              ),
-        ),
-      ),
     );
   }
 }
@@ -2015,18 +1982,23 @@ class _DeliveryActionSheetState extends State<_DeliveryActionSheet> {
           ),
           const SizedBox(height: 12),
         ],
-        PrimaryButton(
-          label: _isDeliver ? 'Confirmar entrega' : 'Cancelar entrega',
-          icon: _isDeliver ? AppIcons.check : AppIcons.close,
-          loading: _saving,
-          onPressed: _alreadyChanged ? null : _confirm,
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: Opacity(
-            opacity: _saving ? 0.4 : 1,
-            child: TextLinkButton(label: closeLabel, onPressed: _close),
+        if (_isDeliver)
+          PrimaryButton(
+            label: 'Confirmar entrega',
+            icon: AppIcons.check,
+            loading: _saving,
+            onPressed: _alreadyChanged ? null : _confirm,
+          )
+        else
+          DangerButton(
+            label: 'Cancelar entrega',
+            loading: _saving,
+            onPressed: _alreadyChanged ? null : _confirm,
           ),
+        const SizedBox(height: 8),
+        Opacity(
+          opacity: _saving ? 0.4 : 1,
+          child: SecondaryButton(label: closeLabel, onPressed: _close),
         ),
       ],
     );
@@ -2207,13 +2179,11 @@ class _ReassignSheetState extends State<_ReassignSheet> {
             onPressed: _alreadyChanged || _blocked ? null : _confirm,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: Opacity(
-              opacity: _saving ? 0.4 : 1,
-              child: TextLinkButton(
-                label: _alreadyChanged || _blocked ? 'Cerrar' : 'Volver',
-                onPressed: _close,
-              ),
+          Opacity(
+            opacity: _saving ? 0.4 : 1,
+            child: SecondaryButton(
+              label: _alreadyChanged || _blocked ? 'Cerrar' : 'Volver',
+              onPressed: _close,
             ),
           ),
         ],

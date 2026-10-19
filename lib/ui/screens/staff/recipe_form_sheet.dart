@@ -18,6 +18,7 @@ import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
 
@@ -544,15 +545,13 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
             ),
             if (_isEditing) ...[
               const SizedBox(height: 8),
-              Center(
-                child: _DangerLinkButton(
-                  label: 'Eliminar receta',
-                  onPressed: _saving
-                      ? null
-                      : () => setState(
-                          () => _confirmation = _Confirmation.delete,
-                        ),
-                ),
+              DangerButton(
+                label: 'Eliminar receta',
+                onPressed: () {
+                  if (!_saving) {
+                    setState(() => _confirmation = _Confirmation.delete);
+                  }
+                },
               ),
             ],
           ],
@@ -636,13 +635,13 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
             onPressed: _saving ? null : _returnToDraft,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: _DangerLinkButton(
-              label: 'Eliminar receta',
-              onPressed: _saving
-                  ? null
-                  : () => setState(() => _confirmation = _Confirmation.delete),
-            ),
+          DangerButton(
+            label: 'Eliminar receta',
+            onPressed: () {
+              if (!_saving) {
+                setState(() => _confirmation = _Confirmation.delete);
+              }
+            },
           ),
         ],
       ),
@@ -673,22 +672,20 @@ class _RecipeFormSheetState extends State<_RecipeFormSheet> {
             ),
             const SizedBox(height: 12),
           ],
-          _DangerButton(
+          DangerButton(
             label: 'Eliminar',
             loading: _deleting,
             onPressed: _delete,
           ),
           const SizedBox(height: 8),
-          Center(
-            child: AbsorbPointer(
-              absorbing: _deleting,
-              child: TextLinkButton(
-                label: 'Cancelar',
-                onPressed: () => setState(() {
-                  _confirmation = null;
-                  _error = null;
-                }),
-              ),
+          AbsorbPointer(
+            absorbing: _deleting,
+            child: SecondaryButton(
+              label: 'Cancelar',
+              onPressed: () => setState(() {
+                _confirmation = null;
+                _error = null;
+              }),
             ),
           ),
         ],
@@ -1245,97 +1242,6 @@ class _HelperText extends StatelessWidget {
     return Text(
       text,
       style: AppText.nunito(14, 21, color: AppColors.textMuted),
-    );
-  }
-}
-
-/// Botón rojo de ancho completo para confirmar el borrado.
-class _DangerButton extends StatelessWidget {
-  const _DangerButton({
-    required this.label,
-    required this.onPressed,
-    this.loading = false,
-  });
-
-  final String label;
-  final VoidCallback onPressed;
-  final bool loading;
-
-  static const _shape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.all(Radius.circular(16)),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: Material(
-        color: AppColors.danger,
-        shape: _shape,
-        child: InkWell(
-          onTap: loading ? null : onPressed,
-          customBorder: _shape,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-              child: Center(
-                child: loading
-                    ? const SizedBox.square(
-                        dimension: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: AppText.nunito(
-                          17,
-                          25.5,
-                          weight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Enlace rojo subrayado para acciones que no se pueden deshacer.
-class _DangerLinkButton extends StatelessWidget {
-  const _DangerLinkButton({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style:
-              AppText.nunito(
-                15,
-                22.5,
-                weight: FontWeight.w700,
-                color: AppColors.dangerText,
-              ).copyWith(
-                decoration: TextDecoration.underline,
-                decorationColor: AppColors.dangerText,
-              ),
-        ),
-      ),
     );
   }
 }

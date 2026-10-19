@@ -278,9 +278,7 @@ class _PantryError extends StatelessWidget {
           foreground: AppColors.dangerText,
         ),
         const SizedBox(height: 12),
-        Center(
-          child: TextLinkButton(label: 'Reintentar', onPressed: onRetry),
-        ),
+        SecondaryButton(label: 'Reintentar', onPressed: onRetry),
       ],
     );
   }
