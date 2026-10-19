@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../application/bank_storage_facade.dart';
 import '../../../data/models/pantry_item.dart';
 import '../../../domain/models/recipe.dart';
 import '../../../domain/models/recipe_adjustment.dart';
@@ -8,90 +11,319 @@ import '../../formatting.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
+import '../../widgets/app_bottom_sheet.dart';
+import '../../widgets/app_buttons.dart';
 import '../../widgets/app_icon.dart';
+import '../../widgets/app_text_field.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/pill.dart';
+import '../session/step_up_sheet.dart';
 import 'adjustment_queue.dart';
 
-/// Abre la revisión de [item].
+/// Sin conexión Firestore deja la escritura en cola y el Future no termina
+/// hasta que llega al servidor: pasado este tiempo se da por guardada en el
+/// dispositivo.
+const _saveTimeout = Duration(seconds: 8);
+
+/// Lo que confirma la palomita cuando se decide.
+typedef _Decided = ({String heading, String message});
+
+/// Abre la revisión de [item]. Si se aprueba o se rechaza, la revisión se
+/// cierra y se confirma aquí con la palomita: con [context] de la lista, porque
+/// la tarjeta ya no está.
+///
+/// Los parámetros opcionales son para las pruebas: por omisión decide con
+/// [BankStorageFacade] y confirma con la contraseña ([ensureRecentSignIn]).
 Future<void> openAdjustmentReview(
   BuildContext context, {
   required AdjustmentQueueItem item,
+  required String reviewerUid,
+  Future<void> Function(String adjustmentId)? approveAdjustment,
+  Future<void> Function(String adjustmentId, String reason)? rejectAdjustment,
+  Future<bool> Function(BuildContext context)? confirmIdentity,
 }) async {
-  await Navigator.of(context).push<void>(
-    MaterialPageRoute(builder: (_) => AdjustmentReviewScreen(item: item)),
+  final decided = await Navigator.of(context).push<_Decided>(
+    MaterialPageRoute(
+      builder: (_) => AdjustmentReviewScreen(
+        item: item,
+        reviewerUid: reviewerUid,
+        approveAdjustment: approveAdjustment,
+        rejectAdjustment: rejectAdjustment,
+        confirmIdentity: confirmIdentity,
+      ),
+    ),
+  );
+  if (decided == null || !context.mounted) return;
+  await showSuccessSheet(
+    context,
+    title: 'Adaptaciones por revisar',
+    heading: decided.heading,
+    message: decided.message,
   );
 }
 
 /// La revisión de una adaptación pendiente: la receta publicada, el hogar
 /// (tamaño y alergias, sin nombres), qué cambia y por qué, y cómo quedan los
-/// ingredientes. Si la familia nunca la vería, lo avisa.
-class AdjustmentReviewScreen extends StatelessWidget {
-  const AdjustmentReviewScreen({super.key, required this.item});
+/// ingredientes. Si la familia nunca la vería, lo avisa y solo deja
+/// rechazarla. Aprobar y rechazar piden una sesión reciente (firestore.rules:
+/// recentlySignedIn) y no se deshacen.
+class AdjustmentReviewScreen extends StatefulWidget {
+  const AdjustmentReviewScreen({
+    super.key,
+    required this.item,
+    required this.reviewerUid,
+    this.approveAdjustment,
+    this.rejectAdjustment,
+    this.confirmIdentity,
+  });
 
   final AdjustmentQueueItem item;
+
+  /// El uid del nutriólogo, que firma la decisión.
+  final String reviewerUid;
+  final Future<void> Function(String adjustmentId)? approveAdjustment;
+  final Future<void> Function(String adjustmentId, String reason)?
+  rejectAdjustment;
+  final Future<bool> Function(BuildContext context)? confirmIdentity;
+
+  @override
+  State<AdjustmentReviewScreen> createState() => _AdjustmentReviewScreenState();
+}
+
+enum _Decision { approve, reject }
+
+class _AdjustmentReviewScreenState extends State<AdjustmentReviewScreen> {
+  /// Hay una decisión en curso, desde su sheet hasta que se guarda: un segundo
+  /// toque no abre otra.
+  bool _deciding = false;
+
+  /// La que se está guardando: deshabilita los dos botones y muestra su
+  /// spinner.
+  _Decision? _saving;
+
+  AdjustmentQueueItem get item => widget.item;
+
+  Future<bool> _confirmIdentity() =>
+      (widget.confirmIdentity ?? ensureRecentSignIn)(context);
+
+  Future<void> _approve() => _decide(() async {
+    final name = item.quotedName;
+    final confirmed = await showAppBottomSheet<bool>(
+      context,
+      enableDrag: false,
+      builder: (_) => _ApproveSheet(quotedName: name),
+    );
+    if (confirmed != true || !mounted) return;
+    if (!await _confirmIdentity() || !mounted) return;
+    final approve =
+        widget.approveAdjustment ??
+        (id) async {
+          await BankStorageFacade().approveAdjustment(
+            id,
+            reviewerUid: widget.reviewerUid,
+          );
+        };
+    await _save(
+      _Decision.approve,
+      () => approve(item.adjustment.id),
+      heading: 'Adaptación aprobada',
+      done: 'La familia ya verá la versión adaptada de $name.',
+      offline: 'La aprobación de $name se guardará cuando vuelva la conexión.',
+      failed: 'No se pudo aprobar la adaptación de $name. Intenta de nuevo.',
+    );
+  });
+
+  Future<void> _reject() => _decide(() async {
+    final name = item.quotedName;
+    final reason = await showAppBottomSheet<String>(
+      context,
+      enableDrag: false,
+      builder: (_) => _RejectSheet(
+        quotedName: name,
+        // Si la receta ya no es la misma, ese es casi siempre el motivo.
+        initialReason: switch (item.staleness) {
+          AdjustmentStaleness.changed || AdjustmentStaleness.unavailable =>
+            'La receta cambió y esta adaptación ya no aplica.',
+          _ => '',
+        },
+      ),
+    );
+    if (reason == null || !mounted) return;
+    if (!await _confirmIdentity() || !mounted) return;
+    final reject =
+        widget.rejectAdjustment ??
+        (id, reason) async {
+          await BankStorageFacade().rejectAdjustment(
+            id,
+            reviewerUid: widget.reviewerUid,
+            reason: reason,
+          );
+        };
+    await _save(
+      _Decision.reject,
+      () => reject(item.adjustment.id, reason),
+      heading: 'Adaptación rechazada',
+      done: 'La familia seguirá viendo la receta original de $name.',
+      offline: 'El rechazo de $name se guardará cuando vuelva la conexión.',
+      failed: 'No se pudo rechazar la adaptación de $name. Intenta de nuevo.',
+    );
+  });
+
+  /// Una decisión a la vez, aunque se toque dos veces mientras se cierra un
+  /// sheet.
+  Future<void> _decide(Future<void> Function() decision) async {
+    if (_deciding) return;
+    _deciding = true;
+    try {
+      await decision();
+    } finally {
+      _deciding = false;
+    }
+  }
+
+  /// Guarda la decisión con [write]. Si el servidor la confirma, o si queda en
+  /// cola sin conexión, cierra la revisión y la lista lo confirma; si falla,
+  /// se queda aquí con un snackbar.
+  Future<void> _save(
+    _Decision decision,
+    Future<void> Function() write, {
+    required String heading,
+    required String done,
+    required String offline,
+    required String failed,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final lateFailure =
+        'No se guardó la decisión sobre ${item.quotedName}. Vuelve a '
+        'revisarla.';
+    setState(() => _saving = decision);
+    // Un error antes del primer await (p. ej. un ArgumentError) también llega
+    // como Future fallido.
+    final saved = Future.sync(write);
+    String message;
+    try {
+      await saved.timeout(_saveTimeout);
+      message = done;
+    } on TimeoutException {
+      // Si al sincronizar el servidor la rechaza (p. ej. la sesión ya no es
+      // reciente), la adaptación vuelve a la lista: se avisa.
+      unawaited(
+        saved.then<void>(
+          (_) {},
+          onError: (Object _) => _showSnack(messenger, lateFailure),
+        ),
+      );
+      message = offline;
+    } catch (_) {
+      if (mounted) setState(() => _saving = null);
+      _showSnack(messenger, failed);
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop<_Decided>((heading: heading, message: message));
+  }
 
   @override
   Widget build(BuildContext context) {
     final adjustment = item.adjustment;
     final recipe = item.recipe;
     final warning = _warning(item);
+    final saving = _saving;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          const _Header(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-              children: [
-                Text(item.title, style: AppText.baloo(24, 30)),
-                if (recipe != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _meta(recipe),
-                    style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                _HouseholdBox(item),
-                const SizedBox(height: 20),
-                const _SectionTitle('Cambios'),
-                for (final change in adjustment.changes) ...[
-                  const SizedBox(height: 8),
-                  _ChangeRow(
-                    title: item.changeTitle(change),
-                    detail: _changeDetail(item, change),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                const _SectionTitle('Ingredientes de la adaptación'),
-                for (final (ingredient, replaced) in _withReplaced(
-                  adjustment,
-                )) ...[
-                  const SizedBox(height: 8),
-                  _IngredientRow(ingredient, replaced: replaced),
-                ],
-                if (recipe != null && recipe.steps.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  const _SectionTitle('Preparación'),
-                  for (final (index, step) in recipe.steps.indexed) ...[
-                    SizedBox(height: index == 0 ? 8 : 12),
-                    _StepRow(number: index + 1, text: step),
+    return PopScope(
+      // Mientras se guarda no se sale: el resultado se confirma al terminar.
+      canPop: saving == null,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: Column(
+          children: [
+            const _Header(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+                children: [
+                  Text(item.title, style: AppText.baloo(24, 30)),
+                  if (recipe != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _meta(recipe),
+                      style: AppText.nunito(
+                        15,
+                        22.5,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
                   ],
-                ],
-                if (warning != null) ...[
+                  const SizedBox(height: 16),
+                  _HouseholdBox(item),
                   const SizedBox(height: 20),
-                  InfoBanner(
-                    message: warning,
-                    background: AppColors.warningSoft,
-                    foreground: AppColors.warningText,
+                  const _SectionTitle('Cambios'),
+                  for (final change in adjustment.changes) ...[
+                    const SizedBox(height: 8),
+                    _ChangeRow(
+                      title: item.changeTitle(change),
+                      detail: _changeDetail(item, change),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  const _SectionTitle('Ingredientes de la adaptación'),
+                  for (final (ingredient, replaced) in _withReplaced(
+                    adjustment,
+                  )) ...[
+                    const SizedBox(height: 8),
+                    _IngredientRow(ingredient, replaced: replaced),
+                  ],
+                  if (recipe != null && recipe.steps.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    const _SectionTitle('Preparación'),
+                    for (final (index, step) in recipe.steps.indexed) ...[
+                      SizedBox(height: index == 0 ? 8 : 12),
+                      _StepRow(number: index + 1, text: step),
+                    ],
+                  ],
+                  const SizedBox(height: 20),
+                  if (warning != null) ...[
+                    InfoBanner(
+                      message: warning,
+                      background: AppColors.warningSoft,
+                      foreground: AppColors.warningText,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  // El spinner del botón no tiene texto: se nombra aquí.
+                  Semantics(
+                    container: true,
+                    label: saving == _Decision.approve
+                        ? 'Aprobando la adaptación'
+                        : null,
+                    child: PrimaryButton(
+                      label: 'Aprobar adaptación',
+                      icon: AppIcons.check,
+                      loading: saving == _Decision.approve,
+                      // Si la familia nunca la vería, aprobarla no sirve y no
+                      // se puede deshacer.
+                      onPressed: saving == null && item.staleness == null
+                          ? _approve
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Semantics(
+                    container: true,
+                    label: saving == _Decision.reject
+                        ? 'Rechazando la adaptación'
+                        : null,
+                    child: DangerButton(
+                      label: 'Rechazar con motivo',
+                      loading: saving == _Decision.reject,
+                      onPressed: saving == null ? _reject : null,
+                    ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -157,6 +389,116 @@ class AdjustmentReviewScreen extends StatelessWidget {
       ));
     }
     return rows;
+  }
+}
+
+void _showSnack(ScaffoldMessengerState messenger, String message) {
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// Confirma la aprobación, que no se deshace. Regresa true.
+class _ApproveSheet extends StatelessWidget {
+  const _ApproveSheet({required this.quotedName});
+
+  final String quotedName;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSheet(
+      title: 'Aprobar adaptación',
+      body: Text(
+        'La familia verá la versión adaptada de $quotedName en sus recetas y '
+        'en su plan de comidas. No se puede deshacer.',
+        style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
+      ),
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PrimaryButton(
+            label: 'Aprobar adaptación',
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+          const SizedBox(height: 8),
+          SecondaryButton(
+            label: 'Volver',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pide el motivo del rechazo, obligatorio, y lo regresa sin espacios de más.
+class _RejectSheet extends StatefulWidget {
+  const _RejectSheet({required this.quotedName, required this.initialReason});
+
+  final String quotedName;
+
+  /// El motivo ya escrito, para cuando la receta ya no es la misma.
+  final String initialReason;
+
+  @override
+  State<_RejectSheet> createState() => _RejectSheetState();
+}
+
+class _RejectSheetState extends State<_RejectSheet> {
+  late final TextEditingController _reason;
+
+  @override
+  void initState() {
+    super.initState();
+    _reason = TextEditingController(text: widget.initialReason);
+  }
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  /// Como en las reglas: de 1 a 300 caracteres sin los espacios de las orillas.
+  bool get _valid {
+    final reason = _reason.text.trim();
+    return reason.isNotEmpty &&
+        reason.length <= RecipeAdjustment.maxReasonLength;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSheet(
+      title: 'Rechazar adaptación',
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'La familia seguirá viendo la receta original de '
+            '${widget.quotedName}. Escribe el motivo; queda guardado para el '
+            'equipo y la familia no lo ve.',
+            style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+          AppTextField(
+            controller: _reason,
+            hint: 'Ej. La sustitución no va con esta receta.',
+            textCapitalization: TextCapitalization.sentences,
+            minLines: 3,
+            maxLines: 5,
+            maxLength: RecipeAdjustment.maxReasonLength,
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      footer: DangerButton(
+        label: 'Rechazar adaptación',
+        onPressed: _valid
+            ? () => Navigator.of(context).pop(_reason.text.trim())
+            : null,
+      ),
+    );
   }
 }
 

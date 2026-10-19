@@ -8,6 +8,8 @@ import 'package:bank_storage_app/domain/models/recipe_adjustment.dart';
 import 'package:bank_storage_app/ui/screens/nutritionist/adjustment_queue.dart';
 import 'package:bank_storage_app/ui/screens/nutritionist/nutritionist_home_screen.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
+import 'package:bank_storage_app/ui/widgets/app_bottom_sheet.dart';
+import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 import 'package:bank_storage_app/ui/widgets/pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -508,6 +510,68 @@ void main() {
         .dy;
     expect(_top(tester, 'Adaptaciones por revisar') - recipesEnd, 32);
     expect(find.text('Avena con fruta'), findsOneWidget);
+  });
+
+  testWidgets('approving from the home confirms there once the card is gone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final pending = StreamController<List<RecipeAdjustment>>();
+    addTearDown(pending.close);
+    final adjustment = pendingAdjustment(_avena);
+    final log = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: NutritionistHomeScreen(
+          session: AuthSession(
+            user: AppUser(
+              userId: 'nutri1',
+              name: 'Ana Nutrióloga',
+              email: 'ana@bamx.test',
+              role: AppUser.roleNutritionist,
+              createdAt: DateTime(2026, 10, 16),
+            ),
+          ),
+          pendingRecipes: Stream.value(const []),
+          pendingAdjustments: pending.stream,
+          approvedRecipes: Stream.value([_avena]),
+          approveAdjustment: (id) async {
+            log.add('approve $id');
+            // Como en Firestore: la decidida sale de la lista enseguida.
+            pending.add(const []);
+          },
+          confirmIdentity: (_) async {
+            log.add('confirm');
+            return true;
+          },
+        ),
+      ),
+    );
+    pending.add([adjustment]);
+    await tester.pump();
+
+    await tester.tap(find.text('Avena con fruta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Aprobar adaptación'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AppSheet),
+        matching: find.byType(PrimaryButton),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(log, ['confirm', 'approve ${adjustment.id}']);
+    expect(find.text('No hay adaptaciones por revisar.'), findsOneWidget);
+    expect(find.text('Adaptación aprobada'), findsOneWidget);
+    expect(
+      find.text('La familia ya verá la versión adaptada de «Avena con fruta».'),
+      findsOneWidget,
+    );
   });
 
   group('with large text on a 360 wide screen', () {

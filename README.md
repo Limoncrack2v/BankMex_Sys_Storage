@@ -111,7 +111,7 @@ Las reglas de `recipes` y de `adjustments` cambian lo que la app puede hacer, as
 
 - **Reglas primero:** Staff, con la app vieja, ya no puede publicar recetas (las reglas niegan guardar una receta como `approved`) y la app no le explica por qué.
 - **App primero:** las reglas viejas no tienen `adjustments`, así que la familia no puede leer adaptaciones; ve la receta base y nada se rompe, pero tampoco se guardan sugerencias.
-- Solo el nutriólogo aprueba o rechaza una receta. Su pantalla de inicio tiene hoy una lista mínima de las recetas pendientes, con "Aprobar receta" y "Rechazar con motivo" (las dos piden la contraseña si la sesión tiene más de 5 minutos). Todavía no tiene una cola para las adaptaciones (`adjustments`): hasta que exista, se aprueban o rechazan desde la consola, y mientras tanto la familia ve la receta base.
+- Solo el nutriólogo aprueba o rechaza una receta. Su pantalla de inicio tiene hoy una lista mínima de las recetas pendientes, con "Aprobar receta" y "Rechazar con motivo" (las dos piden la contraseña si la sesión tiene más de 5 minutos). Debajo está "Adaptaciones por revisar" (`adjustments`): las pendientes de todas las familias, la más vieja primero, cada una con la receta, el tamaño del hogar, sus alergias y qué cambia, sin nombres ni ids. Al abrir una se ven la receta base, los cambios y los ingredientes adaptados; "Aprobar adaptación" y "Rechazar con motivo" también piden la contraseña, y el motivo es obligatorio. Si la receta cambió, ya no está publicada o la adaptación todavía lleva un alérgeno del hogar, no se puede aprobar: solo rechazar.
 
 ## Despensa y entregas
 

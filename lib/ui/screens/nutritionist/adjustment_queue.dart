@@ -262,7 +262,14 @@ class AdjustmentQueue extends StatelessWidget {
           if (index > 0) const SizedBox(height: 12),
           _AdjustmentCard(
             item: item,
-            onTap: () => openAdjustmentReview(context, item: item),
+            onTap: () => openAdjustmentReview(
+              context,
+              item: item,
+              reviewerUid: reviewerUid,
+              approveAdjustment: approveAdjustment,
+              rejectAdjustment: rejectAdjustment,
+              confirmIdentity: confirmIdentity,
+            ),
           ),
         ],
       ],
