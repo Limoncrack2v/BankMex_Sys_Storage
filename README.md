@@ -105,13 +105,56 @@ firebase deploy --only firestore:rules
 
 Si una entrega queda como entregada mientras la función no está desplegada, sus productos no llegan a la despensa y la app ya no puede volver a escribir esa entrega. Para recuperarla, después de desplegar la función edita cualquier campo de la entrega desde la consola de Firebase: la función se vuelve a disparar y la surte, porque no tiene `pantryStockedAt`.
 
-### Recetas y adaptaciones: despliega la app y las reglas juntas
+## Compilar para producción (Android)
 
-Las reglas de `recipes` y de `adjustments` cambian lo que la app puede hacer, así que la app nueva y `firestore.rules` se publican al mismo tiempo:
+El application ID de Android es `mx.bamx.bankstorage` (antes `com.example.bank_storage_app`). Si tu `android/app/google-services.json` es de antes del cambio, vuelve a correr `flutterfire configure` (paso 2 de la configuración inicial): registra la app Android con el nuevo ID en `bank-storage-bamx` y regenera el archivo. Con el archivo viejo, Gradle falla con `No matching client found for package name 'mx.bamx.bankstorage'`.
 
-- **Reglas primero:** Staff, con la app vieja, ya no puede publicar recetas (las reglas niegan guardar una receta como `approved`) y la app no le explica por qué.
-- **App primero:** las reglas viejas no tienen `adjustments`, así que la familia no puede leer adaptaciones; ve la receta base y nada se rompe, pero tampoco se guardan sugerencias.
-- Solo el nutriólogo aprueba o rechaza una receta. Su pantalla de inicio tiene hoy una lista mínima de las recetas pendientes, con "Aprobar receta" y "Rechazar con motivo" (las dos piden la contraseña si la sesión tiene más de 5 minutos). Todavía no tiene una cola para las adaptaciones (`adjustments`): hasta que exista, se aprueban o rechazan desde la consola, y mientras tanto la familia ve la receta base.
+El APK de producción se firma con la llave de subida del equipo, no con la de debug: con la de debug, cualquiera que tenga una llave de debug podría reemplazar la app (MASVS-RESILIENCE-3).
+
+1. Pide la llave (`upload-keystore.jks`) y su contraseña a @HenryJMP, que la custodia; la segunda copia la tiene @11rls11. Las dos están en Bitwarden. Guárdala fuera del repo y nunca la compartas por GitHub, WhatsApp ni Drive. Solo si el equipo la perdiera, se crea otra una vez:
+
+   ```sh
+   keytool -genkey -v -keystore ~/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+   ```
+
+   En Windows, `keytool` no está en el PATH: está en `jbr\bin` dentro de la carpeta de Android Studio (por ejemplo `"C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe"`). PowerShell no expande `~`, así que usa una ruta completa en `-keystore` (por ejemplo `C:\Users\<usuario>\upload-keystore.jks`).
+
+2. Crea `android/key.properties` (está en `.gitignore`; nunca lo subas):
+
+   ```properties
+   storePassword=<contraseña del keystore>
+   keyPassword=<contraseña de la llave>
+   keyAlias=upload
+   storeFile=/home/<usuario>/upload-keystore.jks
+   # Windows: usa / en la ruta, no \
+   # storeFile=C:/Users/<usuario>/upload-keystore.jks
+   ```
+
+   En Windows la ruta lleva `/`: el archivo se lee con `java.util.Properties`, que trata `\` como escape. `C:\Users\<usuario>\upload-keystore.jks` falla con `Malformed \uxxxx encoding` (por el `\u` de "upload"), y otras rutas pierden las `\` sin avisar. Como Gradle lee `key.properties` siempre que existe, una ruta mal escrita rompe todos los builds de Android en esa computadora, también los de debug.
+
+   Sin este archivo el release se firma con la llave de debug y Gradle lo avisa con `android/key.properties no existe`. Sirve para `flutter run --release`, pero ese APK no se distribuye.
+
+3. Compila con el código de Dart ofuscado. El release también pasa por R8 (`isMinifyEnabled`) para el código de Java/Kotlin. Para Google Play se sube un AAB; el APK sirve para instalarlo directamente:
+
+   ```sh
+   # Google Play (AAB)
+   flutter build appbundle --release --obfuscate --split-debug-info=build/symbols
+   # APK
+   flutter build apk --release --obfuscate --split-debug-info=build/symbols
+   ```
+
+   Con Play App Signing, Google guarda la llave con la que se firma la app y la de `key.properties` es solo la llave de subida: si se pierde, Google la puede restablecer.
+
+   `build/symbols` guarda los símbolos para leer los stack traces ofuscados (`flutter symbolize -i <trace> -d build/symbols/app.android-arm64.symbols`). Guárdalos junto con la versión que publicaste, en un lugar privado y fuera del repo. Sin ellos no se pueden leer los errores de esa versión.
+
+4. Revisa que el build esté firmado con la llave del equipo (`CN=Bank Storage Upload`) y no con la de debug (`CN=Android Debug`). `apksigner` solo revisa el APK; para el AAB usa `keytool`:
+
+   ```sh
+   # APK
+   $ANDROID_HOME/build-tools/<versión>/apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+   # AAB
+   keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab
+   ```
 
 ## Despensa y entregas
 
