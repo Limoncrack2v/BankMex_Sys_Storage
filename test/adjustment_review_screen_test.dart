@@ -9,6 +9,7 @@ import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_bottom_sheet.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 import 'package:bank_storage_app/ui/widgets/danger_buttons.dart';
+import 'package:bank_storage_app/ui/widgets/pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,10 +19,11 @@ import 'helpers/large_text.dart';
 final _avena = avenaConFruta;
 
 /// La adaptación de la avena, con la receta como está publicada ahora
-/// ([published]; null si ya no lo está).
+/// ([published]; null si no se puede leer) o, si [inReview], en revisión.
 AdjustmentQueueItem _item({
   Recipe? published,
   bool unpublished = false,
+  bool inReview = false,
   List<RecipeIngredient> ingredients = adaptedIngredients,
   List<AdjustmentChange>? changes,
   int householdSize = 4,
@@ -35,7 +37,11 @@ AdjustmentQueueItem _item({
     householdKey: householdKey,
   ),
   unpublished ? null : published ?? _avena,
+  inReview: inReview,
 );
+
+const _lateFailure =
+    'No se guardó la decisión sobre «Avena con fruta». Vuelve a revisarla.';
 
 class _Calls {
   final log = <String>[];
@@ -154,13 +160,14 @@ void main() {
     );
 
     expect(find.text('Cambios'), findsOneWidget);
-    expect(find.text('Porciones: 2 → 3'), findsOneWidget);
+    expect(find.text('Porciones: de 2 a 3'), findsOneWidget);
     expect(find.text('Para 4 integrantes'), findsOneWidget);
-    expect(find.text('Avena → Amaranto'), findsOneWidget);
+    expect(find.text('Avena por amaranto'), findsOneWidget);
     expect(find.text('Por alergia a gluten'), findsOneWidget);
-    expect(find.text('Leche entera → Bebida de arroz'), findsOneWidget);
+    expect(find.text('Leche entera por bebida de arroz'), findsOneWidget);
     expect(find.text('Por alergia a lácteos'), findsOneWidget);
-    expect(find.textContaining('Recházala'), findsNothing);
+    expect(find.textContaining('→'), findsNothing);
+    expect(find.byType(InfoBanner), findsNothing);
   });
 
   testWidgets('never shows the family, its id or the document id', (
@@ -266,10 +273,27 @@ void main() {
     expect(find.textContaining('kcal por porción'), findsNothing);
     expect(find.text('Preparación'), findsNothing);
     expect(find.text('Porciones: 3'), findsOneWidget);
+    // Puede volver a publicarse igual: no invita a rechazarla.
     expect(
       find.text(
-        'La receta ya no está publicada, así que la familia no vería esta '
-        'adaptación. Puedes rechazarla.',
+        'La receta no está publicada ahora: está en borrador o se borró. Si '
+        'se vuelve a publicar sin cambios, podrás aprobar esta adaptación.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('waits when the recipe is back in review without changes', (
+    tester,
+  ) async {
+    await _open(tester, _item(inReview: true));
+
+    expect(find.text('Avena con fruta'), findsOneWidget);
+    expect(find.text('Preparación'), findsOneWidget);
+    expect(
+      find.text(
+        'La receta está en "Recetas por revisar". Si la apruebas sin cambios, '
+        'después podrás aprobar esta adaptación.',
       ),
       findsOneWidget,
     );
@@ -286,8 +310,8 @@ void main() {
     expect(
       find.text(
         'La receta cambió después de esta sugerencia y la familia ya no la '
-        'vería. Recházala; se sugerirá otra cuando la familia vuelva a abrir '
-        'la receta.',
+        'vería. Puedes rechazarla; cuando la familia vuelva a abrir la receta '
+        'se sugerirá otra.',
       ),
       findsOneWidget,
     );
@@ -459,22 +483,58 @@ void main() {
       expect(find.text('Adaptación aprobada'), findsOneWidget);
       expect(
         find.text(
-          'La aprobación de «Avena con fruta» se guardará cuando vuelva la '
-          'conexión.',
+          'La aprobación de «Avena con fruta» se enviará cuando vuelva la '
+          'conexión. Si tarda más de unos minutos, tendrás que revisarla otra '
+          'vez.',
         ),
         findsOneWidget,
       );
 
-      // Al sincronizar, el servidor la rechaza (p. ej. la sesión ya es vieja).
+      // Al sincronizar, el servidor la rechaza (p. ej. la sesión ya es vieja)
+      // con la palomita abierta: el aviso espera a que se cierre, porque
+      // debajo de ella no se vería.
       saving.completeError(StateError('permission-denied'));
       await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'No se guardó la decisión sobre «Avena con fruta». Vuelve a '
-          'revisarla.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text(_lateFailure), findsNothing);
+      await _tap(tester, find.text('Listo'));
+      expect(find.text(_lateFailure).hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('a failure after the check mark closed shows when it comes', (
+      tester,
+    ) async {
+      final saving = Completer<void>();
+      await _open(tester, _item(), approve: (_) => saving.future);
+
+      await _tap(tester, _approveButton);
+      await tester.tap(_inSheet(PrimaryButton));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('Listo'));
+      expect(find.text(_lateFailure), findsNothing);
+
+      saving.completeError(StateError('permission-denied'));
+      await tester.pumpAndSettle();
+      expect(find.text(_lateFailure).hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('a queued write that syncs fine shows nothing more', (
+      tester,
+    ) async {
+      final saving = Completer<void>();
+      await _open(tester, _item(), approve: (_) => saving.future);
+
+      await _tap(tester, _approveButton);
+      await tester.tap(_inSheet(PrimaryButton));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('Listo'));
+
+      saving.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('stays on the page and says so when it fails', (tester) async {
@@ -518,6 +578,7 @@ void main() {
         _item(published: approvedRecipe('r1', 'Avena con fruta', servings: 4)),
       ),
       ('the recipe is not published', _item(unpublished: true)),
+      ('the recipe is in review', _item(inReview: true)),
       (
         'an allergen is left',
         _item(
@@ -585,8 +646,8 @@ void main() {
       expect(
         find.text(
           'La familia seguirá viendo la receta original de «Avena con '
-          'fruta». Escribe el motivo; queda guardado para el equipo y la '
-          'familia no lo ve.',
+          'fruta». Escribe el motivo; se guarda con la adaptación y la app no '
+          'se lo muestra a la familia.',
         ),
         findsOneWidget,
       );
@@ -628,40 +689,55 @@ void main() {
       );
     });
 
-    for (final (name, item) in [
+    for (final (name, item, reason) in [
       (
-        'changed',
+        'the recipe changed',
         _item(published: approvedRecipe('r1', 'Avena con fruta', servings: 4)),
+        'La receta cambió y esta adaptación ya no aplica.',
       ),
-      ('is not published', _item(unpublished: true)),
+      (
+        'an allergen is left',
+        _item(
+          ingredients: const [
+            RecipeIngredient(
+              productName: 'Leche entera',
+              quantity: 0.75,
+              unit: 'l',
+            ),
+          ],
+        ),
+        'La adaptación todavía lleva un alérgeno del hogar.',
+      ),
     ]) {
-      testWidgets('starts with a reason when the recipe $name', (tester) async {
+      testWidgets('starts with the reason when $name', (tester) async {
         final calls = _Calls();
         await _open(tester, item, calls: calls);
 
         await _tap(tester, _rejectButton);
         final field = tester.widget<TextField>(find.byType(TextField));
-        expect(
-          field.controller!.text,
-          'La receta cambió y esta adaptación ya no aplica.',
-        );
+        expect(field.controller!.text, reason);
 
         await _tap(tester, _inSheet(DangerButton));
-        expect(
-          calls.log.last,
-          'reject $_id: La receta cambió y esta adaptación ya no aplica.',
-        );
+        expect(calls.log.last, 'reject $_id: $reason');
       });
     }
 
-    testWidgets('starts empty when the family would see it', (tester) async {
-      await _open(tester, _item());
+    // Una receta en revisión o en borrador puede volver a publicarse igual:
+    // un motivo ya escrito empujaría a rechazar una adaptación que serviría.
+    for (final (name, item) in [
+      ('the family would see it', _item()),
+      ('the recipe is not published', _item(unpublished: true)),
+      ('the recipe is in review', _item(inReview: true)),
+    ]) {
+      testWidgets('starts empty when $name', (tester) async {
+        await _open(tester, item);
 
-      await _tap(tester, _rejectButton);
+        await _tap(tester, _rejectButton);
 
-      final field = tester.widget<TextField>(find.byType(TextField));
-      expect(field.controller!.text, isEmpty);
-    });
+        final field = tester.widget<TextField>(find.byType(TextField));
+        expect(field.controller!.text, isEmpty);
+      });
+    }
 
     testWidgets('says "esta receta" when the recipe is not published', (
       tester,
@@ -675,6 +751,8 @@ void main() {
         ),
         findsOneWidget,
       );
+      await tester.enterText(find.byType(TextField), 'Ya no está publicada.');
+      await tester.pump();
       await _tap(tester, _inSheet(DangerButton));
 
       expect(
@@ -743,21 +821,42 @@ void main() {
       expect(find.byType(AdjustmentReviewScreen), findsNothing);
       expect(
         find.text(
-          'El rechazo de «Avena con fruta» se guardará cuando vuelva la '
-          'conexión.',
+          'El rechazo de «Avena con fruta» se enviará cuando vuelva la '
+          'conexión. Si tarda más de unos minutos, tendrás que revisarla otra '
+          'vez.',
         ),
         findsOneWidget,
       );
 
       saving.completeError(StateError('permission-denied'));
       await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'No se guardó la decisión sobre «Avena con fruta». Vuelve a '
-          'revisarla.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text(_lateFailure), findsNothing);
+      await _tap(tester, find.text('Listo'));
+      expect(find.text(_lateFailure).hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('while it saves, the spinner says what happens', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final saving = Completer<void>();
+      await _open(tester, _item(), reject: (_, _) => saving.future);
+
+      await _tap(tester, _rejectButton);
+      await tester.enterText(find.byType(TextField), 'No va');
+      await tester.pump();
+      await tester.tap(_inSheet(DangerButton));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(tester.widget<DangerButton>(_rejectButton).loading, isTrue);
+      expect(find.bySemanticsLabel('Rechazando la adaptación'), findsOneWidget);
+      expect(_onPressed(tester, _approveButton), isNull);
+
+      saving.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Adaptación rechazada'), findsOneWidget);
+      semantics.dispose();
     });
 
     testWidgets('stays on the page and says so when it fails', (tester) async {
@@ -801,7 +900,7 @@ void main() {
           height: 5000,
         );
 
-        expect(find.textContaining('Recházala'), findsOneWidget);
+        expect(find.textContaining('Puedes rechazarla'), findsOneWidget);
         expect(find.text('Agrega la avena.'), findsOneWidget);
         expect(find.text('Rechazar con motivo'), findsOneWidget);
         expectNoBrokenWords(tester);

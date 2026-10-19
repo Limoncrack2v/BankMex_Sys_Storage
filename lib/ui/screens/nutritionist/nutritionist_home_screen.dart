@@ -43,6 +43,7 @@ class NutritionistHomeScreen extends StatefulWidget {
     this.confirmIdentity,
     this.pendingAdjustments,
     this.approvedRecipes,
+    this.recipesInReview,
     this.approveAdjustment,
     this.rejectAdjustment,
   });
@@ -54,6 +55,10 @@ class NutritionistHomeScreen extends StatefulWidget {
   final Future<bool> Function(BuildContext context)? confirmIdentity;
   final Stream<List<RecipeAdjustment>>? pendingAdjustments;
   final Stream<List<Recipe>>? approvedRecipes;
+
+  /// Las recetas pendientes otra vez, para las adaptaciones: la lista de
+  /// arriba ya escucha [pendingRecipes].
+  final Stream<List<Recipe>>? recipesInReview;
   final Future<void> Function(String adjustmentId)? approveAdjustment;
   final Future<void> Function(String adjustmentId, String reason)?
   rejectAdjustment;
@@ -66,6 +71,7 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
   late final Stream<List<Recipe>> _pending;
   late final Stream<List<RecipeAdjustment>> _adjustments;
   late final Stream<List<Recipe>> _approved;
+  late final Stream<List<Recipe>> _inReview;
   String? _working;
 
   @override
@@ -80,6 +86,9 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
     _approved =
         widget.approvedRecipes ??
         RecipeRepository().watchByStatus(RecipeStatus.approved);
+    _inReview =
+        widget.recipesInReview ??
+        RecipeRepository().watchByStatus(RecipeStatus.pending);
   }
 
   String get _reviewer => widget.session.user.userId;
@@ -204,6 +213,7 @@ class _NutritionistHomeScreenState extends State<NutritionistHomeScreen> {
                 AdjustmentQueue(
                   adjustments: _adjustments,
                   approvedRecipes: _approved,
+                  recipesInReview: _inReview,
                   reviewerUid: _reviewer,
                   approveAdjustment: widget.approveAdjustment,
                   rejectAdjustment: widget.rejectAdjustment,

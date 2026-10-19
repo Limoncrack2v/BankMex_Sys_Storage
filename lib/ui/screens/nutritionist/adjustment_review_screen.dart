@@ -25,8 +25,15 @@ import 'adjustment_queue.dart';
 /// dispositivo.
 const _saveTimeout = Duration(seconds: 8);
 
-/// Lo que confirma la palomita cuando se decide.
-typedef _Decided = ({String heading, String message});
+/// Lo que confirma la palomita cuando se decide. Si la decisión quedó en cola
+/// sin conexión, [failedLater] termina en true si el servidor la rechaza al
+/// sincronizar, y entonces se avisa con [lateFailure].
+typedef _Decided = ({
+  String heading,
+  String message,
+  Future<bool>? failedLater,
+  String lateFailure,
+});
 
 /// Abre la revisión de [item]. Si se aprueba o se rechaza, la revisión se
 /// cierra y se confirma aquí con la palomita: con [context] de la lista, porque
@@ -42,6 +49,7 @@ Future<void> openAdjustmentReview(
   Future<void> Function(String adjustmentId, String reason)? rejectAdjustment,
   Future<bool> Function(BuildContext context)? confirmIdentity,
 }) async {
+  final messenger = ScaffoldMessenger.of(context);
   final decided = await Navigator.of(context).push<_Decided>(
     MaterialPageRoute(
       builder: (_) => AdjustmentReviewScreen(
@@ -53,13 +61,21 @@ Future<void> openAdjustmentReview(
       ),
     ),
   );
-  if (decided == null || !context.mounted) return;
-  await showSuccessSheet(
-    context,
-    title: 'Adaptaciones por revisar',
-    heading: decided.heading,
-    message: decided.message,
-  );
+  if (decided == null) return;
+  if (context.mounted) {
+    await showSuccessSheet(
+      context,
+      title: 'Adaptaciones por revisar',
+      heading: decided.heading,
+      message: decided.message,
+    );
+  }
+  // Un rechazo del servidor que llega con la palomita abierta quedaría
+  // debajo de ella: se avisa al cerrarla, o cuando llegue.
+  final failedLater = decided.failedLater;
+  if (failedLater != null && await failedLater) {
+    _showSnack(messenger, decided.lateFailure);
+  }
 }
 
 /// La revisión de una adaptación pendiente: la receta publicada, el hogar
@@ -128,7 +144,9 @@ class _AdjustmentReviewScreenState extends State<AdjustmentReviewScreen> {
       () => approve(item.adjustment.id),
       heading: 'Adaptación aprobada',
       done: 'La familia ya verá la versión adaptada de $name.',
-      offline: 'La aprobación de $name se guardará cuando vuelva la conexión.',
+      offline:
+          'La aprobación de $name se enviará cuando vuelva la conexión. Si '
+          'tarda más de unos minutos, tendrás que revisarla otra vez.',
       failed: 'No se pudo aprobar la adaptación de $name. Intenta de nuevo.',
     );
   });
@@ -140,10 +158,14 @@ class _AdjustmentReviewScreenState extends State<AdjustmentReviewScreen> {
       enableDrag: false,
       builder: (_) => _RejectSheet(
         quotedName: name,
-        // Si la receta ya no es la misma, ese es casi siempre el motivo.
+        // Solo cuando el motivo es seguro. Una receta en revisión o en
+        // borrador puede volver a publicarse igual, y entonces la adaptación
+        // serviría: rechazarla la quita para siempre.
         initialReason: switch (item.staleness) {
-          AdjustmentStaleness.changed || AdjustmentStaleness.unavailable =>
+          AdjustmentStaleness.changed =>
             'La receta cambió y esta adaptación ya no aplica.',
+          AdjustmentStaleness.unsafe =>
+            'La adaptación todavía lleva un alérgeno del hogar.',
           _ => '',
         },
       ),
@@ -164,7 +186,9 @@ class _AdjustmentReviewScreenState extends State<AdjustmentReviewScreen> {
       () => reject(item.adjustment.id, reason),
       heading: 'Adaptación rechazada',
       done: 'La familia seguirá viendo la receta original de $name.',
-      offline: 'El rechazo de $name se guardará cuando vuelva la conexión.',
+      offline:
+          'El rechazo de $name se enviará cuando vuelva la conexión. Si tarda '
+          'más de unos minutos, tendrás que revisarla otra vez.',
       failed: 'No se pudo rechazar la adaptación de $name. Intenta de nuevo.',
     );
   });
@@ -201,26 +225,37 @@ class _AdjustmentReviewScreenState extends State<AdjustmentReviewScreen> {
     // como Future fallido.
     final saved = Future.sync(write);
     String message;
+    Future<bool>? failedLater;
     try {
       await saved.timeout(_saveTimeout);
       message = done;
     } on TimeoutException {
       // Si al sincronizar el servidor la rechaza (p. ej. la sesión ya no es
       // reciente), la adaptación vuelve a la lista: se avisa.
-      unawaited(
-        saved.then<void>(
-          (_) {},
-          onError: (Object _) => _showSnack(messenger, lateFailure),
-        ),
-      );
+      failedLater = saved.then((_) => false, onError: (Object _) => true);
       message = offline;
     } catch (_) {
       if (mounted) setState(() => _saving = null);
       _showSnack(messenger, failed);
       return;
     }
-    if (!mounted) return;
-    Navigator.of(context).pop<_Decided>((heading: heading, message: message));
+    if (!mounted) {
+      // Sin la revisión no hay palomita, pero el aviso sigue haciendo falta.
+      if (failedLater != null) {
+        unawaited(
+          failedLater.then((failed) {
+            if (failed) _showSnack(messenger, lateFailure);
+          }),
+        );
+      }
+      return;
+    }
+    Navigator.of(context).pop<_Decided>((
+      heading: heading,
+      message: message,
+      failedLater: failedLater,
+      lateFailure: lateFailure,
+    ));
   }
 
   @override
@@ -337,16 +372,19 @@ class _AdjustmentReviewScreenState extends State<AdjustmentReviewScreen> {
       '${recipe.caloriesPerServing} kcal por porción',
   ].join(' · ');
 
-  /// Por qué la familia no vería la adaptación, o null si sí la vería.
+  /// Por qué no se puede aprobar ahora, o null si se puede.
   static String? _warning(AdjustmentQueueItem item) => switch (item.staleness) {
     null => null,
     AdjustmentStaleness.changed =>
       'La receta cambió después de esta sugerencia y la familia ya no la '
-          'vería. Recházala; se sugerirá otra cuando la familia vuelva a abrir '
-          'la receta.',
+          'vería. Puedes rechazarla; cuando la familia vuelva a abrir la '
+          'receta se sugerirá otra.',
+    AdjustmentStaleness.inReview =>
+      'La receta está en "Recetas por revisar". Si la apruebas sin cambios, '
+          'después podrás aprobar esta adaptación.',
     AdjustmentStaleness.unavailable =>
-      'La receta ya no está publicada, así que la familia no vería esta '
-          'adaptación. Puedes rechazarla.',
+      'La receta no está publicada ahora: está en borrador o se borró. Si se '
+          'vuelve a publicar sin cambios, podrás aprobar esta adaptación.',
     AdjustmentStaleness.unsafe =>
       'Esta adaptación todavía lleva un ingrediente con un alérgeno del hogar '
           '(${item.allergenIngredient}). Recházala.',
@@ -476,8 +514,8 @@ class _RejectSheetState extends State<_RejectSheet> {
         children: [
           Text(
             'La familia seguirá viendo la receta original de '
-            '${widget.quotedName}. Escribe el motivo; queda guardado para el '
-            'equipo y la familia no lo ve.',
+            '${widget.quotedName}. Escribe el motivo; se guarda con la '
+            'adaptación y la app no se lo muestra a la familia.',
             style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
           ),
           const SizedBox(height: 16),

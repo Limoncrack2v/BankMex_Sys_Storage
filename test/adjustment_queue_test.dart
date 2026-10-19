@@ -6,10 +6,12 @@ import 'package:bank_storage_app/data/repositories/auth_repository.dart';
 import 'package:bank_storage_app/domain/models/recipe.dart';
 import 'package:bank_storage_app/domain/models/recipe_adjustment.dart';
 import 'package:bank_storage_app/ui/screens/nutritionist/adjustment_queue.dart';
+import 'package:bank_storage_app/ui/screens/nutritionist/adjustment_review_screen.dart';
 import 'package:bank_storage_app/ui/screens/nutritionist/nutritionist_home_screen.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
 import 'package:bank_storage_app/ui/widgets/app_bottom_sheet.dart';
 import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
+import 'package:bank_storage_app/ui/widgets/danger_buttons.dart';
 import 'package:bank_storage_app/ui/widgets/pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +25,7 @@ Future<void> _pumpQueue(
   WidgetTester tester, {
   required Stream<List<RecipeAdjustment>> adjustments,
   required Stream<List<Recipe>> recipes,
+  Stream<List<Recipe>>? inReview,
 }) async {
   tester.view.physicalSize = const Size(900, 3000);
   tester.view.devicePixelRatio = 1;
@@ -37,6 +40,7 @@ Future<void> _pumpQueue(
             AdjustmentQueue(
               adjustments: adjustments,
               approvedRecipes: recipes,
+              recipesInReview: inReview ?? Stream.value(const []),
               reviewerUid: 'nutri1',
             ),
           ],
@@ -65,7 +69,8 @@ void main() {
       expect(item.quotedName, '«Avena con fruta»');
       expect(
         item.changesLine,
-        'Porciones: 2 → 3 · Avena → Amaranto · Leche entera → Bebida de arroz',
+        'Porciones: de 2 a 3 · Avena por amaranto · Leche entera por bebida de '
+        'arroz',
       );
     });
 
@@ -101,6 +106,37 @@ void main() {
       expect(item.quotedName, 'esta receta');
       // Sin la receta no se sabe cuántas porciones daba.
       expect(item.portionsLabel, 'Porciones: 3');
+    });
+
+    test('a recipe back in review without changes waits to be published', () {
+      final item = adjustmentQueue(
+        [pendingAdjustment(_avena)],
+        const [],
+        inReview: [_avena],
+      ).single;
+
+      expect(item.recipe, same(_avena));
+      expect(item.staleness, AdjustmentStaleness.inReview);
+      // Es la misma versión: se sabe de cuántas porciones salió.
+      expect(item.portionsLabel, 'Porciones: de 2 a 3');
+      // Editada en la revisión ya no sirve.
+      expect(
+        adjustmentQueue(
+          [pendingAdjustment(_avena)],
+          const [],
+          inReview: [approvedRecipe('r1', 'Avena con fruta', servings: 4)],
+        ).single.staleness,
+        AdjustmentStaleness.changed,
+      );
+      // Si está publicada, se usa la publicada.
+      expect(
+        adjustmentQueue(
+          [pendingAdjustment(_avena)],
+          [_avena],
+          inReview: [_avena],
+        ).single.staleness,
+        isNull,
+      );
     });
 
     test('a recipe edited after the suggestion has changed', () {
@@ -208,11 +244,13 @@ void main() {
       );
       expect(
         find.text(
-          'Porciones: 2 → 3 · Avena → Amaranto · Leche entera → Bebida de '
-          'arroz',
+          'Porciones: de 2 a 3 · Avena por amaranto · Leche entera por bebida '
+          'de arroz',
         ),
         findsOneWidget,
       );
+      // Sin flechas: Nunito no las tiene.
+      expect(find.textContaining('→'), findsNothing);
       expect(find.text('Revisar'), findsOneWidget);
       // El resumen es para la familia ("tu hogar"): la tarjeta no lo usa.
       expect(find.textContaining('tu hogar'), findsNothing);
@@ -237,7 +275,7 @@ void main() {
       );
 
       expect(find.text('Hogar de 1 integrante · Sin alergias'), findsOneWidget);
-      expect(find.text('Porciones: 2 → 1'), findsOneWidget);
+      expect(find.text('Porciones: de 2 a 1'), findsOneWidget);
     });
 
     testWidgets('never shows the family, its id or the document id', (
@@ -411,10 +449,11 @@ void main() {
       expect(find.text('Receta no disponible'), findsNothing);
     });
 
-    testWidgets('marks the ones the family would never see', (tester) async {
+    testWidgets('marks the ones that cannot be approved now', (tester) async {
       final sopa = approvedRecipe('r2', 'Sopa de lentejas');
       final arroz = approvedRecipe('r3', 'Arroz con atún');
       final frijoles = approvedRecipe('r4', 'Frijoles de la olla');
+      final tacos = approvedRecipe('r5', 'Tacos de nopal');
       await _pumpQueue(
         tester,
         adjustments: Stream.value([
@@ -431,21 +470,25 @@ void main() {
               ),
             ],
           ),
-          pendingAdjustment(_avena, createdAt: DateTime(2026, 10, 4)),
+          pendingAdjustment(tacos, createdAt: DateTime(2026, 10, 4)),
+          pendingAdjustment(_avena, createdAt: DateTime(2026, 10, 5)),
         ]),
         recipes: Stream.value([
-          // La sopa se editó después de la sugerencia; el arroz ya no está
-          // publicado.
+          // La sopa se editó después de la sugerencia; el arroz ya no se
+          // puede leer.
           approvedRecipe('r2', 'Sopa de lentejas', servings: 5),
           frijoles,
           _avena,
         ]),
+        // Los tacos regresaron a "Recetas por revisar" sin cambios.
+        inReview: Stream.value([tacos]),
       );
 
       expect(find.text('La receta cambió'), findsOneWidget);
-      // El título de la que ya no está publicada y su aviso.
-      expect(find.text('Receta no disponible'), findsNWidgets(2));
+      // El título ya lo dice: no lleva otro aviso.
+      expect(find.text('Receta no disponible'), findsOneWidget);
       expect(find.text('Lleva un alérgeno'), findsOneWidget);
+      expect(find.text('Receta en revisión'), findsOneWidget);
       expect(find.byType(Pill), findsNWidgets(3));
       // La de la avena se puede aprobar: no lleva aviso.
       expect(
@@ -471,10 +514,28 @@ void main() {
 
       expect(
         find.text(
-          'Porciones: 3 · Avena → Amaranto · Leche entera → Bebida de arroz',
+          'Porciones: 3 · Avena por amaranto · Leche entera por bebida de '
+          'arroz',
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('shows the same error when the recipes in review fail', (
+      tester,
+    ) async {
+      await _pumpQueue(
+        tester,
+        adjustments: Stream.value([pendingAdjustment(_avena)]),
+        recipes: Stream.value(const []),
+        inReview: Stream.error(StateError('permission-denied')),
+      );
+
+      expect(
+        find.textContaining('No se pudieron cargar las adaptaciones'),
+        findsOneWidget,
+      );
+      expect(find.text('Receta no disponible'), findsNothing);
     });
   });
 
@@ -500,6 +561,7 @@ void main() {
           pendingRecipes: Stream.value(const []),
           pendingAdjustments: Stream.value([pendingAdjustment(_avena)]),
           approvedRecipes: Stream.value([_avena]),
+          recipesInReview: Stream.value(const []),
         ),
       ),
     );
@@ -538,6 +600,7 @@ void main() {
           pendingRecipes: Stream.value(const []),
           pendingAdjustments: pending.stream,
           approvedRecipes: Stream.value([_avena]),
+          recipesInReview: Stream.value(const []),
           approveAdjustment: (id) async {
             log.add('approve $id');
             // Como en Firestore: la decidida sale de la lista enseguida.
@@ -555,6 +618,14 @@ void main() {
 
     await tester.tap(find.text('Avena con fruta'));
     await tester.pumpAndSettle();
+    // La decisión se firma con el uid del nutriólogo (firestore.rules:
+    // reviewedBy).
+    expect(
+      tester
+          .widget<AdjustmentReviewScreen>(find.byType(AdjustmentReviewScreen))
+          .reviewerUid,
+      'nutri1',
+    );
     await tester.tap(find.text('Aprobar adaptación'));
     await tester.pumpAndSettle();
     await tester.tap(
@@ -572,6 +643,66 @@ void main() {
       find.text('La familia ya verá la versión adaptada de «Avena con fruta».'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('rejecting from the home sends the reason and confirms there', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final pending = StreamController<List<RecipeAdjustment>>();
+    addTearDown(pending.close);
+    final adjustment = pendingAdjustment(_avena);
+    final log = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: NutritionistHomeScreen(
+          session: AuthSession(
+            user: AppUser(
+              userId: 'nutri1',
+              name: 'Ana Nutrióloga',
+              email: 'ana@bamx.test',
+              role: AppUser.roleNutritionist,
+              createdAt: DateTime(2026, 10, 16),
+            ),
+          ),
+          pendingRecipes: Stream.value(const []),
+          pendingAdjustments: pending.stream,
+          approvedRecipes: Stream.value([_avena]),
+          recipesInReview: Stream.value(const []),
+          rejectAdjustment: (id, reason) async {
+            log.add('reject $id: $reason');
+            pending.add(const []);
+          },
+          confirmIdentity: (_) async {
+            log.add('confirm');
+            return true;
+          },
+        ),
+      ),
+    );
+    pending.add([adjustment]);
+    await tester.pump();
+
+    await tester.tap(find.text('Avena con fruta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rechazar con motivo'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'No va con esta receta.');
+    await tester.pump();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AppSheet),
+        matching: find.byType(DangerButton),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(log, ['confirm', 'reject ${adjustment.id}: No va con esta receta.']);
+    expect(find.text('No hay adaptaciones por revisar.'), findsOneWidget);
+    expect(find.text('Adaptación rechazada'), findsOneWidget);
   });
 
   group('with large text on a 360 wide screen', () {
@@ -605,6 +736,7 @@ void main() {
                     servings: 4,
                   ),
                 ]),
+                recipesInReview: Stream.value(const []),
                 reviewerUid: 'nutri1',
               ),
             ],
@@ -614,7 +746,7 @@ void main() {
         );
 
         expect(find.text('La receta cambió'), findsOneWidget);
-        expect(find.text('Receta no disponible'), findsNWidgets(2));
+        expect(find.text('Receta no disponible'), findsOneWidget);
         expectNoBrokenWords(tester);
         expect(tester.takeException(), isNull);
       });
