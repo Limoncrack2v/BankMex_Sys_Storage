@@ -1,4 +1,5 @@
-// Cerrar sesión borra la caché local de Firestore (MASVS-STORAGE-1).
+// Cerrar sesión borra la caché local de Firestore (MASVS-STORAGE-1) y cancela
+// el recordatorio del plan.
 //
 // Mismos requisitos que app_flow_test.dart: emuladores de Auth y Firestore
 // corriendo y `node tool/seed_emulators.mjs` antes de la corrida.
@@ -7,10 +8,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:bank_storage_app/data/firebase_environment.dart';
+import 'package:bank_storage_app/data/plan_reminder.dart';
 import 'package:bank_storage_app/data/repositories/auth_repository.dart';
 import 'package:bank_storage_app/firebase_options.dart';
 
@@ -114,5 +117,37 @@ void main() {
     // Con conexión, el siguiente cierre de sesión sí borra la caché.
     await auth.signOut();
     await expectLater(profile.get(_fromCache), _notInCache);
+  });
+
+  testWidgets('cerrar sesión cancela el recordatorio del plan, con y sin '
+      'conexión', (tester) async {
+    final auth = AuthRepository();
+    final notifications = FlutterLocalNotificationsPlugin();
+    // Se programa con el plugin, igual que la app, pero sin
+    // PlanReminder.enable: su diálogo de permiso no se puede contestar aquí.
+    final scheduler = LocalReminderScheduler();
+    await scheduler.init(onOpenPlan: () {});
+    addTearDown(notifications.cancelAll);
+
+    await auth.signIn(_familyEmail, _password);
+    await scheduler.scheduleDaily(PlanReminder.defaultTime);
+    expect(await notifications.pendingNotificationRequests(), hasLength(1));
+    await auth.signOut();
+    expect(await notifications.pendingNotificationRequests(), isEmpty);
+
+    // Sin conexión también se cancela.
+    await auth.signIn(_familyEmail, _password);
+    await scheduler.scheduleDaily(PlanReminder.defaultTime);
+    expect(await notifications.pendingNotificationRequests(), hasLength(1));
+    final db = FirebaseFirestore.instance;
+    await db.disableNetwork();
+    var offline = true;
+    addTearDown(() async {
+      if (offline) await db.enableNetwork();
+    });
+    await auth.signOut();
+    expect(await notifications.pendingNotificationRequests(), isEmpty);
+    await db.enableNetwork();
+    offline = false;
   });
 }

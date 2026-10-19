@@ -24,6 +24,23 @@ void main() {
     expect(find.byType(SignInScreen), findsOneWidget);
   });
 
+  testWidgets('sin sesión guardada cancela el recordatorio del plan', (
+    tester,
+  ) async {
+    // Firebase pudo cerrar la sesión por su cuenta, sin pasar por signOut.
+    var cancelled = 0;
+    await _pumpGate(
+      tester,
+      SessionGate(
+        restoreUser: () async => null,
+        cancelReminder: () async => cancelled++,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(cancelled, 1);
+    expect(find.byType(SignInScreen), findsOneWidget);
+  });
+
   testWidgets('espera a que Firebase cargue la sesión antes de decidir', (
     tester,
   ) async {

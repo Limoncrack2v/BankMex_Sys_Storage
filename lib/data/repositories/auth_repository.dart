@@ -11,6 +11,7 @@ import '../firestore_cache.dart';
 import '../models/app_user.dart';
 import '../models/family.dart';
 import '../models/staff_request.dart';
+import '../plan_reminder.dart';
 import 'family_repository.dart';
 import 'staff_request_repository.dart';
 import 'user_repository.dart';
@@ -36,6 +37,10 @@ class AuthException implements Exception {
 }
 
 class AuthRepository {
+  /// [planReminder] es para las pruebas.
+  AuthRepository({PlanReminder? planReminder})
+    : _planReminder = planReminder ?? PlanReminder.instance;
+
   /// Mínimo de caracteres de cualquier contraseña nueva: la del Registro de
   /// Staff y la de las cuentas que crea el staff. Firebase solo exige 6.
   static const minPasswordLength = 8;
@@ -52,6 +57,7 @@ class AuthRepository {
   // late: se toma al usarlo, así las pruebas pueden crear el repositorio sin
   // Firebase (las validaciones de contraseña fallan antes de tocarlo).
   late final _auth = FirebaseAuth.instance;
+  final PlanReminder _planReminder;
 
   /// Lanza [AuthException] si [password] es más corta que
   /// [minPasswordLength]. Las pantallas ya no dejan enviarla; esto cubre a
@@ -131,10 +137,15 @@ class AuthRepository {
     });
   }
 
-  /// Cierra la sesión y borra la caché local de Firestore (ver
-  /// signOutAndClearCache).
-  Future<void> signOut() =>
-      signOutAndClearCache(auth: _auth, firestore: FirebaseFirestore.instance);
+  /// Cancela el recordatorio del plan (también sin conexión), cierra la
+  /// sesión y borra la caché local de Firestore (ver signOutAndClearCache).
+  Future<void> signOut() async {
+    await _planReminder.cancelAll();
+    await signOutAndClearCache(
+      auth: _auth,
+      firestore: FirebaseFirestore.instance,
+    );
+  }
 
   /// Antigüedad máxima del inicio de sesión para hacer una acción sensible
   /// sin volver a pedir la contraseña. La regla (recentlySignedIn en
@@ -161,6 +172,29 @@ class AuthRepository {
       return false;
     }
   }
+
+  /// Lo que se muestra cuando las reglas niegan una acción sensible porque el
+  /// inicio de sesión ya no es reciente: el siguiente toque pide la
+  /// contraseña (ensureRecentSignIn).
+  static const staleSignInMessage =
+      'Tu sesión necesita confirmarse. Intenta de nuevo.';
+
+  /// [staleSignInMessage] si [error] es un permission-denied y la sesión no
+  /// es reciente; si no, null y cada pantalla muestra su propio mensaje.
+  static String? staleSignInMessageFor(
+    Object error, {
+    required bool recentSignIn,
+  }) => !recentSignIn && _isPermissionDenied(error) ? staleSignInMessage : null;
+
+  /// [staleSignInMessageFor] con la sesión actual. Solo para acciones que
+  /// piden una sesión reciente (las que pasan por ensureRecentSignIn).
+  Future<String?> staleSignInError(Object error) async =>
+      _isPermissionDenied(error)
+      ? staleSignInMessageFor(error, recentSignIn: await hasRecentSignIn())
+      : null;
+
+  static bool _isPermissionDenied(Object error) =>
+      error is FirebaseException && error.code == 'permission-denied';
 
   /// Confirma la identidad de quien tiene la sesión con su contraseña; el
   /// token nuevo trae un auth_time reciente. Lanza [AuthException].
@@ -359,14 +393,17 @@ class AuthRepository {
 
       try {
         await batch.commit();
-      } catch (_) {
+      } catch (e) {
         try {
           await newUser.delete();
         } catch (_) {
           // Sin conexión no se puede borrar; la cuenta queda sin perfil y no
           // puede entrar a la app.
         }
-        throw AuthException('No se pudo crear la cuenta. Intenta de nuevo.');
+        throw AuthException(
+          await staleSignInError(e) ??
+              'No se pudo crear la cuenta. Intenta de nuevo.',
+        );
       }
       return family;
     } finally {
