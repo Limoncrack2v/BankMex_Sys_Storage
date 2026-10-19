@@ -7,6 +7,7 @@ import '../meal_plan/meal_plan_screen.dart';
 import '../pantry/pantry_screen.dart';
 import '../profile/profile_screen.dart';
 import '../recipes/recipes_screen.dart';
+import 'open_plan_from_reminder.dart';
 
 /// App del beneficiario: las 4 pestañas de la barra inferior.
 class HomeScreen extends StatefulWidget {
@@ -16,10 +17,16 @@ class HomeScreen extends StatefulWidget {
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
+
+  /// La pestaña "Plan de comidas": la abre el recordatorio del plan.
+  static const planTab = 2;
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with OpenPlanFromReminder {
   int _index = 0;
+
+  @override
+  void showPlan() => _index = HomeScreen.planTab;
 
   @override
   Widget build(BuildContext context) {
