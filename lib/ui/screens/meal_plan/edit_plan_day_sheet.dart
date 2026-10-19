@@ -5,6 +5,7 @@ import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_bottom_sheet.dart';
+import '../../widgets/app_buttons.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/danger_buttons.dart';
 import '../../widgets/pill.dart';
@@ -23,7 +24,20 @@ typedef PlanDayOption = ({MealPlanEntry entry, List<String> missingAppliances});
 /// Si el hogar tiene lo que pide la receta.
 bool _suitable(PlanDayOption option) => option.missingAppliances.isEmpty;
 
-/// Abre [EditPlanDaySheet]. Al guardar se cierra y avisa con un snackbar.
+/// Un cambio elegido que falta confirmar: qué se escribe, qué se dice al
+/// guardarlo y cómo se pregunta.
+typedef _Pending = ({
+  String saving,
+  Future<void> Function() write,
+  String success,
+  String question,
+  String? detail,
+  String confirmLabel,
+  bool clears,
+});
+
+/// Abre [EditPlanDaySheet]. Pide confirmar el cambio antes de guardarlo y lo
+/// confirma con la palomita en el mismo sheet.
 Future<void> showEditPlanDaySheet(
   BuildContext context, {
   required String title,
@@ -92,6 +106,10 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
   /// Lo que dice la confirmación, ya guardado el cambio.
   String? _done;
 
+  /// El cambio que se está por confirmar: un toque por error en la lista no
+  /// cambia el plan.
+  _Pending? _pending;
+
   Future<void> _write(
     String saving,
     Future<void> Function() write,
@@ -125,16 +143,114 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
     });
   }
 
-  void _pick(Recipe recipe) => _write(
-    recipe.id,
-    () => widget.onPick(recipe),
-    widget.currentRecipeId == null
-        ? 'Elegiste la receta del ${widget.dayName}.'
-        : 'Cambiaste la receta del ${widget.dayName}.',
-  );
+  void _ask(_Pending pending) => setState(() {
+    _error = null;
+    _pending = pending;
+  });
 
-  void _clear(Future<void> Function() clear) =>
-      _write('', clear, 'El ${widget.dayName} quedó libre.');
+  void _pick(Recipe recipe) {
+    final day = widget.dayName;
+    if (widget.currentRecipeId == null) {
+      return _ask((
+        saving: recipe.id,
+        write: () => widget.onPick(recipe),
+        success: 'Elegiste la receta del $day.',
+        question: '¿Elegir «${recipe.name}» para el $day?',
+        detail: null,
+        confirmLabel: 'Elegir receta',
+        clears: false,
+      ));
+    }
+    final current = widget.options
+        .map((option) => option.entry.recipe)
+        .where((option) => option.id == widget.currentRecipeId)
+        .firstOrNull;
+    _ask((
+      saving: recipe.id,
+      write: () => widget.onPick(recipe),
+      success: 'Cambiaste la receta del $day.',
+      question: '¿Cambiar la receta del $day?',
+      detail: current == null
+          ? 'Se guardará «${recipe.name}».'
+          : '«${current.name}» se cambia por «${recipe.name}».',
+      confirmLabel: 'Cambiar receta',
+      clears: false,
+    ));
+  }
+
+  void _clear(Future<void> Function() clear) => _ask((
+    saving: '',
+    write: clear,
+    success: 'El ${widget.dayName} quedó libre.',
+    question: '¿Dejar libre el ${widget.dayName}?',
+    detail: 'Ese día no tendrá receta en tu plan.',
+    confirmLabel: 'Dejar día libre',
+    clears: true,
+  ));
+
+  void _confirm() {
+    final pending = _pending;
+    if (pending != null) _write(pending.saving, pending.write, pending.success);
+  }
+
+  Widget _buildConfirm(_Pending pending) {
+    final error = _error;
+    final saving = _saving != null;
+    return AppSheet(
+      title: widget.title,
+      busy: saving,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(pending.question, style: AppText.baloo(19, 28.5)),
+          if (pending.detail case final detail?) ...[
+            const SizedBox(height: 8),
+            Text(
+              detail,
+              style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
+            ),
+          ],
+        ],
+      ),
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (error != null) ...[
+            Semantics(
+              liveRegion: true,
+              child: InfoBanner(
+                message: error,
+                background: AppColors.dangerSoft,
+                foreground: AppColors.dangerText,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (pending.clears)
+            DangerButton(
+              label: pending.confirmLabel,
+              loading: saving,
+              onPressed: _confirm,
+            )
+          else
+            PrimaryButton(
+              label: pending.confirmLabel,
+              icon: AppIcons.check,
+              loading: saving,
+              onPressed: _confirm,
+            ),
+          const SizedBox(height: 8),
+          SecondaryButton(
+            label: 'Volver',
+            onPressed: () {
+              if (_saving == null) setState(() => _pending = null);
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +264,7 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
         ),
       );
     }
+    if (_pending case final pending?) return _buildConfirm(pending);
 
     final error = _error;
     final clear = widget.onClear;
@@ -180,8 +297,7 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
               entry: entry,
               missingAppliances: missingAppliances,
               current: entry.recipe.id == widget.currentRecipeId,
-              saving: _saving == entry.recipe.id,
-              onTap: _saving == null ? () => _pick(entry.recipe) : null,
+              onTap: () => _pick(entry.recipe),
             ),
           ],
         ],
@@ -203,20 +319,16 @@ class _EditPlanDaySheetState extends State<EditPlanDaySheet> {
                   ),
                 if (error != null && clear != null) const SizedBox(height: 8),
                 if (clear != null)
-                  Center(
-                    child: _saving == ''
-                        ? const SizedBox(
-                            height: 48,
-                            child: Center(child: _Saving()),
-                          )
-                        : DangerLinkButton(
-                            label: 'Dejar este día libre',
-                            semanticLabel:
-                                'Dejar este día libre: ${widget.dayName}',
-                            onPressed: _saving == null
-                                ? () => _clear(clear)
-                                : null,
-                          ),
+                  Semantics(
+                    container: true,
+                    button: true,
+                    label: 'Dejar este día libre: ${widget.dayName}',
+                    excludeSemantics: true,
+                    onTap: () => _clear(clear),
+                    child: DangerButton(
+                      label: 'Dejar este día libre',
+                      onPressed: () => _clear(clear),
+                    ),
                   ),
               ],
             ),
@@ -231,14 +343,12 @@ class _OptionCard extends StatelessWidget {
     required this.entry,
     required this.missingAppliances,
     required this.current,
-    required this.saving,
     required this.onTap,
   });
 
   final MealPlanEntry entry;
   final List<String> missingAppliances;
   final bool current;
-  final bool saving;
   final VoidCallback? onTap;
 
   @override
@@ -303,29 +413,11 @@ class _OptionCard extends StatelessWidget {
                 if (current) ...[
                   const SizedBox(width: 12),
                   const Pill.success(label: 'Actual'),
-                ] else if (saving) ...[
-                  const SizedBox(width: 12),
-                  const _Saving(),
                 ],
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _Saving extends StatelessWidget {
-  const _Saving();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox.square(
-      dimension: 22,
-      child: CircularProgressIndicator(
-        strokeWidth: 2.5,
-        color: AppColors.primary,
       ),
     );
   }

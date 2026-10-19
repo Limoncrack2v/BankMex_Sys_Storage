@@ -7,6 +7,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_buttons.dart';
+import '../../widgets/danger_buttons.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/pill.dart';
 
@@ -117,11 +118,7 @@ class _AccountSheetState extends State<AccountSheet> {
             const SizedBox(height: 12),
           ],
           const SizedBox(height: 4),
-          PrimaryButton(
-            label: 'Cerrar sesión',
-            danger: true,
-            onPressed: _signOut,
-          ),
+          DangerButton(label: 'Cerrar sesión', onPressed: _signOut),
         ],
       ),
     );

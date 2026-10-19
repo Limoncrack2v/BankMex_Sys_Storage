@@ -14,6 +14,7 @@ import 'package:bank_storage_app/ui/models/recipe.dart' show allergyConflicts;
 import 'package:bank_storage_app/ui/sample_data.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/delete_meal_plan_sheet.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/edit_plan_day_sheet.dart';
+import 'package:bank_storage_app/ui/widgets/app_buttons.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/meal_plan_saving.dart';
 import 'package:bank_storage_app/ui/screens/meal_plan/saved_meal_plan_view.dart';
 import 'package:bank_storage_app/ui/theme/app_theme.dart';
@@ -149,10 +150,15 @@ Future<void> openDayNamed(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// Toca [recipe] y, si el sheet pide confirmar, confirma.
 Future<void> pick(WidgetTester tester, String recipe) async {
   await tester.ensureVisible(inSheet(find.text(recipe)));
   await tester.pumpAndSettle();
   await tester.tap(inSheet(find.text(recipe)));
+  await tester.pumpAndSettle();
+  final confirm = inSheet(find.byType(PrimaryButton));
+  if (confirm.evaluate().isEmpty) return;
+  await tester.tap(confirm);
   await tester.pump();
 }
 
@@ -254,6 +260,29 @@ void main() {
       expect(find.byType(EditPlanDaySheet), findsNothing);
     });
 
+    testWidgets('a tapped recipe only saves after confirming', (tester) async {
+      final writes = await pumpSaved(tester);
+
+      await openDay(tester, 'Cambiar');
+      await tester.tap(inSheet(find.text('Arroz con atún')));
+      await tester.pumpAndSettle();
+
+      // Un toque por error no cambia el plan: primero pregunta.
+      expect(find.text('¿Cambiar la receta del miércoles 14?'), findsOneWidget);
+      expect(writes.saved, isEmpty);
+      await tester.tap(find.text('Volver'));
+      await tester.pumpAndSettle();
+      expect(inSheet(find.text('Arroz con atún')), findsOneWidget);
+      expect(writes.saved, isEmpty);
+
+      await tester.tap(inSheet(find.text('Arroz con atún')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cambiar receta'));
+      await tester.pumpAndSettle();
+      expect(writes.saved, hasLength(1));
+      expect(find.text('Plan actualizado'), findsOneWidget);
+    });
+
     testWidgets('a picked recipe saves the portions the household eats', (
       tester,
     ) async {
@@ -299,6 +328,10 @@ void main() {
 
       await openDay(tester, 'Cambiar');
       await tester.tap(find.text('Dejar este día libre'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Dejar libre el miércoles 14?'), findsOneWidget);
+      expect(writes.saved, isEmpty);
+      await tester.tap(find.text('Dejar día libre'));
       await tester.pumpAndSettle();
 
       final saved = writes.saved.single;
@@ -490,10 +523,8 @@ void main() {
       await pick(tester, 'Arroz con atún');
       await tester.pump(const Duration(seconds: 3));
       expect(find.byType(EditPlanDaySheet), findsOneWidget);
-      // Mientras espera no se puede elegir otra.
-      await tester.ensureVisible(inSheet(find.text('Sopa de lentejas')));
-      await tester.pump();
-      await tester.tap(inSheet(find.text('Sopa de lentejas')));
+      // Mientras espera, confirmar otra vez no escribe dos veces.
+      await tester.tap(inSheet(find.byType(PrimaryButton)));
 
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
