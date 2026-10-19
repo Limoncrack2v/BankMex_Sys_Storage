@@ -54,8 +54,10 @@ class _Recipes implements RecipeRepository {
 }
 
 class _MealPlans implements MealPlanRepository {
+  /// La facade no escribe planes: cualquier escritura rompe la prueba.
   @override
-  Future<MealPlan> create(MealPlan plan) async => plan;
+  Future<MealPlan> create(MealPlan plan) async =>
+      throw StateError('generateMealPlan no debe guardar el plan');
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -113,6 +115,13 @@ void main() {
       final facade = facadeFor(family(nextDelivery: inDays(10)));
       final generated = await facade.generateMealPlan(familyId: 'fam', days: 3);
       expect(generated.requestedDays, 3);
+    });
+
+    test('only computes the plan: it does not write mealPlans', () async {
+      // _MealPlans lanza si la facade intenta guardar.
+      final generated = await facadeFor(family())
+          .generateMealPlan(familyId: 'fam');
+      expect(generated.plan.id, isEmpty);
     });
 
     test('fails when the family does not exist', () {

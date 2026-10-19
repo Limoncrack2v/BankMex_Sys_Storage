@@ -186,11 +186,21 @@ Los integrantes de la familia se guardan en la subcolección `families/{familyId
 Cada integrante puede tener edad, peso, sexo, alergias y enfermedades crónicas: son datos de salud (MASVS-PRIVACY-1, OWASP Mobile M6).
 
 - **Quién los lee y los escribe:** en la app, solo la familia dueña del hogar. El staff no los lee ni los escribe, ni con el SDK: ninguna pantalla de staff los usa. El staff sigue registrando el hogar (`families/{id}`); los integrantes los agrega la familia desde su perfil.
+- **Adaptaciones (`adjustments`):** el nutriólogo las lee todas para revisarlas. Cada una lleva el `familyId` (el uid de la cuenta), el tamaño del hogar y sus alergias (en `householdKey`, por ejemplo `4-dairy-peanut`) y el motivo de cada cambio; no lleva nombres ni edades ni pesos, y el nutriólogo no lee `families` ni `members`. Son datos de salud ligados a una cuenta (MASVS-PRIVACY-1): se aceptan porque la revisión los necesita.
 - **Retención:** cuando una familia deja el programa, sus integrantes se borran a más tardar 6 meses después. Al borrar `families/{familyId}` desde la app **no** se borran sus subcolecciones, así que los integrantes se eliminan aparte:
 
   ```sh
   firebase firestore:delete --recursive "families/<familyId>" --project bank-storage-bamx
   ```
+
+## Motor de adaptación
+
+Cuando una familia abre una receta, la app sugiere cómo adaptarla a su hogar: las **porciones** (según cuántos son y la edad y el peso de los niños) y la **sustitución de los ingredientes a los que alguien es alérgico**, cada cambio con su motivo y un resumen de una línea. Nada se aplica solo: la sugerencia queda `pending` en `adjustments` y la familia sigue viendo la receta base hasta que el **nutriólogo** la aprueba. Si la rechaza, no cambia nada. La adaptación aprobada solo sirve para esa receta, para esa versión de la receta y para ese tamaño de hogar.
+
+- **Interfaz:** `RecipePlanner.suggestAdjustment(household, recipe)` en `lib/domain/recipe_planner.dart`, la misma interfaz que elige las recetas y arma el plan. `household` es un `AdjustmentContext`: el tamaño del hogar, las porciones de adulto que come y sus alergias. No lleva nombres, edades ni pesos.
+- **Implementación actual:** `RuleBasedRecipePlanner` delega en `RecipeAdjustmentRules` (`lib/domain/recipe_adjustment.dart`), un algoritmo por reglas que corre en el dispositivo y no manda datos a nadie.
+- **Dónde se guarda:** `adjustments/{familyId}_{recipeId}_{huella}_{householdKey}`, donde `householdKey` es el tamaño del hogar y sus alergias en orden alfabético (`4`, `4-dairy`, `4-dairy-gluten`). El id es único por familia, receta, huella de la receta y hogar, y las reglas lo exigen al crear: un mismo hogar no repite una sugerencia. **No cierra del todo la cola del nutriólogo:** la huella la manda el cliente y las reglas no la pueden recalcular, así que un cliente modificado puede inventar huellas y crear una sugerencia por cada una. Es un riesgo aceptado porque las cuentas de familia las crea el staff; para cerrarlo la receta tendría que guardar su huella y la regla compararla. Si cambian las alergias, cambia la clave: la adaptación vieja deja de aplicarse y se sugiere una nueva.
+- **Cómo enchufar otro motor:** implementa `RecipePlanner` (lo que no cambies, delégalo en `RuleBasedRecipePlanner`) y pásalo a `BankStorageFacade(planner: ...)`; la facade y las pantallas no cambian. `test/recipe_adjustments_flow_test.dart` tiene un ejemplo (`_OtherEngine`). Un motor remoto solo recibe el `AdjustmentContext` y debe llamarse desde el backend (una Cloud Function), no desde la app; antes hay que volver a revisar MASVS-PRIVACY-1.
 
 ## Cuentas
 

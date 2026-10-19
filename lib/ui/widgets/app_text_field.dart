@@ -112,9 +112,15 @@ class AppTextField extends StatelessWidget {
         filled: true,
         fillColor: enabled ? AppColors.surface : AppColors.background,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
         suffixIcon: suffix,
-        suffixIconConstraints: const BoxConstraints(minWidth: 48, minHeight: 40),
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 48,
+          minHeight: 40,
+        ),
         border: _border(AppColors.border),
         enabledBorder: _border(AppColors.border),
         disabledBorder: _border(AppColors.border),
@@ -132,9 +138,10 @@ class FieldLabel extends StatelessWidget {
   final String text;
   final bool required;
 
+  static final style = AppText.nunito(15, 22.5, weight: FontWeight.w700);
+
   @override
   Widget build(BuildContext context) {
-    final style = AppText.nunito(15, 22.5, weight: FontWeight.w700);
     return Text.rich(
       TextSpan(
         text: text,

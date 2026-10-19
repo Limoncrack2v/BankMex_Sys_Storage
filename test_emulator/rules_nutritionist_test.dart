@@ -57,17 +57,20 @@ void main() {
       await assertDenied(nutri1().listDocs('recipes'));
     });
 
-    test('nutriólogo no escribe recetas', () async {
-      // shortcut: receta de un solo campo;
-      // cuando exista validRecipe, usar una válida
-      await assertDenied(
-        nutri1().setDoc('recipes/nueva', {'status': str('pending')}),
-      );
-      await assertDenied(
-        nutri1().updateDoc('recipes/rPending', {'status': str('approved')}),
-      );
-      await assertDenied(nutri1().deleteDoc('recipes/rPending'));
-    });
+    // Aprobar y rechazar una pendiente (lo único que escribe, con sesión
+    // reciente) se prueba en rules_recipes_test.dart.
+    test(
+      'nutriólogo no crea ni borra recetas ni aprueba sin sus datos',
+      () async {
+        await assertDenied(
+          nutri1().setDoc('recipes/nueva', {'status': str('pending')}),
+        );
+        await assertDenied(
+          nutri1().updateDoc('recipes/rPending', {'status': str('approved')}),
+        );
+        await assertDenied(nutri1().deleteDoc('recipes/rPending'));
+      },
+    );
 
     test('la rama nueva no cambia a familia ni a staff', () async {
       await assertDenied(fam1().getDoc('recipes/rPending'));

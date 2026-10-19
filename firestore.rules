@@ -244,6 +244,201 @@ service cloud.firestore {
         && validMeals(data.meals, data.dateRangeStart, data.dateRangeEnd);
     }
 
+    // Un ingrediente de una receta (RecipeIngredient.toMap). unit es un valor
+    // de FoodUnit (lib/data/models/pantry_item.dart). Si falta un campo o no
+    // tiene el tipo esperado, la evaluación falla y la escritura se rechaza.
+    // No se revisan campos de más dentro del ingrediente: cada comprobación
+    // gasta expresiones y la app los ignora.
+    function validRecipeIngredient(item) {
+      return item.productName.matches('(?s).{1,100}')
+        && item.quantity > 0 && item.quantity <= 1000000
+        && item.unit.matches('kg|g|l|ml|piece|can|pack');
+    }
+
+    // Las reglas no tienen ciclos: cada ingrediente y cada paso se revisa por
+    // su índice, y el k solo se evalúa si hay más de k. Por eso hay un máximo
+    // (RecipeCatalog.maxIngredients y maxSteps): pasarlo rechaza la receta.
+    // Una solicitud tiene un tope de 1000 expresiones y con estos máximos una
+    // receta usa casi todas. Si se sube alguno, repetir las pruebas de máximos
+    // de test_emulator/rules_recipe_validation_test.dart.
+    function validRecipeIngredients(items) {
+      let n = items.size();
+      return items is list && n >= 1 && n <= 10
+        && (n <= 0 || validRecipeIngredient(items[0]))
+        && (n <= 1 || validRecipeIngredient(items[1]))
+        && (n <= 2 || validRecipeIngredient(items[2]))
+        && (n <= 3 || validRecipeIngredient(items[3]))
+        && (n <= 4 || validRecipeIngredient(items[4]))
+        && (n <= 5 || validRecipeIngredient(items[5]))
+        && (n <= 6 || validRecipeIngredient(items[6]))
+        && (n <= 7 || validRecipeIngredient(items[7]))
+        && (n <= 8 || validRecipeIngredient(items[8]))
+        && (n <= 9 || validRecipeIngredient(items[9]));
+    }
+
+    function validRecipeSteps(steps) {
+      let n = steps.size();
+      return steps is list && n >= 1 && n <= 12
+        && (n <= 0 || steps[0].matches('(?s).{1,300}'))
+        && (n <= 1 || steps[1].matches('(?s).{1,300}'))
+        && (n <= 2 || steps[2].matches('(?s).{1,300}'))
+        && (n <= 3 || steps[3].matches('(?s).{1,300}'))
+        && (n <= 4 || steps[4].matches('(?s).{1,300}'))
+        && (n <= 5 || steps[5].matches('(?s).{1,300}'))
+        && (n <= 6 || steps[6].matches('(?s).{1,300}'))
+        && (n <= 7 || steps[7].matches('(?s).{1,300}'))
+        && (n <= 8 || steps[8].matches('(?s).{1,300}'))
+        && (n <= 9 || steps[9].matches('(?s).{1,300}'))
+        && (n <= 10 || steps[10].matches('(?s).{1,300}'))
+        && (n <= 11 || steps[11].matches('(?s).{1,300}'));
+    }
+
+    // Las etiquetas libres solo se cuentan: revisar cada una gasta
+    // expresiones que las demás partes de la receta necesitan.
+    function validDietaryTags(tags) {
+      return tags is list && tags.size() <= 10;
+    }
+
+    // Etiquetas y electrodomésticos: los de NutritionalTag y Appliance
+    // (lib/domain/models). Al editar se aceptan también los ids que la receta
+    // ya tenía, para no borrar los de una versión más nueva de la app
+    // (RecipeCatalog.validateTags hace lo mismo).
+    function validRecipeTags(tags, known, stored) {
+      return tags is list && tags.size() <= 20
+        && tags.hasOnly(known.concat(stored))
+        && tags.toSet().size() == tags.size();
+    }
+
+    // before es el documento guardado al editar, o {} al crear. La receta
+    // completa debe ser válida: el catálogo escribe todos los campos siempre
+    // (Recipe.toMap). Los campos de revisión (approvedBy, approvedAt,
+    // reviewNote, rejectedBy y rejectedAt) los escribe solo el nutriólogo,
+    // por eso solo se aceptan aquí y los controlan las reglas de recipes.
+    function validRecipe(data, before) {
+      return data.keys().hasOnly(['name', 'ingredients', 'steps', 'prepTimeMinutes', 'caloriesPerServing', 'status', 'dietaryTags', 'nutritionalTags', 'requiredEquipment', 'image', 'servings', 'approvedBy', 'approvedAt', 'reviewNote', 'rejectedBy', 'rejectedAt'])
+        && data.keys().hasAll(['name', 'ingredients', 'steps', 'prepTimeMinutes', 'caloriesPerServing', 'status', 'dietaryTags', 'nutritionalTags', 'requiredEquipment', 'image', 'servings'])
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.status in ['draft', 'pending', 'approved']
+        && data.prepTimeMinutes is int && data.prepTimeMinutes >= 1 && data.prepTimeMinutes <= 9999
+        && data.caloriesPerServing is int && data.caloriesPerServing >= 0 && data.caloriesPerServing <= 5000
+        && data.servings is int && data.servings >= 1 && data.servings <= 99
+        && data.image is string && data.image.size() <= 300
+        && validRecipeIngredients(data.ingredients)
+        && validRecipeSteps(data.steps)
+        && validDietaryTags(data.dietaryTags)
+        && validRecipeTags(data.nutritionalTags,
+          ['bajoEnSodio', 'bajoEnAzucar', 'bajoEnGrasa', 'altoEnFibra', 'altoEnProteina', 'vegetariano', 'aptoDiabeticos'],
+          before.get('nutritionalTags', []))
+        && validRecipeTags(data.requiredEquipment,
+          ['estufa', 'refrigerador', 'horno', 'microondas', 'licuadora', 'ollaPresion'],
+          before.get('requiredEquipment', []));
+    }
+
+    // Lo que Staff deja en una receta que guarda: nada de lo que escribe el
+    // nutriólogo. No queda quién la aprobó, y el motivo de un rechazo solo
+    // sigue mientras la receta sea draft; al reenviarla a pending se borra.
+    function staffKeepsReview(data, before) {
+      return !('approvedBy' in data) && !('approvedAt' in data)
+        && (data.status == 'draft'
+          ? (data.get('reviewNote', null) == before.get('reviewNote', null)
+            && data.get('rejectedBy', null) == before.get('rejectedBy', null)
+            && data.get('rejectedAt', null) == before.get('rejectedAt', null))
+          : (!('reviewNote' in data) && !('rejectedBy' in data) && !('rejectedAt' in data)));
+    }
+
+    // El nutriólogo aprueba una pending: cambian solo status y quién la
+    // aprobó y cuándo.
+    function nutritionistApproves(data, before) {
+      return before.status == 'pending' && data.status == 'approved'
+        && data.diff(before).affectedKeys().hasOnly(['status', 'approvedBy', 'approvedAt'])
+        && data.approvedBy == request.auth.uid
+        && data.approvedAt == request.time;
+    }
+
+    // El nutriólogo rechaza una pending: regresa a draft y cambian solo
+    // status, el motivo (obligatorio) y quién la rechazó y cuándo.
+    function nutritionistRejects(data, before) {
+      return before.status == 'pending' && data.status == 'draft'
+        && data.diff(before).affectedKeys().hasOnly(['status', 'reviewNote', 'rejectedBy', 'rejectedAt'])
+        && data.reviewNote is string
+        && data.reviewNote.trim().size() >= 1 && data.reviewNote.size() <= 300
+        && data.rejectedBy == request.auth.uid
+        && data.rejectedAt == request.time;
+    }
+
+    // Un registro de consumo (PantryRepository.consumptionLog). at puede venir
+    // de un dispositivo sin conexión, así que solo se limita hacia el futuro,
+    // igual que localTimestamp en validTrace.
+    function validConsumptionLog(data) {
+      return data.keys().hasOnly(['productId', 'quantity', 'unit', 'category', 'at', 'deviceId', 'reason'])
+        && data.keys().hasAll(['productId', 'quantity', 'unit', 'category', 'at', 'deviceId', 'reason'])
+        && data.productId is string && data.productId.size() >= 1 && data.productId.size() <= 100
+        && data.quantity is number && data.quantity > 0 && data.quantity <= 1000000
+        && data.unit in ['kg', 'g', 'l', 'ml', 'piece', 'can', 'pack']
+        && data.category in ['grain', 'legume', 'canned', 'dairy', 'produce', 'protein', 'beverage', 'other']
+        && data.at is timestamp && data.at <= request.time + duration.value(5, 'm')
+        && data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 64
+        && data.reason in ['consumed', 'expired'];
+    }
+
+    // Un cambio de una adaptación (AdjustmentChange.toMap): su tipo y el motivo
+    // que ve el nutriólogo; en una sustitución, también el ingrediente que se
+    // cambia y el que lo reemplaza.
+    function validAdjustmentChange(change) {
+      return change.kind in ['portions', 'substitution']
+        && change.reason.matches('(?s).{1,200}')
+        && (!('from' in change) || change.from.matches('(?s).{1,100}'))
+        && (!('to' in change) || change.to.matches('(?s).{1,100}'));
+    }
+
+    // Igual que los ingredientes de una receta: cada cambio se revisa por su
+    // índice, así que hay un máximo (AdjustmentChange.maxPerSuggestion).
+    function validAdjustmentChanges(changes) {
+      let n = changes.size();
+      return changes is list && n >= 1 && n <= 6
+        && (n <= 0 || validAdjustmentChange(changes[0]))
+        && (n <= 1 || validAdjustmentChange(changes[1]))
+        && (n <= 2 || validAdjustmentChange(changes[2]))
+        && (n <= 3 || validAdjustmentChange(changes[3]))
+        && (n <= 4 || validAdjustmentChange(changes[4]))
+        && (n <= 5 || validAdjustmentChange(changes[5]));
+    }
+
+    // Una adaptación al crearla (RecipeAdjustment.toMap): siempre pendiente y
+    // sin datos de revisión. No lleva nombres de la familia ni de sus
+    // integrantes: solo el tamaño del hogar y el motivo de cada cambio.
+    // Los ingredientes se revisan como los de una receta.
+    function validAdjustment(data) {
+      return data.keys().hasOnly(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'householdKey', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
+        && data.keys().hasAll(['familyId', 'recipeId', 'baseSignature', 'householdSize', 'householdKey', 'servings', 'ingredients', 'changes', 'summary', 'status', 'createdAt'])
+        && data.familyId is path
+        && data.familyId == /databases/$(database)/documents/families/$(data.familyId[4])
+        && data.recipeId.matches('[^/]{1,128}')
+        && data.baseSignature.matches('[0-9a-f]{8}')
+        && data.householdSize is int && data.householdSize >= 1 && data.householdSize <= 50
+        && data.householdKey.matches(string(data.householdSize) + '(-dairy)?(-egg)?(-gluten)?(-peanut)?(-shellfish)?(-soy)?')
+        && data.servings is int && data.servings >= 1 && data.servings <= 99
+        && data.summary.matches('(?s).{1,300}')
+        && data.status == 'pending'
+        && data.createdAt == request.time
+        && validAdjustmentChanges(data.changes)
+        && validRecipeIngredients(data.ingredients);
+    }
+
+    // El nutriólogo decide una pending: solo cambian status y quién la revisó y
+    // cuándo, y un rechazo lleva su motivo.
+    function nutritionistReviewsAdjustment(data, before) {
+      return before.status == 'pending'
+        && data.reviewedBy == request.auth.uid
+        && data.reviewedAt == request.time
+        && ((data.status == 'approved'
+            && data.diff(before).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']))
+          || (data.status == 'rejected'
+            && data.diff(before).affectedKeys().hasOnly(['status', 'rejectionReason', 'reviewedBy', 'reviewedAt'])
+            && data.rejectionReason is string
+            && data.rejectionReason.trim().size() >= 1 && data.rejectionReason.size() <= 300));
+    }
+
     match /families/{familyId} {
       // Solo el staff registra familias, junto con su perfil users/{authUid}
       // (mismo batch). El id del hogar es el uid de su cuenta: un hogar por
@@ -293,8 +488,13 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt;
       }
 
+      // Solo se agregan: ningún flujo de la app edita o borra un registro, y
+      // las estadísticas de consumo y desperdicio cuentan con ellos.
       match /consumptionLogs/{logId} {
-        allow read, write: if canAccessFamily(familyId);
+        allow read: if canAccessFamily(familyId);
+        allow create: if canAccessFamily(familyId)
+          && validConsumptionLog(request.resource.data);
+        allow update, delete: if false;
       }
     }
 
@@ -374,18 +574,64 @@ service cloud.firestore {
       allow read: if request.auth != null && userId == request.auth.uid;
     }
 
-    // Catálogo global. El staff publica y edita; la familia solo lee approved
-    // y el nutriólogo solo lee pending y no escribe.
-    // Toda escritura que deja la receta como approved (publicar una nueva o
-    // una pendiente, editar una publicada) pide una sesión reciente; guardar
-    // una pendiente, regresarla a pendiente y borrar no.
+    // Catálogo global. Una receta es draft (Staff la prepara), pending (espera
+    // al nutriólogo) o approved (las familias la ven). Staff crea, edita y
+    // mueve entre draft y pending, y puede sacar una approved a draft o
+    // pending (con o sin cambios), pero nunca guarda una como approved: solo
+    // el nutriólogo la aprueba (pending a approved) o la rechaza (pending a
+    // draft, con motivo), con un inicio de sesión reciente y sin cambiar su
+    // contenido. Editar el contenido dejándola approved no lo puede hacer
+    // nadie. La familia solo lee las approved y el nutriólogo solo las pending.
     match /recipes/{recipeId} {
       allow read: if isStaff()
         || (isNutritionist() && resource.data.status == 'pending')
         || (request.auth != null && resource.data.status == 'approved');
-      allow create, update: if isStaff()
-        && (request.resource.data.status != 'approved' || recentlySignedIn());
+      allow create: if isStaff()
+        && request.resource.data.status in ['draft', 'pending']
+        && validRecipe(request.resource.data, {})
+        && staffKeepsReview(request.resource.data, {});
+      allow update: if (isStaff()
+          && request.resource.data.status in ['draft', 'pending']
+          && validRecipe(request.resource.data, resource.data)
+          && staffKeepsReview(request.resource.data, resource.data))
+        || (isNutritionist()
+          && recentlySignedIn()
+          && (nutritionistApproves(request.resource.data, resource.data)
+            || nutritionistRejects(request.resource.data, resource.data)));
       allow delete: if isStaff();
+    }
+
+    // Adaptaciones de recetas para un hogar. La familia dueña crea la sugerencia
+    // (solo de una receta aprobada, pendiente y sin revisión) y lee las suyas;
+    // retira una que sigue pendiente. El nutriólogo las lee todas y las aprueba
+    // o rechaza con un inicio de sesión reciente, sin cambiar su contenido.
+    // Nadie más las lee ni las escribe, y nadie edita su contenido.
+    match /adjustments/{adjustmentId} {
+      allow read: if isNutritionist()
+        || (request.auth != null && isFamilyOwner(resource.data.familyId[4]));
+      // El id es uno por familia, receta, huella de la receta y hogar (su
+      // tamaño y sus alergias, en orden: householdKey; RecipeAdjustment.
+      // documentId). Crear el mismo id otra vez es una actualización y la
+      // familia no actualiza, así que un mismo hogar no repite una sugerencia.
+      // Si cambian las alergias, la clave y el id son otros.
+      // Esto NO cierra del todo la cola del nutriólogo: baseSignature es
+      // cualquier hex de 8 caracteres que mande el cliente (las reglas no
+      // pueden recalcular la huella de la receta), así que un cliente
+      // modificado puede inventar huellas y crear una sugerencia por cada una.
+      // Riesgo aceptado: las cuentas de familia las crea Staff. Para cerrarlo,
+      // la receta tendría que guardar su huella y esta regla compararla.
+      allow create: if isFamilyOwner(request.resource.data.familyId[4])
+        && validAdjustment(request.resource.data)
+        && adjustmentId == request.resource.data.familyId[4] + '_'
+          + request.resource.data.recipeId + '_'
+          + request.resource.data.baseSignature + '_'
+          + request.resource.data.householdKey
+        && get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.status == 'approved';
+      allow update: if isNutritionist()
+        && recentlySignedIn()
+        && nutritionistReviewsAdjustment(request.resource.data, resource.data);
+      allow delete: if isFamilyOwner(resource.data.familyId[4])
+        && resource.data.status == 'pending';
     }
 
     // Solo la familia dueña del plan y el staff lo leen y lo escriben. Un plan

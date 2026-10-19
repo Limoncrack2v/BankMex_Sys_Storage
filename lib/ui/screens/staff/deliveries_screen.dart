@@ -16,6 +16,7 @@ import '../../../data/repositories/standard_basket_repository.dart';
 import '../../formatting.dart';
 import '../../models/basket_fill.dart';
 import '../../models/quota_proposal.dart';
+import '../../text_width.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -25,6 +26,7 @@ import '../../widgets/app_icon.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/option_button.dart';
 import '../../widgets/pill.dart';
+import '../../widgets/recovery_quota_field.dart';
 import '../../widgets/standard_basket_selector.dart';
 import '../session/step_up_sheet.dart';
 
@@ -119,7 +121,11 @@ class _SectionTitle extends StatelessWidget {
 /// streams, así que no necesita Firebase.
 @visibleForTesting
 class DeliveryForm extends StatefulWidget {
-  const DeliveryForm({super.key, required this.families, required this.baskets});
+  const DeliveryForm({
+    super.key,
+    required this.families,
+    required this.baskets,
+  });
 
   final Stream<List<Family>> families;
 
@@ -642,35 +648,11 @@ class _DeliveryFormState extends State<DeliveryForm> {
         const SizedBox(height: 16),
         LabeledField(
           label: 'Cuota de recuperación',
-          child: Row(
-            children: [
-              Expanded(
-                child: AppTextField(
-                  controller: _fee,
-                  hint: '0',
-                  prefixText: r'$',
-                  enabled: !_exempt,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  textInputAction: TextInputAction.next,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                  ],
-                  maxLength: 9,
-                  onChanged: _onQuotaEdited,
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 84,
-                child: OptionButton(
-                  label: 'Exenta',
-                  selected: _exempt,
-                  onTap: _toggleExempt,
-                ),
-              ),
-            ],
+          child: RecoveryQuotaField(
+            controller: _fee,
+            exempt: _exempt,
+            onToggleExempt: _toggleExempt,
+            onChanged: _onQuotaEdited,
           ),
         ),
         if (!_exempt) ...[
@@ -704,24 +686,18 @@ class _DeliveryFormState extends State<DeliveryForm> {
         const SizedBox(height: 16),
         LabeledField(
           label: 'Estado',
-          child: Row(
-            children: [
-              Expanded(
-                child: OptionButton(
-                  label: 'Entregada',
-                  selected: _status == DeliveryStatus.delivered,
-                  onTap: () =>
-                      setState(() => _status = DeliveryStatus.delivered),
-                ),
+          // Con letra grande van una debajo de otra ("Programad a").
+          child: OptionButtonRow(
+            options: [
+              OptionButton(
+                label: 'Entregada',
+                selected: _status == DeliveryStatus.delivered,
+                onTap: () => setState(() => _status = DeliveryStatus.delivered),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OptionButton(
-                  label: 'Programada',
-                  selected: _status == DeliveryStatus.scheduled,
-                  onTap: () =>
-                      setState(() => _status = DeliveryStatus.scheduled),
-                ),
+              OptionButton(
+                label: 'Programada',
+                selected: _status == DeliveryStatus.scheduled,
+                onTap: () => setState(() => _status = DeliveryStatus.scheduled),
               ),
             ],
           ),
@@ -965,42 +941,52 @@ class _ProductCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 2,
-                child: LabeledField(
-                  label: 'Cantidad',
-                  child: AppTextField(
-                    controller: product.quantity,
-                    hint: '0',
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    textInputAction: TextInputAction.done,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    maxLength: 9,
-                    onChanged: onEdited,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final quantity = LabeledField(
+                label: 'Cantidad',
+                child: AppTextField(
+                  controller: product.quantity,
+                  hint: '0',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
+                  textInputAction: TextInputAction.done,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                  ],
+                  maxLength: 9,
+                  onChanged: onEdited,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 3,
-                child: LabeledField(
+              );
+              final unit = LabeledField(
+                label: 'Unidad',
+                child: _PickerField(
                   label: 'Unidad',
-                  child: _PickerField(
-                    label: 'Unidad',
-                    value: unitLabel(product.unit, product.amount ?? 2),
-                    showChevron: true,
-                    onTap: onPickUnit,
-                  ),
+                  value: unitLabel(product.unit, product.amount ?? 2),
+                  showChevron: true,
+                  onTap: onPickUnit,
                 ),
-              ),
-            ],
+              );
+              // Con letra grande "Cantidad" no cabe en sus 2/5 del renglón:
+              // entonces van una debajo de otra.
+              final quantityWidth = (constraints.maxWidth - 12) * 2 / 5;
+              if (longestWordWidth(context, 'Cantidad', FieldLabel.style) >
+                  quantityWidth) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [quantity, const SizedBox(height: 12), unit],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 2, child: quantity),
+                  const SizedBox(width: 12),
+                  Expanded(flex: 3, child: unit),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           LabeledField(

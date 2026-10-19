@@ -249,30 +249,22 @@ class _RegisterAccountSheetState extends State<RegisterAccountSheet> {
       children: [
         LabeledField(
           label: 'Tipo de cuenta',
-          child: Row(
-            children: [
-              Expanded(
-                child: OptionButton(
-                  label: 'Familia',
-                  selected: _isFamily,
-                  onTap: () => _selectKind(_AccountKind.family),
-                ),
+          child: OptionButtonRow(
+            options: [
+              OptionButton(
+                label: 'Familia',
+                selected: _isFamily,
+                onTap: () => _selectKind(_AccountKind.family),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OptionButton(
-                  label: 'Staff',
-                  selected: _kind == _AccountKind.staff,
-                  onTap: () => _selectKind(_AccountKind.staff),
-                ),
+              OptionButton(
+                label: 'Staff',
+                selected: _kind == _AccountKind.staff,
+                onTap: () => _selectKind(_AccountKind.staff),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OptionButton(
-                  label: 'Nutriólogo',
-                  selected: _kind == _AccountKind.nutritionist,
-                  onTap: () => _selectKind(_AccountKind.nutritionist),
-                ),
+              OptionButton(
+                label: 'Nutriólogo',
+                selected: _kind == _AccountKind.nutritionist,
+                onTap: () => _selectKind(_AccountKind.nutritionist),
               ),
             ],
           ),

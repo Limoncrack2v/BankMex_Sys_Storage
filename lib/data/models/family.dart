@@ -63,6 +63,53 @@ class Family {
   static String? validateAppliances(List<String> appliances) =>
       Appliance.validateIds(appliances);
 
+  /// Límites de validFamily en firestore.rules.
+  static const maxNameLength = 100;
+  static const maxAddressLength = 200;
+
+  /// Revisa los datos del hogar que corrige el staff con los mismos límites
+  /// que validFamily. Regresa el mensaje del primer problema o null.
+  /// [recoveryQuotaDefault] null es Exenta.
+  static String? validateDetails({
+    required String name,
+    required String address,
+    required double? recoveryQuotaDefault,
+  }) {
+    final trimmedName = name.trim();
+    final trimmedAddress = address.trim();
+    if (trimmedName.isEmpty) return 'Escribe el nombre de la familia.';
+    if (trimmedName.length > maxNameLength) {
+      return 'El nombre puede tener hasta $maxNameLength caracteres.';
+    }
+    if (trimmedAddress.isEmpty) return 'Escribe la dirección.';
+    if (trimmedAddress.length > maxAddressLength) {
+      return 'La dirección puede tener hasta $maxAddressLength caracteres.';
+    }
+    final quota = recoveryQuotaDefault;
+    if (quota != null && (!quota.isFinite || quota < 0)) {
+      return 'La cuota de recuperación debe ser 0 o más, o Exenta.';
+    }
+    return null;
+  }
+
+  /// Los campos de [name], [address] y [recoveryQuotaDefault] que cambian
+  /// respecto a este hogar, para FamilyRepository.updateFamily. Nunca
+  /// incluye authUid ni nextDeliveryDate.
+  Map<String, dynamic> detailChanges({
+    required String name,
+    required String address,
+    required double? recoveryQuotaDefault,
+  }) {
+    final newName = name.trim();
+    final newAddress = address.trim();
+    return {
+      if (newName != (this.name?.trim() ?? '')) 'name': newName,
+      if (newAddress != this.address) 'address': newAddress,
+      if (recoveryQuotaDefault != this.recoveryQuotaDefault)
+        'recoveryQuotaDefault': recoveryQuotaDefault,
+    };
+  }
+
   Map<String, dynamic> toFirestore() => {
     if (name != null) 'name': name!.trim(),
     'address': address,

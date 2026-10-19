@@ -34,6 +34,31 @@ class FamilyRepository {
     await updateFamily(familyId, {'appliances': appliances});
   }
 
+  /// El staff corrige el nombre, la dirección o la cuota de recuperación de
+  /// [family]. Solo escribe los campos que cambian (firestore.rules no deja
+  /// cambiar authUid ni nextDeliveryDate). Lanza [ArgumentError] con el
+  /// mensaje si un valor no cumple validFamily.
+  Future<void> updateFamilyDetails(
+    Family family, {
+    required String name,
+    required String address,
+    required double? recoveryQuotaDefault,
+  }) async {
+    final error = Family.validateDetails(
+      name: name,
+      address: address,
+      recoveryQuotaDefault: recoveryQuotaDefault,
+    );
+    if (error != null) throw ArgumentError(error);
+    final changes = family.detailChanges(
+      name: name,
+      address: address,
+      recoveryQuotaDefault: recoveryQuotaDefault,
+    );
+    if (changes.isEmpty) return;
+    await updateFamily(family.familyId, changes);
+  }
+
   Future<void> deleteFamily(String familyId) =>
       _families.doc(familyId).delete();
 

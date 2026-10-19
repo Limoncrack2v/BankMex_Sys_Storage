@@ -50,11 +50,16 @@ class AppHeader extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.baloo(22, 33, color: AppColors.primaryDark),
+                // Con letra grande el título se encoge en vez de cortarse
+                // ("Plan de comi…").
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    style: AppText.baloo(22, 33, color: AppColors.primaryDark),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

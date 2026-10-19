@@ -3,17 +3,21 @@ import 'package:flutter/material.dart';
 import '../../../data/catalog_source.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/adjustment_repository.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
+import '../../../domain/models/recipe_adjustment.dart';
 import '../../models/recipe.dart';
-import '../../sample_data.dart';
+import '../../models/recipe_adjustments.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_icon.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/pill.dart';
 import 'recipe_detail_screen.dart';
+import 'request_recipe_screen.dart';
 
 enum RecipeFilter {
   todas('Todas', 'Todas las recetas de nutriólogos de BAMX'),
@@ -38,11 +42,23 @@ class RecipesScreen extends StatefulWidget {
   const RecipesScreen({
     super.key,
     required this.familyId,
-    this.recipes = SampleData.recipes,
+    this.pantry,
+    this.members,
+    this.catalog,
+    this.adjustments,
   });
 
   final String familyId;
-  final List<Recipe> recipes;
+
+  /// Para las pruebas: por omisión se leen de Firestore, de la despensa y los
+  /// integrantes de [familyId] y de las recetas aprobadas.
+  final Stream<List<PantryItem>>? pantry;
+  final Stream<List<Member>>? members;
+  final Stream<List<Recipe>>? catalog;
+
+  /// Las adaptaciones aprobadas de la familia: la receta que ve es la
+  /// adaptada solo si el nutriólogo ya la aprobó; si no, la receta base.
+  final Stream<List<RecipeAdjustment>>? adjustments;
 
   @override
   State<RecipesScreen> createState() => _RecipesScreenState();
@@ -53,6 +69,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
   late Stream<List<PantryItem>> _pantry;
   late Stream<List<Member>> _members;
   late Stream<List<Recipe>> _catalog;
+  late Stream<List<RecipeAdjustment>> _adjustments;
 
   @override
   void initState() {
@@ -67,9 +84,15 @@ class _RecipesScreenState extends State<RecipesScreen> {
   }
 
   void _watch() {
-    _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
-    _members = MemberRepository().watchAllMembers(widget.familyId);
-    _catalog = watchApprovedCatalogRecipes();
+    _pantry =
+        widget.pantry ??
+        PantryRepository().watchAllPantryItems(widget.familyId);
+    _members =
+        widget.members ?? MemberRepository().watchAllMembers(widget.familyId);
+    _catalog = widget.catalog ?? watchApprovedCatalogRecipes();
+    _adjustments =
+        widget.adjustments ??
+        AdjustmentRepository().watchApproved(widget.familyId);
   }
 
   @override
@@ -83,21 +106,65 @@ class _RecipesScreenState extends State<RecipesScreen> {
           child: StreamBuilder<List<Recipe>>(
             stream: _catalog,
             builder: (context, catalog) {
-              final recipes =
-                  catalog.hasData && catalog.data!.isNotEmpty
-                      ? catalog.data!
-                      : widget.recipes;
+              if (catalog.hasError) {
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: const [
+                    InfoBanner(
+                      message:
+                          'No se pudieron cargar las recetas. Revisa tu '
+                          'conexión e intenta de nuevo.',
+                      background: AppColors.dangerSoft,
+                      foreground: AppColors.dangerText,
+                    ),
+                  ],
+                );
+              }
+              final recipes = catalog.data;
+              if (recipes == null) {
+                return const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                );
+              }
+              if (recipes.isEmpty) {
+                return const EmptyState(
+                  title: 'Aún no hay recetas',
+                  message:
+                      'Cuando el nutriólogo apruebe recetas, las verás aquí.',
+                );
+              }
               return StreamBuilder<List<Member>>(
                 stream: _members,
-                builder: (context, members) => StreamBuilder<List<PantryItem>>(
-                  stream: _pantry,
-                  builder: (context, pantry) => _buildList(
-                    context,
-                    pantry,
-                    members.hasError ? const [] : members.data ?? const [],
-                    recipes,
-                  ),
-                ),
+                builder: (context, members) =>
+                    StreamBuilder<List<RecipeAdjustment>>(
+                      stream: _adjustments,
+                      builder: (context, adjustments) {
+                        final household = members.hasError
+                            ? const <Member>[]
+                            : members.data ?? const <Member>[];
+                        // Si las adaptaciones no se pueden leer, se ve la
+                        // receta base (que sigue pasando por el filtro de
+                        // alergias).
+                        final adapted = applyAdjustments(
+                          recipes,
+                          adjustments.hasError
+                              ? const []
+                              : adjustments.data ?? const [],
+                          members: household,
+                        );
+                        return StreamBuilder<List<PantryItem>>(
+                          stream: _pantry,
+                          builder: (context, pantry) => _buildList(
+                            context,
+                            pantry,
+                            household,
+                            adapted,
+                            allergiesKnown: members.hasData,
+                            allergiesFailed: members.hasError,
+                          ),
+                        );
+                      },
+                    ),
               );
             },
           ),
@@ -110,16 +177,26 @@ class _RecipesScreenState extends State<RecipesScreen> {
     BuildContext context,
     AsyncSnapshot<List<PantryItem>> snapshot,
     List<Member> members,
-    List<Recipe> recipes,
-  ) {
+    List<Recipe> recipes, {
+    required bool allergiesKnown,
+    required bool allergiesFailed,
+  }) {
     final pantry = snapshot.hasError ? null : snapshot.data;
     final loading = pantry == null && !snapshot.hasError;
     // "Con lo que tengo" no se puede calcular sin la despensa.
     final needsPantry = _filter == RecipeFilter.conLoQueTengo && pantry == null;
+    // "Con lo que tengo" es la sugerencia de qué cocinar: deja fuera las
+    // recetas con alérgenos del hogar, así que tampoco se arma sin saber las
+    // alergias. Los demás filtros muestran todo el catálogo, con su aviso.
+    final suggests = _filter == RecipeFilter.conLoQueTengo;
+    final needsAllergies = suggests && !allergiesKnown && !allergiesFailed;
 
     final visible = <_VisibleRecipe>[];
-    if (!needsPantry) {
-      for (final recipe in recipes) {
+    final candidates = suggests
+        ? recipesSafeForHousehold(recipes, members)
+        : recipes;
+    if (!needsPantry && !needsAllergies && !(suggests && allergiesFailed)) {
+      for (final recipe in candidates) {
         // Porciones para los integrantes del hogar, según su edad, peso y salud.
         final scaled = scaledForHousehold(recipe, members);
         final missing = pantry == null
@@ -139,6 +216,14 @@ class _RecipesScreenState extends State<RecipesScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        RequestRecipeCard(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => RequestRecipeScreen(familyId: widget.familyId),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
         _FilterBar(
           selected: _filter,
           onSelected: (filter) => setState(() => _filter = filter),
@@ -152,7 +237,15 @@ class _RecipesScreenState extends State<RecipesScreen> {
           const SizedBox(height: 12),
           const PantryErrorBanner(),
         ],
-        if (loading && needsPantry)
+        if (suggests && allergiesFailed) ...[
+          const SizedBox(height: 12),
+          Text(
+            'No pudimos revisar las alergias de tu familia, así que no '
+            'sugerimos recetas. Intenta de nuevo en un momento.',
+            textAlign: TextAlign.center,
+            style: AppText.nunito(15, 22.5, color: AppColors.textMuted),
+          ),
+        ] else if ((loading && needsPantry) || needsAllergies)
           const Padding(
             padding: EdgeInsets.only(top: 24),
             child: Center(

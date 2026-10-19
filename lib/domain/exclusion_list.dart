@@ -1,4 +1,5 @@
 import '../data/models/member.dart';
+import 'ingredient_names.dart';
 
 // Palabras de los ingredientes que una familia debe evitar, por alergia o por
 // enfermedad crónica. Las usan las advertencias de las recetas
@@ -8,7 +9,18 @@ import '../data/models/member.dart';
 /// acentos y en singular (la forma de normalizeName en
 /// lib/ui/models/recipe.dart).
 const allergenKeywords = <Allergy, List<String>>{
-  Allergy.dairy: ['leche', 'yogurt', 'yogur', 'queso', 'crema', 'mantequilla'],
+  Allergy.dairy: [
+    'leche',
+    'yogurt',
+    'yogur',
+    'queso',
+    'crema',
+    'mantequilla',
+    'requeson',
+    'jocoque',
+    'nata',
+    'helado',
+  ],
   Allergy.gluten: [
     'pan',
     'pasta',
@@ -17,6 +29,19 @@ const allergenKeywords = <Allergy, List<String>>{
     'avena',
     'galleta',
     'cereal',
+    'fideo',
+    'espagueti',
+    'spaghetti',
+    'macarron',
+    'codito',
+    'lasana',
+    'bolillo',
+    'telera',
+    'empanada',
+    'panque',
+    'cebada',
+    'centeno',
+    'cuscus',
   ],
   Allergy.peanut: ['cacahuate', 'mani'],
   Allergy.shellfish: [
@@ -26,8 +51,12 @@ const allergenKeywords = <Allergy, List<String>>{
     'calamar',
     'ostion',
     'jaiba',
+    'langosta',
+    'langostino',
+    'almeja',
+    'mejillon',
   ],
-  Allergy.egg: ['huevo'],
+  Allergy.egg: ['huevo', 'mayonesa', 'merengue'],
   Allergy.soy: ['soya', 'soja', 'tofu'],
 };
 
@@ -99,3 +128,32 @@ List<String> exclusionKeywords(List<Member> members) {
   };
   return keywords.toList()..sort();
 }
+
+/// DECISIÓN ABIERTA: las alergias siempre excluyen una receta del plan y de
+/// las sugerencias. Las enfermedades crónicas hoy solo avisan en la pantalla
+/// de la receta. Para que también excluyan, cambia esto a true: los dos
+/// motores (lib/domain y lib/ui/models/recipe.dart) lo leen de aquí.
+const excludeRecipesForChronicConditions = false;
+
+/// Si el nombre de un ingrediente lleva alguna de [keywords]. Se compara
+/// palabra por palabra (ver [normalizeName]), así que "Lechuga" no cuenta
+/// como leche ni "Panela" como pan.
+bool nameMentionsAny(String ingredientName, List<String>? keywords) {
+  final normalized = [
+    for (final keyword in keywords ?? const <String>[]) normalizeName(keyword),
+  ];
+  return normalizeName(ingredientName)
+      .split(' ')
+      .any((word) => normalized.any((keyword) => sameIngredientWord(word, keyword)));
+}
+
+/// Si el nombre de un ingrediente contiene el alérgeno: "Leche entera" y
+/// "Quesos" llevan lácteos. Es la única regla de alérgenos: la usan el plan,
+/// las sugerencias y los avisos.
+bool containsAllergen(String ingredientName, Allergy allergy) =>
+    nameMentionsAny(ingredientName, allergenKeywords[allergy]);
+
+/// Si el nombre de un ingrediente lleva algo que conviene evitar con
+/// [condition]: "Sal de mesa" con hipertensión, pero no "Salsa verde".
+bool containsRestricted(String ingredientName, ChronicCondition condition) =>
+    nameMentionsAny(ingredientName, conditionKeywords[condition]);
