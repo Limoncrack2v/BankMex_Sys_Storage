@@ -4,11 +4,14 @@ import '../../../data/catalog_source.dart';
 import '../../../data/models/family.dart';
 import '../../../data/models/member.dart';
 import '../../../data/models/pantry_item.dart';
+import '../../../data/repositories/adjustment_repository.dart';
 import '../../../data/repositories/family_repository.dart';
 import '../../../data/repositories/member_repository.dart';
 import '../../../data/repositories/pantry_repository.dart';
+import '../../../domain/models/recipe_adjustment.dart';
 import '../../../domain/models/recipe_request.dart';
 import '../../models/recipe.dart';
+import '../../models/recipe_adjustments.dart';
 import '../../theme/app_assets.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text.dart';
@@ -72,9 +75,10 @@ class RequestRecipeCard extends StatelessWidget {
 /// tiene, y se le sugiere una receta a la vez (ver [pickRecipe]). Sin pedir
 /// nada es la receta que mejor usa lo que hay en su despensa.
 ///
-/// Lee lo mismo que las otras pestañas: el catálogo aprobado, la despensa,
-/// los integrantes y los electrodomésticos del hogar. Sin recetas aprobadas
-/// no sugiere nada: no usa datos de muestra.
+/// Lee lo mismo que las otras pestañas: el catálogo aprobado con las
+/// adaptaciones que el nutriólogo aprobó para el hogar, la despensa, los
+/// integrantes y los electrodomésticos. Sin recetas aprobadas no sugiere
+/// nada: no usa datos de muestra.
 class RequestRecipeScreen extends StatefulWidget {
   const RequestRecipeScreen({super.key, required this.familyId});
 
@@ -89,6 +93,7 @@ class _RequestRecipeScreenState extends State<RequestRecipeScreen> {
   late Stream<List<PantryItem>> _pantry;
   late Stream<List<Member>> _members;
   late Stream<List<Recipe>> _catalog;
+  late Stream<List<RecipeAdjustment>> _adjustments;
   late Stream<Family?> _family;
 
   @override
@@ -107,6 +112,7 @@ class _RequestRecipeScreenState extends State<RequestRecipeScreen> {
     _pantry = PantryRepository().watchAllPantryItems(widget.familyId);
     _members = MemberRepository().watchAllMembers(widget.familyId);
     _catalog = watchApprovedCatalogRecipes();
+    _adjustments = AdjustmentRepository().watchApproved(widget.familyId);
     _family = FamilyRepository().watchFamily(widget.familyId);
   }
 
@@ -126,31 +132,47 @@ class _RequestRecipeScreenState extends State<RequestRecipeScreen> {
                   builder: (context, family) => StreamBuilder<List<Member>>(
                     stream: _members,
                     builder: (context, members) =>
-                        StreamBuilder<List<PantryItem>>(
-                          stream: _pantry,
-                          builder: (context, pantry) => RequestRecipeView(
-                            recipes: recipes,
-                            pantry: pantry.hasError ? null : pantry.data,
-                            pantryFailed: pantry.hasError,
-                            members: members.hasError ? null : members.data,
-                            membersFailed: members.hasError,
-                            // Sin el documento del hogar (o si no se pudo
-                            // leer) no se sabe qué electrodomésticos tiene.
-                            appliances:
-                                family.connectionState ==
-                                    ConnectionState.waiting
-                                ? null
-                                : family.data?.appliances ?? const [],
-                            request: _request,
-                            onRequestChanged: (request) =>
-                                setState(() => _request = request),
-                            onOpenRecipe: (recipe) => openRecipe(
-                              context,
-                              recipe,
-                              familyId: widget.familyId,
-                              backLabel: 'Volver a la sugerencia',
-                            ),
-                          ),
+                        StreamBuilder<List<RecipeAdjustment>>(
+                          stream: _adjustments,
+                          // Igual que Recetas: si las adaptaciones no se
+                          // pueden leer, se sugiere la receta base.
+                          builder: (context, adjustments) =>
+                              StreamBuilder<List<PantryItem>>(
+                                stream: _pantry,
+                                builder: (context, pantry) => RequestRecipeView(
+                                  recipes: applyAdjustments(
+                                    recipes,
+                                    adjustments.hasError
+                                        ? const []
+                                        : adjustments.data ?? const [],
+                                    members: members.hasError
+                                        ? const []
+                                        : members.data ?? const [],
+                                  ),
+                                  pantry: pantry.hasError ? null : pantry.data,
+                                  pantryFailed: pantry.hasError,
+                                  members: members.hasError
+                                      ? null
+                                      : members.data,
+                                  membersFailed: members.hasError,
+                                  // Sin el documento del hogar (o si no se pudo
+                                  // leer) no se sabe qué electrodomésticos tiene.
+                                  appliances:
+                                      family.connectionState ==
+                                          ConnectionState.waiting
+                                      ? null
+                                      : family.data?.appliances ?? const [],
+                                  request: _request,
+                                  onRequestChanged: (request) =>
+                                      setState(() => _request = request),
+                                  onOpenRecipe: (recipe) => openRecipe(
+                                    context,
+                                    recipe,
+                                    familyId: widget.familyId,
+                                    backLabel: 'Volver a la sugerencia',
+                                  ),
+                                ),
+                              ),
                         ),
                   ),
                 );
