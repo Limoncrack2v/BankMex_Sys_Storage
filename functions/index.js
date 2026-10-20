@@ -5,12 +5,16 @@
 // función los crea, con el Admin SDK, cuando una entrega queda confirmada.
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+const { getMessaging } = require('firebase-admin/messaging');
 const { logger } = require('firebase-functions');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 
 const { pantryItemsFor, pantryItemId, handoverTime, TIME_ZONE } = require('./pantry');
 const { refreshNextDelivery, recomputeStaleNextDeliveries } = require('./next_delivery_sync');
+const { EXPIRY_BODY } = require('./push');
+const { sendToUser } = require('./push_send');
+const { sendExpiryAlerts } = require('./expiry_alert');
 
 initializeApp();
 const db = getFirestore();
@@ -174,5 +178,33 @@ exports.recomputeStaleNextDelivery = onSchedule(
     if (result.failed > 0) {
       throw new Error(`${result.failed} familias sin recalcular nextDeliveryDate`);
     }
+  },
+);
+
+/**
+ * Todos los días a las 9:00 de Guadalajara avisa a las familias que tienen
+ * productos por caducar en los próximos 3 días: un push genérico por familia
+ * ("Tienes productos por caducar"), sin nombres, fechas ni cantidades.
+ *
+ * Región: us-south1, como recomputeStaleNextDelivery (Cloud Scheduler no
+ * existe en northamerica-south1).
+ *
+ * Sin reintentos: enviar no es idempotente y un reintento mandaría el mismo
+ * push dos veces. Una familia que falla se cuenta en failed y se registra; la
+ * corrida de mañana la vuelve a intentar.
+ */
+exports.expiryAlert = onSchedule(
+  {
+    schedule: '0 9 * * *',
+    timeZone: TIME_ZONE,
+    region: 'us-south1',
+    timeoutSeconds: 300,
+    retryCount: 0,
+  },
+  async () => {
+    const messaging = getMessaging();
+    const result = await sendExpiryAlerts(db, new Date(), (uid) =>
+      sendToUser(db, messaging, uid, EXPIRY_BODY));
+    logger.info('alertas de caducidad', result);
   },
 );

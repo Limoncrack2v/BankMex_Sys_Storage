@@ -12,6 +12,7 @@ import '../models/app_user.dart';
 import '../models/family.dart';
 import '../models/staff_request.dart';
 import '../plan_reminder.dart';
+import 'device_token_repository.dart';
 import 'family_repository.dart';
 import 'staff_request_repository.dart';
 import 'user_repository.dart';
@@ -137,10 +138,13 @@ class AuthRepository {
     });
   }
 
-  /// Cancela el recordatorio del plan (también sin conexión), cierra la
-  /// sesión y borra la caché local de Firestore (ver signOutAndClearCache).
+  /// Cancela el recordatorio del plan (también sin conexión), borra el token
+  /// de notificaciones de este teléfono, cierra la sesión y borra la caché
+  /// local de Firestore (ver signOutAndClearCache).
   Future<void> signOut() async {
     await _planReminder.cancelAll();
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) await DeviceTokenRepository.instance.unregister(uid);
     await signOutAndClearCache(
       auth: _auth,
       firestore: FirebaseFirestore.instance,

@@ -184,6 +184,21 @@ adb shell dumpsys alarm | grep <paquete>       # en Windows: findstr en lugar de
 
 `<paquete>` es el `applicationId` de `android/app/build.gradle.kts`. Después de cerrar sesión ya no debe aparecer.
 
+## Notificaciones push (alerta de caducidad)
+
+Todos los días a las 9:00 (hora de Guadalajara), la función `expiryAlert` manda un push a cada familia que tiene productos por caducar en los próximos 3 días.
+
+- **Token:** al abrir su inicio, la app de la familia pide permiso de notificaciones y guarda el token de FCM del teléfono en `users/{uid}/deviceTokens/{token}`. Lo borra al cerrar sesión. Solo la familia lo escribe y nadie lo lee desde la app (`firestore.rules`); la función lo lee con el Admin SDK.
+- **Texto genérico:** "BAMX Guadalajara · Tienes productos por caducar", sin productos, fechas ni cantidades: la pantalla bloqueada la ve cualquiera (MASVS-PLATFORM-3).
+- **Región y reintentos:** `us-south1`, porque Cloud Scheduler no existe en `northamerica-south1`, y sin reintentos, porque un reintento mandaría el mismo push dos veces.
+- **Solo Android:** iOS necesita APNs, y web un service worker.
+
+Para probar un push en el emulador de Android (FCM no tiene emulador, así que usa el FCM real del proyecto):
+
+1. Corre la app en debug, entra como `familia.ramirez@bamx.test` y acepta las notificaciones.
+2. En la UI del emulador, copia el id del documento en `users/<uid>/deviceTokens`.
+3. En la consola de Firebase: Messaging → "Send test message", y pega el token. Con la app en segundo plano llega la notificación.
+
 ## Pruebas
 
 Todas las pruebas se corren con Flutter:

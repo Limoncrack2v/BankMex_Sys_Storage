@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../../../data/plan_reminder.dart';
 import '../../../data/repositories/auth_repository.dart';
@@ -50,6 +52,14 @@ class _SessionGateState extends State<SessionGate> {
       // Firebase pudo cerrar la sesión por su cuenta (p. ej. una cuenta
       // deshabilitada): sin sesión no hay recordatorio del plan.
       unawaited((widget.cancelReminder ?? PlanReminder.instance.cancelAll)());
+      // Un cierre de sesión sin conexión pudo dejar vivo el token en FCM.
+      if (!kIsWeb) {
+        try {
+          FirebaseMessaging.instance.deleteToken().ignore();
+        } catch (_) {
+          // Sin Firebase (pruebas): no hay token que borrar.
+        }
+      }
       setState(() => _showSignIn = true);
       return;
     }

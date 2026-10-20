@@ -10,6 +10,10 @@ abstract final class FirestorePaths {
   static const consumptionLogs = 'consumptionLogs';
   static const adjustments = 'adjustments';
   static const standardBaskets = 'standardBaskets';
+  static const deviceTokens = 'deviceTokens';
 
   static String familyDoc(String familyId) => '$families/$familyId';
+
+  static String deviceTokenDoc(String uid, String token) =>
+      '$users/$uid/$deviceTokens/$token';
 }
