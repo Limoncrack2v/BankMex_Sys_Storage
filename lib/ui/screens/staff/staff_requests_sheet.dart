@@ -103,25 +103,35 @@ class _StaffRequestsSheetState extends State<_StaffRequestsSheet> {
     try {
       synced = await _awaitSave(
         save,
-        onLateError: (error) => _showSnack(
-          messenger,
-          _isAlreadyReviewed(error)
-              ? 'La solicitud de ${request.name} ya se había revisado desde '
-                    'otro dispositivo.'
-              : 'No se pudo sincronizar la revisión de la solicitud de '
-                    '${request.name}. Revisa las solicitudes e intenta de '
-                    'nuevo.',
-        ),
+        onLateError: (error) async {
+          final stale = await AuthRepository().staleSignInError(error);
+          _showSnack(
+            messenger,
+            stale != null
+                ? 'No se pudo sincronizar la revisión de la solicitud de '
+                      '${request.name}. $stale'
+                : _isAlreadyReviewed(error)
+                ? 'La solicitud de ${request.name} ya se había revisado desde '
+                      'otro dispositivo.'
+                : 'No se pudo sincronizar la revisión de la solicitud de '
+                      '${request.name}. Revisa las solicitudes e intenta de '
+                      'nuevo.',
+          );
+        },
       );
     } catch (e) {
+      final stale = await AuthRepository().staleSignInError(e);
       if (!mounted) return;
-      final alreadyReviewed = _isAlreadyReviewed(e);
+      final alreadyReviewed = stale == null && _isAlreadyReviewed(e);
       setState(() {
         _saving = false;
         _alreadyReviewed = alreadyReviewed;
-        _error = alreadyReviewed
-            ? 'Esta solicitud ya se revisó desde otro dispositivo.'
-            : 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.';
+        _error =
+            stale ??
+            (alreadyReviewed
+                ? 'Esta solicitud ya se revisó desde otro dispositivo.'
+                : 'No se pudo guardar. Revisa tu conexión e intenta de '
+                      'nuevo.');
       });
       return;
     }

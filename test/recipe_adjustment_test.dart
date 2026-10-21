@@ -237,6 +237,42 @@ void main() {
     });
   });
 
+  group('allergiesOfHouseholdKey', () {
+    test('reads the allergies of a key, in its order', () {
+      expect(allergiesOfHouseholdKey('4-dairy-egg-gluten-peanut'), [
+        Allergy.dairy,
+        Allergy.egg,
+        Allergy.gluten,
+        Allergy.peanut,
+      ]);
+      expect(allergiesOfHouseholdKey('12-soy'), [Allergy.soy]);
+    });
+
+    test('a key without allergies, or empty, has none', () {
+      expect(allergiesOfHouseholdKey('4'), isEmpty);
+      expect(allergiesOfHouseholdKey(''), isEmpty);
+    });
+
+    test('ignores what is not a known allergy', () {
+      expect(allergiesOfHouseholdKey('4-dairy-nuts'), [Allergy.dairy]);
+      expect(allergiesOfHouseholdKey('4-Dairy'), isEmpty);
+    });
+
+    test('gives back the allergies householdKeyOf put in the key', () {
+      for (final allergies in [
+        <Allergy>[],
+        [Allergy.shellfish],
+        Allergy.values,
+        [Allergy.soy, Allergy.dairy, Allergy.peanut],
+      ]) {
+        expect(
+          allergiesOfHouseholdKey(householdKeyOf(3, allergies)).toSet(),
+          allergies.toSet(),
+        );
+      }
+    });
+  });
+
   group('recipeSignature', () {
     test('is the same for the same recipe and changes when it is edited', () {
       expect(

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../data/models/app_user.dart';
 import '../../../data/models/family.dart';
+import '../../../data/repositories/device_token_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_bottom_nav.dart';
 import '../meal_plan/meal_plan_screen.dart';
@@ -9,6 +12,7 @@ import '../pantry/pantry_screen.dart';
 import '../profile/profile_screen.dart';
 import '../recipes/recipes_screen.dart';
 import '../session/account_sheet.dart';
+import 'open_plan_from_reminder.dart';
 
 /// App del beneficiario: las 4 pestañas de la barra inferior.
 class HomeScreen extends StatefulWidget {
@@ -21,10 +25,23 @@ class HomeScreen extends StatefulWidget {
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
+
+  /// La pestaña "Plan de comidas": la abre el recordatorio del plan.
+  static const planTab = 2;
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with OpenPlanFromReminder {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // familyId es el uid de la familia. Solo la familia recibe alertas.
+    unawaited(DeviceTokenRepository.instance.register(widget.family.familyId));
+  }
+
+  @override
+  void showPlan() => _index = HomeScreen.planTab;
 
   @override
   Widget build(BuildContext context) {

@@ -246,6 +246,41 @@ async function ensureAuthUser({ email, name }) {
   throw fail(`No se pudo crear la cuenta ${email}`, signUp);
 }
 
+/**
+ * Como ensureAuthUser, pero con el uid [uid]. Una familia real tiene
+ * familyId == uid (las reglas lo exigen al crearla), y la app guarda cosas
+ * con uno o con otro (p. ej. users/{uid}/deviceTokens). Si una corrida
+ * anterior creó la cuenta con otro uid, la borra junto con su perfil.
+ */
+async function ensureAuthUserWithUid({ email, name }, uid) {
+  const lookup = await request(`${AUTH_URL}/projects/${PROJECT_ID}/accounts:lookup`, {
+    method: 'POST',
+    body: { email: [email] },
+    admin: true,
+  });
+  if (!lookup.ok) throw fail(`No se pudo buscar la cuenta ${email}`, lookup);
+  const oldUid = lookup.json?.users?.[0]?.localId;
+  if (oldUid === uid) return ensureAuthUser({ email, name });
+
+  if (oldUid) {
+    const removed = await request(`${AUTH_URL}/projects/${PROJECT_ID}/accounts:delete`, {
+      method: 'POST',
+      body: { localId: oldUid },
+      admin: true,
+    });
+    if (!removed.ok) throw fail(`No se pudo borrar la cuenta anterior de ${email}`, removed);
+    await deleteDocument(`users/${oldUid}`);
+  }
+
+  const created = await request(`${AUTH_URL}/projects/${PROJECT_ID}/accounts`, {
+    method: 'POST',
+    body: { localId: uid, email, password: PASSWORD, displayName: name },
+    admin: true,
+  });
+  if (!created.ok) throw fail(`No se pudo crear la cuenta ${email}`, created);
+  return { uid, created: true };
+}
+
 /** Crea o reemplaza el documento completo (PATCH sin updateMask). */
 async function setDocument(path, fields) {
   const response = await request(`${DOCUMENTS_URL}/${path}`, {
@@ -478,7 +513,7 @@ async function seed() {
   const scheduledFor = addDays(now, 9);
 
   const staff = await ensureAuthUser(STAFF);
-  const family = await ensureAuthUser(FAMILY);
+  const family = await ensureAuthUserWithUid(FAMILY, FAMILY_ID);
   const nutritionist = await ensureAuthUser(NUTRITIONIST);
 
   await setDocument(`users/${staff.uid}`, {

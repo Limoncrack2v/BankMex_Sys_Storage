@@ -17,6 +17,14 @@ String householdKeyOf(int householdSize, Iterable<Allergy> allergies) {
   return [householdSize, ...names].join('-');
 }
 
+/// Las alergias de una clave de [householdKeyOf], en su orden: "4-dairy-egg"
+/// da lácteos y huevo. El primer pedazo es el tamaño del hogar; lo que no sea
+/// una alergia conocida se ignora.
+List<Allergy> allergiesOfHouseholdKey(String key) {
+  final byName = Allergy.values.asNameMap();
+  return [for (final part in key.split('-').skip(1)) ?byName[part]];
+}
+
 /// Un cambio sugerido a una receta, con el motivo que ve el nutriólogo.
 class AdjustmentChange {
   const AdjustmentChange({

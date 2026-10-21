@@ -53,6 +53,9 @@ Future<void> _pump(
       home: NutritionistHomeScreen(
         session: _session,
         pendingRecipes: recipes,
+        pendingAdjustments: Stream.value(const []),
+        approvedRecipes: Stream.value(const []),
+        recipesInReview: Stream.value(const []),
         approveRecipe: approve ?? (id) async => log.log.add('approve $id'),
         rejectRecipe:
             reject ?? (id, note) async => log.log.add('reject $id: $note'),
