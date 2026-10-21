@@ -271,8 +271,9 @@ test('la función exportada: horario, región y reintentos', () => {
   assert.equal(trigger.scheduleTrigger.timeZone, 'America/Mexico_City');
   assert.deepEqual(trigger.region, ['us-south1']);
   assert.equal(trigger.scheduleTrigger.retryConfig.retryCount, 3);
-  // Las funciones de Firestore se quedan en la región de la base de datos.
-  assert.deepEqual(functions.syncNextDelivery.__endpoint.region, ['northamerica-south1']);
+  // Las de Firestore también: Cloud Functions no tiene northamerica-south1.
+  assert.deepEqual(functions.syncNextDelivery.__endpoint.region, ['us-south1']);
+  assert.deepEqual(functions.onDeliveryWritten.__endpoint.region, ['us-south1']);
 });
 
 test('la función exportada lanza error si alguna familia falla, para que Scheduler reintente', { timeout: 60000 }, async (t) => {

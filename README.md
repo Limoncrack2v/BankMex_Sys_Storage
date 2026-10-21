@@ -96,7 +96,7 @@ Cuentas de prueba del seed (contraseña `bamx1234`):
 
 El seed también carga el catálogo de recetas (`tool/catalog_recipes.mjs`, la misma fuente que `./scripts/seed_catalog.sh`), una entrega programada de 16 productos con cuota, un plan de comidas guardado y 27 familias sin cuenta con entregas y 6 meses de consumo para "Estadísticas". El detalle está al inicio de `tool/seed_emulators.mjs`.
 
-En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `northamerica-south1`:
+En **release** (`flutter run --release`) la app usa el proyecto real `bank-storage-bamx`. Para que funcione, la Cloud Function y las reglas deben estar desplegadas. Conviene desplegar primero la función (requiere el plan Blaze del proyecto) y revisar que `onDeliveryWritten` aparezca en `us-south1` (Cloud Functions no tiene `northamerica-south1`, la región de Firestore; el trigger sí queda ahí):
 
 ```sh
 firebase deploy --only functions
@@ -132,7 +132,7 @@ El contenido fijo de cada despensa del banco está en `standardBaskets/{basketId
 La fecha de la próxima entrega de la familia (`families/{familyId}.nextDeliveryDate`) la mantienen dos funciones; ningún cliente la escribe:
 
 - `syncNextDelivery` la recalcula cada vez que se escribe una entrega.
-- `recomputeStaleNextDelivery` corre todos los días a las 00:15 (hora de Guadalajara) y recalcula las familias cuya fecha ya es de antes de hoy, porque el día de una entrega programada puede pasar sin que nadie la marque entregada ni cancelada y entonces `syncNextDelivery` no se dispara. Solo consulta esas familias (`nextDeliveryDate < inicio de hoy`) y puede correr dos veces sin problema. Está en `us-south1` y no en `northamerica-south1` porque Cloud Scheduler no existe en esa región. Para desplegarla hace falta la API de Cloud Scheduler habilitada y el plan Blaze (`firebase deploy --only functions`).
+- `recomputeStaleNextDelivery` corre todos los días a las 00:15 (hora de Guadalajara) y recalcula las familias cuya fecha ya es de antes de hoy, porque el día de una entrega programada puede pasar sin que nadie la marque entregada ni cancelada y entonces `syncNextDelivery` no se dispara. Solo consulta esas familias (`nextDeliveryDate < inicio de hoy`) y puede correr dos veces sin problema. Está en `us-south1`, como las demás funciones, porque ni Cloud Functions ni Cloud Scheduler existen en `northamerica-south1`. Para desplegarla hace falta la API de Cloud Scheduler habilitada y el plan Blaze (`firebase deploy --only functions`).
 
 Una entrega **programada** también se puede **reasignar** a otra familia. En un solo batch, la original queda como `reassigned` (con `reassignedTo`) y se crea una entrega nueva programada para la otra familia (con `reassignedFrom`), con la misma fecha, despensas y productos.
 

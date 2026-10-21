@@ -31,8 +31,10 @@ const MAX_EVENT_AGE_MS = 24 * 60 * 60 * 1000;
 exports.onDeliveryWritten = onDocumentWritten(
   {
     document: 'deliveries/{deliveryId}',
-    // Los triggers de Firestore deben estar en la región de la base de datos.
-    region: 'northamerica-south1',
+    // Cloud Functions no tiene northamerica-south1, la región de la base de
+    // datos. El trigger sí queda ahí (firebase deploy le pone la región de
+    // Firestore); la función corre en us-south1 (Dallas), la más cercana.
+    region: 'us-south1',
     // Reintentar es seguro: stockDelivery no duplica productos.
     retry: true,
   },
@@ -118,7 +120,7 @@ async function stockDelivery(deliveryRef, serverTime) {
 exports.syncNextDelivery = onDocumentWritten(
   {
     document: 'deliveries/{deliveryId}',
-    region: 'northamerica-south1',
+    region: 'us-south1',
     retry: true,
   },
   async (event) => {
@@ -149,11 +151,9 @@ exports.syncNextDelivery = onDocumentWritten(
  * escribe una entrega, así que si el día de una programada pasa sin marcarla
  * entregada ni cancelada, la familia se quedaba con esa fecha.
  *
- * Región: Cloud Scheduler no está disponible en northamerica-south1 (donde
- * están los triggers de Firestore de arriba), y firebase deploy crea el job
- * de Scheduler en la región de la función. us-south1 (Dallas) es la región
- * de Scheduler más cercana a Guadalajara; esta función solo escribe en
- * Firestore, no necesita estar en la región de la base de datos.
+ * Región: us-south1 (Dallas), como las de arriba. Cloud Scheduler tampoco
+ * está en northamerica-south1, y firebase deploy crea el job de Scheduler en
+ * la región de la función; us-south1 es la más cercana a Guadalajara.
  *
  * Reintentos: la función es idempotente (solo toca familias que siguen con
  * fecha pasada), así que reintentar es seguro. Si alguna familia falla se
